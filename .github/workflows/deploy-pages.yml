@@ -1,0 +1,84 @@
+name: Frontend CI & GitHub Pages Deployment
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Principle of least privilege: default to read-only repository contents
+permissions:
+  contents: read
+
+concurrency:
+  group: "pages-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  verify-and-build:
+    name: Lint, Typecheck, Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 with npm cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies reproducibly from lockfile
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Run Unit, PostgreSQL Schema & 963-Row Regression Tests
+        run: npm test
+
+      - name: Build production Vite bundle for GitHub Pages
+        env:
+          # Automatically resolves to /<repo-name>/ on GitHub Pages
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_APP_TIMEZONE: Asia/Kolkata
+        run: npm run build
+
+      - name: Security Gate — Verify no privileged credentials in dist/
+        run: |
+          if grep -rnE "SUPABASE_SERVICE_ROLE_KEY|service_role" dist/; then
+            echo "ERROR: Privileged service_role reference detected in frontend build output!"
+            exit 1
+          fi
+          echo "Security check passed: zero privileged credentials in dist/."
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy-to-github-pages:
+    name: Publish to GitHub Pages
+    needs: verify-and-build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy artifact to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

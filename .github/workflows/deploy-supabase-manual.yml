@@ -1,0 +1,78 @@
+name: Manual Supabase Schema & Edge Function Deployment
+
+# Strictly manual workflow_dispatch only — NEVER runs automatically on push or PR.
+# Protected by the 'supabase-production' GitHub Environment approval gate.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deployment:
+        description: 'Type DEPLOY to confirm pushing migrations and Edge Function to Supabase'
+        required: true
+        default: ''
+      deploy_migrations:
+        description: 'Push pending SQL migrations (supabase db push)'
+        required: true
+        type: boolean
+        default: true
+      deploy_edge_function:
+        description: 'Deploy ingest-orders Edge Function'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-supabase:
+    name: Controlled Supabase Production Deployment
+    runs-on: ubuntu-latest
+    environment: supabase-production
+    steps:
+      - name: Verify explicit confirmation string
+        run: |
+          if [ "${{ inputs.confirm_deployment }}" != "DEPLOY" ]; then
+            echo "Deployment aborted: confirm_deployment input must be exactly 'DEPLOY'."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 and run regression tests before any DB action
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies and verify test suite
+        run: npm ci && npm test
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link Supabase Project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Push version-controlled SQL migrations (Forward-only, non-destructive)
+        if: inputs.deploy_migrations == true
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          supabase db push
+
+      - name: Deploy ingest-orders Edge Function
+        if: inputs.deploy_edge_function == true
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          supabase functions deploy ingest-orders --project-ref "$SUPABASE_PROJECT_REF"

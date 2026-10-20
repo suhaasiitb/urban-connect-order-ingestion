@@ -1,0 +1,26 @@
+# Supabase CLI Configuration for Urban Connect Order Ingestion Portal
+project_id = "urban-connect-order-ingestion"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = false
+
+[functions.ingest-orders]
+verify_jwt = true

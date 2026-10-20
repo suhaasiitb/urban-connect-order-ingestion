@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Urban Connect — Redirecting...</title>
+    <script>
+      // GitHub Pages SPA route fallback: redirects any deep path back to the
+      // repository base path while preserving query/hash state.
+      (function () {
+        var l = window.location;
+        var pathSegments = l.pathname.split('/').filter(Boolean);
+        var repoBase = pathSegments.length > 0 ? '/' + pathSegments[0] + '/' : '/';
+        l.replace(l.protocol + '//' + l.host + repoBase + l.search + l.hash);
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to Urban Connect Order Ingestion Portal...</p>
+  </body>
+</html>
