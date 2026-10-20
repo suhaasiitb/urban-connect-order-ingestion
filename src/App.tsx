@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { AnalyticsSection } from './components/AnalyticsSection';
 import { BatchHistoryTable } from './components/BatchHistoryTable';
 import { LoginScreen } from './components/LoginScreen';
 import { UploadWorkspace } from './components/UploadWorkspace';
@@ -20,7 +21,7 @@ export const App: React.FC = () => {
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [storesError, setStoresError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'upload' | 'history'>('upload');
+  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 'history'>('upload');
   const [historyRefreshCount, setHistoryRefreshCount] = useState(0);
 
   const loadStoresForAdmin = useCallback(async () => {
@@ -128,7 +129,16 @@ export const App: React.FC = () => {
             }`}
             onClick={() => setActiveView('upload')}
           >
-            Upload & Validate Workbook
+            Data Ingestion
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${
+              activeView === 'analytics' ? 'btn-primary' : 'btn-secondary'
+            }`}
+            onClick={() => setActiveView('analytics')}
+          >
+            Store Analytics
           </button>
           <button
             type="button"
@@ -137,7 +147,7 @@ export const App: React.FC = () => {
             }`}
             onClick={() => setActiveView('history')}
           >
-            Batch Audit History
+            Upload Audit Log
           </button>
         </nav>
 
@@ -162,7 +172,7 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {activeView === 'upload' ? (
+        {activeView === 'upload' && (
           <UploadWorkspace
             stores={stores}
             selectedStoreId={selectedStoreId}
@@ -171,7 +181,17 @@ export const App: React.FC = () => {
               setHistoryRefreshCount((prev) => prev + 1)
             }
           />
-        ) : (
+        )}
+
+        {activeView === 'analytics' && (
+          <AnalyticsSection
+            stores={stores}
+            selectedStoreId={selectedStoreId}
+            onSelectStoreId={setSelectedStoreId}
+          />
+        )}
+
+        {activeView === 'history' && (
           <BatchHistoryTable
             stores={stores}
             refreshTrigger={historyRefreshCount}
