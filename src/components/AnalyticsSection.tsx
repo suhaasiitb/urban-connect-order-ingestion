@@ -1,6 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
 import { supabase } from '../config/supabaseClient';
+import {
+  type RiderPerformancePivotResult,
+  fetchRiderPerformanceAnalytics,
+  getDateRangeForDays,
+} from '../services/analyticsService';
+import { RiderPerformanceTable } from './RiderPerformanceTable';
 
 interface AnalyticsSectionProps {
   stores: StoreMaster[];
@@ -23,7 +29,13 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
 }) => {
   const selectedStore = stores.find((s) => s.id === selectedStoreId) ?? stores[0];
 
-  const [stats, setStats] = useState<AnalyticsQuickStats>({
+  // Presets: 7, 10, 14, 20, 30 days
+  const [selectedDays, setSelectedDays] = useState<number>(7);
+  const initialRange = getDateRangeForDays(7, selectedStore?.timezone || 'Asia/Kolkata');
+  const [startDate, setStartDate] = useState(initialRange.startDate);
+  const [endDate, setEndDate] = useState(initialRange.endDate);
+
+  const [quickStats, setQuickStats] = useState<AnalyticsQuickStats>({
     totalOrders: 0,
     completedOrders: 0,
     rtoOrders: 0,
@@ -31,60 +43,114 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     loading: true,
   });
 
-  useEffect(() => {
-    let mounted = true;
-    const loadStoreStats = async () => {
-      if (!selectedStore) return;
-      setStats((prev) => ({ ...prev, loading: true }));
+  const [pivotResult, setPivotResult] = useState<RiderPerformancePivotResult>({
+    storeId: selectedStore?.id ?? '',
+    startDate: initialRange.startDate,
+    endDate: initialRange.endDate,
+    periodDays: 7,
+    dateColumns: [],
+    rows: [],
+    totalRiders: 0,
+    overallAvgHours: 0,
+    overallAvgOrders: 0,
+  });
+  const [loadingPivot, setLoadingPivot] = useState(false);
+  const [pivotError, setPivotError] = useState<string | null>(null);
 
-      try {
-        const { data, error } = await supabase
-          .from('orders')
-          .select('id, status, order_date')
-          .eq('store_id', selectedStore.id);
+  // Load KPI Stats
+  const loadQuickStats = useCallback(async () => {
+    if (!selectedStore) return;
+    setQuickStats((prev) => ({ ...prev, loading: true }));
 
-        if (!mounted) return;
-        if (error || !data) {
-          setStats({
-            totalOrders: 0,
-            completedOrders: 0,
-            rtoOrders: 0,
-            distinctDates: 0,
-            loading: false,
-          });
-          return;
-        }
+    try {
+      // 1. Exact total orders count via head query (bypasses PostgREST 1,000-row limit)
+      const { count: totalCount } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', selectedStore.id);
 
-        const totalOrders = data.length;
-        const completedOrders = data.filter((o) => o.status === 'COMPLETED').length;
-        const rtoOrders = data.filter((o) => o.status === 'RTO_DELIVERED').length;
-        const dateSet = new Set(data.map((o) => o.order_date).filter(Boolean));
+      const { count: completedCount } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', selectedStore.id)
+        .eq('status', 'COMPLETED');
 
-        setStats({
-          totalOrders,
-          completedOrders,
-          rtoOrders,
-          distinctDates: dateSet.size,
-          loading: false,
-        });
-      } catch {
-        if (mounted) {
-          setStats({
-            totalOrders: 0,
-            completedOrders: 0,
-            rtoOrders: 0,
-            distinctDates: 0,
-            loading: false,
-          });
-        }
+      const { count: rtoCount } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', selectedStore.id)
+        .eq('status', 'RTO_DELIVERED');
+
+      // 2. Distinct dates from batches
+      const { data: batches } = await supabase
+        .from('ingestion_batches')
+        .select('min_order_date, max_order_date')
+        .eq('store_id', selectedStore.id)
+        .eq('status', 'Succeeded');
+
+      const dateSet = new Set<string>();
+      for (const b of batches ?? []) {
+        if (b.min_order_date) dateSet.add(b.min_order_date);
+        if (b.max_order_date) dateSet.add(b.max_order_date);
       }
-    };
 
-    void loadStoreStats();
-    return () => {
-      mounted = false;
-    };
+      setQuickStats({
+        totalOrders: totalCount ?? 0,
+        completedOrders: completedCount ?? 0,
+        rtoOrders: rtoCount ?? 0,
+        distinctDates: dateSet.size,
+        loading: false,
+      });
+    } catch {
+      setQuickStats({
+        totalOrders: 0,
+        completedOrders: 0,
+        rtoOrders: 0,
+        distinctDates: 0,
+        loading: false,
+      });
+    }
   }, [selectedStore]);
+
+  // Load Rider Performance Pivot
+  const loadRiderPivot = useCallback(async () => {
+    if (!selectedStore) return;
+    setLoadingPivot(true);
+    setPivotError(null);
+
+    const res = await fetchRiderPerformanceAnalytics({
+      storeId: selectedStore.id,
+      startDate,
+      endDate,
+    });
+
+    setLoadingPivot(false);
+    if (res.error) {
+      setPivotError(res.error);
+    } else if (res.data) {
+      setPivotResult(res.data);
+    }
+  }, [selectedStore, startDate, endDate]);
+
+  useEffect(() => {
+    void loadQuickStats();
+  }, [loadQuickStats]);
+
+  useEffect(() => {
+    void loadRiderPivot();
+  }, [loadRiderPivot]);
+
+  const handleSelectDaysPreset = (days: number) => {
+    setSelectedDays(days);
+    const range = getDateRangeForDays(days, selectedStore?.timezone || 'Asia/Kolkata');
+    setStartDate(range.startDate);
+    setEndDate(range.endDate);
+  };
+
+  const handleCustomDateChange = (start: string, end: string) => {
+    setStartDate(start);
+    setEndDate(end);
+  };
 
   return (
     <div className="analytics-container">
@@ -92,9 +158,9 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
       <div className="section-card">
         <div className="analytics-header">
           <div>
-            <h2 className="section-title">Store Performance & Dispatch Analytics</h2>
+            <h2 className="section-title">Store & Rider Analytics</h2>
             <p className="section-subtitle">
-              Aggregated KPI metrics, delivery performance, and SLAs computed from ingested daily reports.
+              Pivot analysis of Rider Hours (COUNTUNIQUE slot) and Orders (COUNTA order_id) across dates.
             </p>
           </div>
 
@@ -118,54 +184,72 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
         </div>
       </div>
 
-      {/* KPI Stat Cards */}
+      {/* Top Quick KPI Metric Cards */}
       <div className="kpi-grid">
         <div className="kpi-card">
           <span className="kpi-label">Total Ingested Orders</span>
           <strong className="kpi-value">
-            {stats.loading ? '...' : stats.totalOrders.toLocaleString()}
+            {quickStats.loading ? '...' : quickStats.totalOrders.toLocaleString()}
           </strong>
-          <span className="kpi-sub">Across {stats.distinctDates} active business dates</span>
+          <span className="kpi-sub">Across {quickStats.distinctDates} business dates</span>
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">Completed Deliveries</span>
-          <strong className="kpi-value text-green">
-            {stats.loading ? '...' : stats.completedOrders.toLocaleString()}
+          <span className="kpi-label">Active Working Riders</span>
+          <strong className="kpi-value text-blue">
+            {loadingPivot ? '...' : pivotResult.totalRiders}
           </strong>
-          <span className="kpi-sub">
-            {stats.totalOrders > 0
-              ? `${Math.round((stats.completedOrders / stats.totalOrders) * 100)}% completion rate`
-              : 'No orders yet'}
-          </span>
+          <span className="kpi-sub">In selected period ({selectedDays} days)</span>
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">RTO Orders</span>
-          <strong className="kpi-value text-amber">
-            {stats.loading ? '...' : stats.rtoOrders.toLocaleString()}
-          </strong>
-          <span className="kpi-sub">Returned to origin</span>
-        </div>
-
-        <div className="kpi-card">
-          <span className="kpi-label">Store SLA Coverage</span>
+          <span className="kpi-label">Store Avg Daily Hours</span>
           <strong className="kpi-value">
-            {stats.loading ? '...' : `${stats.distinctDates} Days`}
+            {loadingPivot ? '...' : `${pivotResult.overallAvgHours} hrs`}
           </strong>
-          <span className="kpi-sub">{selectedStore?.store_code ?? 'TMK7'} historical data</span>
+          <span className="kpi-sub">Per working rider / day</span>
+        </div>
+
+        <div className="kpi-card">
+          <span className="kpi-label">Store Avg Daily Orders</span>
+          <strong className="kpi-value text-green">
+            {loadingPivot ? '...' : `${pivotResult.overallAvgOrders} orders`}
+          </strong>
+          <span className="kpi-sub">Per working rider / day</span>
         </div>
       </div>
 
-      {/* Next Step Banner */}
-      <div className="analytics-roadmap-card">
-        <div className="roadmap-badge">Phase Ready</div>
-        <h3 className="roadmap-title">Ready for Advanced Analytics</h3>
-        <p className="roadmap-desc">
-          Now that daily order ingestion is live and verified with exact second precision,
-          we can build out custom hourly volume distribution charts, rider OTP dispatch performance,
-          and Staging-to-Pickup (S2P) metric breakdown.
-        </p>
+      {pivotError && (
+        <div className="alert-box alert-box-warning" role="alert">
+          <strong>Notice:</strong> {pivotError}
+        </div>
+      )}
+
+      {/* Primary Rider Hours & Orders Pivot Section */}
+      <div className="section-card perf-card">
+        <div className="perf-section-header">
+          <div>
+            <h3 className="section-title">Rider Hours & Orders Pivot Table</h3>
+            <p className="section-subtitle">
+              Daily working hours (unique slot count) and order volume per rider with working-day cumulative average.
+            </p>
+          </div>
+        </div>
+
+        {selectedStore && (
+          <RiderPerformanceTable
+            data={pivotResult}
+            storeCode={selectedStore.store_code}
+            storeName={selectedStore.store_name}
+            selectedDays={selectedDays}
+            onSelectDaysPreset={handleSelectDaysPreset}
+            startDate={startDate}
+            endDate={endDate}
+            onCustomDateChange={handleCustomDateChange}
+            loading={loadingPivot}
+            onRefresh={() => void loadRiderPivot()}
+          />
+        )}
       </div>
     </div>
   );

@@ -1300,3 +1300,402 @@ select {
   max-width: 600px;
   line-height: 1.5;
 }
+
+/* ==========================================================================
+   Rider Performance Pivot Table (Google Sheets Replica Layout)
+   ========================================================================== */
+
+.perf-card {
+  padding: 1.5rem !important;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.perf-section-header {
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 0.75rem;
+}
+
+.perf-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.perf-range-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.perf-control-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.preset-pill-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.preset-pill {
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.preset-pill:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+.preset-pill-active {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border-color: #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.15);
+}
+
+.perf-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.perf-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.perf-search-input {
+  padding: 0.45rem 1.8rem 0.45rem 0.75rem;
+  font-size: 0.84rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0f172a;
+  outline: none;
+  width: 170px;
+  transition: all 0.15s ease;
+}
+
+.perf-search-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  width: 210px;
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 6px;
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  color: #94a3b8;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+.search-clear-btn:hover {
+  color: #0f172a;
+}
+
+.custom-range-drawer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  flex-wrap: wrap;
+}
+
+.date-field {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.date-field input[type='date'] {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+}
+
+/* Scrollable Pivot Table */
+.perf-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  max-height: 620px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.perf-pivot-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+}
+
+/* Tier 1 Headers */
+.tier1-header-row th {
+  padding: 0.55rem 0.65rem;
+  font-weight: 700;
+  border-bottom: 1px solid #94a3b8;
+  border-right: 1px solid #94a3b8;
+  white-space: nowrap;
+}
+
+.th-rider-name {
+  background-color: #86efac !important;
+  color: #064e3b !important;
+  min-width: 190px;
+  max-width: 240px;
+  cursor: pointer;
+  z-index: 4 !important;
+}
+
+.th-active-status {
+  background-color: #86efac !important;
+  color: #064e3b !important;
+  text-align: center;
+  width: 55px;
+}
+
+.th-date-group {
+  background-color: #bbf7d0 !important;
+  color: #064e3b !important;
+  text-align: center;
+  border-right: 1.5px solid #64748b !important;
+}
+
+.th-avg-group {
+  background-color: #fef08a !important;
+  color: #713f12 !important;
+  text-align: center;
+  border-left: 2px solid #64748b !important;
+  border-right: none !important;
+}
+
+.th-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.sort-arrow {
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
+/* Tier 2 Headers */
+.tier2-header-row th {
+  padding: 0.35rem 0.45rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1.5px solid #64748b;
+  border-right: 1px solid #cbd5e1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.th-sub-blank {
+  background-color: #86efac !important;
+  border-right: 1px solid #94a3b8 !important;
+  z-index: 4 !important;
+}
+
+.th-sub-hours {
+  background-color: #e0e7ff !important;
+  color: #3730a3 !important;
+  min-width: 55px;
+}
+
+.th-sub-orders {
+  background-color: #fee2e2 !important;
+  color: #991b1b !important;
+  border-right: 1.5px solid #64748b !important;
+  min-width: 55px;
+}
+
+.th-sub-avg-hours {
+  background-color: #fef08a !important;
+  color: #713f12 !important;
+  border-left: 2px solid #64748b !important;
+  min-width: 65px;
+  cursor: pointer;
+}
+
+.th-sub-avg-orders {
+  background-color: #fef08a !important;
+  color: #713f12 !important;
+  border-right: none !important;
+  min-width: 65px;
+  cursor: pointer;
+}
+
+/* Data Rows */
+.perf-data-row td {
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.td-rider-name {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-right: 1px solid #cbd5e1;
+  font-weight: 600;
+}
+
+.td-active {
+  background-color: #ffffff;
+  border-right: 1px solid #cbd5e1;
+}
+
+.badge-active {
+  display: inline-block;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.td-metric {
+  text-align: right;
+  font-size: 0.84rem;
+}
+
+.td-hours {
+  color: #1e1b4b;
+  border-right: 1px solid #f1f5f9;
+}
+
+.td-orders {
+  color: #881337;
+  font-weight: 500;
+  border-right: 1.5px solid #94a3b8;
+}
+
+.td-blank {
+  color: #cbd5e1;
+}
+
+.td-avg-hours {
+  background-color: #fefce8;
+  color: #713f12;
+  border-left: 2px solid #94a3b8;
+  border-right: 1px solid #fef08a;
+  font-weight: 600;
+}
+
+.td-avg-orders {
+  background-color: #fefce8;
+  color: #713f12;
+  font-weight: 700;
+  border-right: none;
+}
+
+/* Hover States */
+.perf-data-row:hover td {
+  background-color: #f8fafc;
+}
+
+.perf-data-row:hover .td-rider-name {
+  background-color: #f1f5f9;
+}
+
+.perf-data-row:hover .td-avg-hours,
+.perf-data-row:hover .td-avg-orders {
+  background-color: #fef9c3;
+}
+
+/* Table Footer Row */
+.perf-footer-row td {
+  background-color: #f1f5f9;
+  border-top: 2px solid #94a3b8;
+  padding: 0.6rem 0.65rem;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.perf-footer-row .td-avg-hours,
+.perf-footer-row .td-avg-orders {
+  background-color: #fef08a !important;
+  color: #713f12;
+}
+
+.td-foot-blank {
+  border-right: 1px solid #e2e8f0;
+}
+
+.table-empty-cell {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.perf-loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.perf-footer-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: #64748b;
+  flex-wrap: wrap;
+}
+
+.formula-hint {
+  font-size: 0.78rem;
+  background: #f1f5f9;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+}
+
