@@ -40,9 +40,6 @@ jobs:
       - name: Run TypeScript typecheck
         run: npm run typecheck
 
-      - name: Run Unit, PostgreSQL Schema & 963-Row Regression Tests
-        run: npm test
-
       - name: Build production Vite bundle for GitHub Pages
         env:
           # Automatically resolves to /<repo-name>/ on GitHub Pages
@@ -51,6 +48,9 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_APP_TIMEZONE: Asia/Kolkata
         run: npm run build
+
+      - name: Run Unit, PostgreSQL Schema & 963-Row Regression Tests
+        run: npm test
 
       - name: Security Gate — Verify no privileged credentials in dist/
         run: |

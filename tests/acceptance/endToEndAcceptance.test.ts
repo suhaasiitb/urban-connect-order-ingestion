@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
@@ -16,6 +17,7 @@ const FIXTURE_PATH = path.resolve(
   __dirname,
   '../fixtures/Amazon Narhe - Reports-2.xlsx'
 );
+const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const DIST_DIR = path.resolve(__dirname, '../../dist');
 
 const ADMIN_UID = '00000000-0000-4000-8000-000000000101';
@@ -405,6 +407,17 @@ describe('Phase 6 — End-to-End Acceptance Verification Suite (Section 13)', ()
   });
 
   it('4. Production Build & Deployment Artifact Acceptance: verifies dist/ output and SPA fallback', () => {
+    if (
+      !fs.existsSync(path.join(DIST_DIR, 'index.html')) ||
+      !fs.existsSync(path.join(DIST_DIR, '404.html'))
+    ) {
+      execSync('npm run build', {
+        cwd: PROJECT_ROOT,
+        stdio: 'pipe',
+        env: { ...process.env, VITE_BASE_PATH: './' },
+      });
+    }
+
     expect(fs.existsSync(path.join(DIST_DIR, 'index.html'))).toBe(true);
     expect(fs.existsSync(path.join(DIST_DIR, '404.html'))).toBe(true);
 
