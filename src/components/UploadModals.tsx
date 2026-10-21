@@ -241,3 +241,134 @@ export const UploadSuccessModal: React.FC<UploadSuccessModalProps> = ({
     </div>
   );
 };
+
+// -----------------------------------------------------------------------------
+// 4. Roster Confirmation Modal
+// -----------------------------------------------------------------------------
+interface RosterConfirmModalProps {
+  store: StoreMaster;
+  filename: string;
+  totalRiders: number;
+  sampleRiders: string[];
+  warnings: string[];
+  isSaving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+export const RosterConfirmModal: React.FC<RosterConfirmModalProps> = ({
+  store,
+  filename,
+  totalRiders,
+  sampleRiders,
+  warnings,
+  isSaving,
+  onCancel,
+  onConfirm,
+}) => {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="modal-card modal-confirm">
+        <div className="modal-header">
+          <div className="modal-title-with-icon">
+            <span className="modal-icon-badge badge-primary">🚴</span>
+            <div>
+              <h3 className="modal-title">Confirm Active Riders Roster</h3>
+              <p className="modal-subtitle">
+                Store: <strong>{store.store_code} — {store.store_name}</strong>
+              </p>
+            </div>
+          </div>
+          <button type="button" className="btn-close" onClick={onCancel} disabled={isSaving}>
+            ×
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="confirm-summary-box">
+            <div className="confirm-row">
+              <span className="confirm-label">File:</span>
+              <span className="confirm-value mono">{filename}</span>
+            </div>
+            <div className="confirm-row">
+              <span className="confirm-label">Active Riders to Register:</span>
+              <span className="confirm-value font-bold text-blue">{totalRiders} riders</span>
+            </div>
+          </div>
+
+          {warnings.length > 0 && (
+            <div className="confirm-warning-box">
+              {warnings.map((w, idx) => (
+                <p key={idx} className="warning-text">⚠️ {w}</p>
+              ))}
+            </div>
+          )}
+
+          <div className="roster-sample-preview">
+            <span className="sample-label">Sample Riders Detected ({Math.min(6, sampleRiders.length)} of {totalRiders}):</span>
+            <div className="sample-chips">
+              {sampleRiders.slice(0, 6).map((name, i) => (
+                <span key={i} className="rider-sample-chip">{name}</span>
+              ))}
+              {sampleRiders.length > 6 && (
+                <span className="rider-sample-more">+{totalRiders - 6} more</span>
+              )}
+            </div>
+          </div>
+
+          <p className="confirm-prompt-text">
+            Uploading this roster will update the <strong>Active (Yes / No)</strong> tags for <strong>{store.store_code}</strong> riders across all analytics views.
+          </p>
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={isSaving}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={isSaving}>
+            {isSaving ? 'Saving Roster...' : `Confirm & Save ${totalRiders} Riders`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// 5. Roster Success Modal
+// -----------------------------------------------------------------------------
+interface RosterSuccessModalProps {
+  storeCode: string;
+  totalRiders: number;
+  lastUpdatedFormatted: string;
+  onDone: () => void;
+}
+
+export const RosterSuccessModal: React.FC<RosterSuccessModalProps> = ({
+  storeCode,
+  totalRiders,
+  lastUpdatedFormatted,
+  onDone,
+}) => {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="modal-card modal-success">
+        <div className="modal-body text-center pt-md">
+          <div className="success-icon-circle">✓</div>
+          <h2 className="success-title">Roster Updated Successfully!</h2>
+          <p className="success-subtitle">
+            Registered <strong>{totalRiders} active riders</strong> for store <strong>{storeCode}</strong>.
+          </p>
+          <p className="batch-id-note">
+            Last Updated: <strong>{lastUpdatedFormatted}</strong>
+          </p>
+        </div>
+        <div className="modal-footer justify-center">
+          <button type="button" className="btn btn-primary btn-wide" onClick={onDone}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

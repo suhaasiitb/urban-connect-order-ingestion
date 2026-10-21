@@ -168,6 +168,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
         orders: number;
       }> = [];
 
+      let rpcRanSuccessfully = false;
       while (rpcHasMore) {
         const { data: rpcData, error: rpcError } = await supabase
           .rpc('get_rider_daily_performance', {
@@ -181,6 +182,8 @@ export async function fetchRiderPerformanceAnalytics(params: {
           // If RPC doesn't exist yet or fails, break to run client-side aggregation fallback
           break;
         }
+
+        rpcRanSuccessfully = true;
 
         if (Array.isArray(rpcData) && rpcData.length > 0) {
           for (const item of rpcData) {
@@ -201,7 +204,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
         }
       }
 
-      if (rpcRows.length > 0) {
+      if (rpcRanSuccessfully) {
         rawAggregated = rpcRows;
         rpcSucceeded = true;
       }
@@ -407,14 +410,16 @@ export async function fetchRiderPerformanceAnalytics(params: {
 export function exportRiderPerformanceToExcel(
   pivot: RiderPerformancePivotResult,
   storeCode: string,
-  useActiveAvg = false
+  useActiveAvg = false,
+  activeNamesSet?: Set<string>,
+  phoneByNameMap?: Map<string, string>
 ): void {
   const wb = XLSX.utils.book_new();
 
   // Row 1: Group headers
-  // [Rider Name, Active, Date1, '', Date2, '', ... Avg, '']
-  const row1: string[] = ['Rider Name', 'Active'];
-  const row2: string[] = ['', ''];
+  // [Rider Name, Rider Number, Active, Date1, '', Date2, '', ... Avg, '']
+  const row1: string[] = ['Rider Name', 'Rider Number', 'Active'];
+  const row2: string[] = ['', '', ''];
 
   for (const col of pivot.dateColumns) {
     row1.push(col.formattedHeader, '');
@@ -428,11 +433,14 @@ export function exportRiderPerformanceToExcel(
   const sheetData: Array<Array<string | number>> = [row1, row2];
 
   for (const row of pivot.rows) {
-    const rowVals: Array<string | number> = [row.riderName, 'Yes'];
+    const norm = row.riderName.trim().toLowerCase().replace(/\s+/g, ' ');
+    const isActive = activeNamesSet ? activeNamesSet.has(norm) : true;
+    const phone = phoneByNameMap ? phoneByNameMap.get(norm) ?? '' : '';
+    const rowVals: Array<string | number> = [row.riderName, phone, isActive ? 'Yes' : 'No'];
 
     for (const col of pivot.dateColumns) {
       const metric = row.dailyMetrics[col.dateStr];
-      if (metric && metric.orders > 0) {
+      if (metric && (metric.orders > 0 || metric.hours > 0)) {
         rowVals.push(metric.hours, metric.orders);
       } else {
         rowVals.push('', '');
@@ -449,7 +457,7 @@ export function exportRiderPerformanceToExcel(
 
   // Set merge ranges for top-tier headers
   const merges: XLSX.Range[] = [];
-  let colIdx = 2;
+  let colIdx = 3;
   for (let i = 0; i < pivot.dateColumns.length; i++) {
     merges.push({
       s: { r: 0, c: colIdx },

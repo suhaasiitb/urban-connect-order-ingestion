@@ -9,8 +9,17 @@ import {
   type StoreCoverageSummary,
   fetchStoreDateCoverage,
 } from '../services/storeService';
+import {
+  type ActiveRosterParseResult,
+  type ActiveRosterSummary,
+  getActiveRidersRoster,
+  parseActiveRidersFile,
+  saveActiveRidersRoster,
+} from '../services/activeRiderService';
 import { StoreCalendarView } from './StoreCalendarView';
 import {
+  RosterConfirmModal,
+  RosterSuccessModal,
   UploadConfirmModal,
   UploadErrorModal,
   UploadSuccessModal,
@@ -34,12 +43,23 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [parsingFile, setParsingFile] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Upload Mode: 'orders' (Daily Store Orders) vs 'riders' (Active Riders Roster)
+  const [uploadType, setUploadType] = useState<'orders' | 'riders'>('orders');
+
   // 30-Day Ingestion Coverage
   const [coverage, setCoverage] = useState<StoreCoverageSummary | null>(null);
   const [loadingCoverage, setLoadingCoverage] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
 
-  // Validation & Modal states
+  // Active Riders Roster state
+  const [activeRoster, setActiveRoster] = useState<ActiveRosterSummary | null>(null);
+  const [loadingRoster, setLoadingRoster] = useState(false);
+  const [rosterParseResult, setRosterParseResult] = useState<ActiveRosterParseResult | null>(null);
+  const [showRosterConfirm, setShowRosterConfirm] = useState(false);
+  const [showRosterSuccess, setShowRosterSuccess] = useState(false);
+  const [isSavingRoster, setIsSavingRoster] = useState(false);
+
+  // Validation & Modal states for Orders
   const [validationResult, setValidationResult] =
     useState<WorkbookValidationResult | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -72,18 +92,32 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     }
   }, [selectedStore]);
 
+  // Load active riders roster when selected store changes
+  const loadRoster = useCallback(async () => {
+    if (!selectedStore) return;
+    setLoadingRoster(true);
+    try {
+      const summary = await getActiveRidersRoster(selectedStore.id, selectedStore.store_code);
+      setActiveRoster(summary);
+    } finally {
+      setLoadingRoster(false);
+    }
+  }, [selectedStore]);
+
   useEffect(() => {
     void loadCoverage();
-  }, [loadCoverage]);
+    void loadRoster();
+  }, [loadCoverage, loadRoster]);
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
     setValidationResult(null);
+    setRosterParseResult(null);
   };
 
-  // Handle file selection and parsing
+  // Handle file selection and parsing for either Orders or Riders
   const processSelectedFile = async (file: File) => {
     if (!selectedStore) return;
 
@@ -105,6 +139,42 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
 
     setParsingFile(true);
 
+    // 1. Process Active Riders Roster file
+    if (uploadType === 'riders') {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const parsed = parseActiveRidersFile({
+          fileBytes: arrayBuffer,
+          filename: file.name,
+          targetStoreCode: selectedStore.store_code,
+        });
+
+        setParsingFile(false);
+
+        if (!parsed.is_valid) {
+          setErrorModalData({
+            filename: file.name,
+            errors: parsed.errors,
+          });
+          resetFileInput();
+          return;
+        }
+
+        setRosterParseResult(parsed);
+        setShowRosterConfirm(true);
+      } catch (err) {
+        setParsingFile(false);
+        const msg = err instanceof Error ? err.message : String(err);
+        setErrorModalData({
+          filename: file.name,
+          errors: [`Failed to parse active riders file: ${msg}`],
+        });
+        resetFileInput();
+      }
+      return;
+    }
+
+    // 2. Process Daily Orders report file
     try {
       const arrayBuffer = await file.arrayBuffer();
       const result = parseAndValidateOrderWorkbook({
@@ -176,7 +246,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     }
   };
 
-  // Confirm and upload
+  // Confirm and upload daily orders batch
   const handleConfirmUpload = async () => {
     if (!selectedStore || !validationResult) return;
 
@@ -222,6 +292,48 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     }
   };
 
+  // Confirm and save active riders roster
+  const handleConfirmRosterUpload = async () => {
+    if (!selectedStore || !rosterParseResult) return;
+
+    setIsSavingRoster(true);
+
+    try {
+      const result = await saveActiveRidersRoster({
+        storeId: selectedStore.id,
+        storeCode: selectedStore.store_code,
+        filename: rosterParseResult.filename,
+        riders: rosterParseResult.valid_riders,
+      });
+
+      setIsSavingRoster(false);
+      setShowRosterConfirm(false);
+
+      if (!result.ok) {
+        setErrorModalData({
+          filename: rosterParseResult.filename,
+          errors: [result.error || 'Failed to save active riders roster.'],
+        });
+        resetFileInput();
+        return;
+      }
+
+      await loadRoster();
+      setShowRosterSuccess(true);
+      resetFileInput();
+      onBatchCommitted();
+    } catch (err) {
+      setIsSavingRoster(false);
+      setShowRosterConfirm(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorModalData({
+        filename: rosterParseResult.filename,
+        errors: [`Could not save roster: ${msg}`],
+      });
+      resetFileInput();
+    }
+  };
+
   const handleDismissSuccess = () => {
     setShowSuccessModal(false);
     setCommittedResult(null);
@@ -245,7 +357,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             <div>
               <h2 className="section-title">Select Store</h2>
               <p className="section-subtitle">
-                Choose the store for which you are uploading order data
+                Choose the store for which you are uploading data
               </p>
             </div>
           </div>
@@ -256,7 +368,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
               className="store-dropdown"
               value={selectedStoreId}
               onChange={(e) => onSelectStoreId(e.target.value)}
-              disabled={parsingFile || isUploading}
+              disabled={parsingFile || isUploading || isSavingRoster}
             >
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -268,8 +380,8 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* 2. 30-Day Coverage Calendar */}
-      {selectedStore && (
+      {/* 2. 30-Day Coverage Calendar (shown in Orders mode) */}
+      {selectedStore && uploadType === 'orders' && (
         <StoreCalendarView
           storeCode={selectedStore.store_code}
           storeName={selectedStore.store_name}
@@ -281,20 +393,87 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
         />
       )}
 
-      {/* 3. Streamlined File Upload Section */}
+      {/* 3. File Upload Section */}
       <div className="section-card upload-dropzone-card">
-        <div className="upload-header">
-          <span className="section-step">Step 2</span>
-          <div>
-            <h2 className="section-title">Upload Daily Orders</h2>
-            <p className="section-subtitle">
-              Upload the <strong>.csv</strong> or <strong>.xlsx</strong> daily report for{' '}
-              <strong>{selectedStore?.store_code ?? 'the selected store'}</strong>.
-              Dates marked orange in the calendar above require upload.
-            </p>
+        {/* Step 2 Header & Upload Mode Switch */}
+        <div className="upload-header-row">
+          <div className="upload-header">
+            <span className="section-step">Step 2</span>
+            <div>
+              <h2 className="section-title">
+                {uploadType === 'orders' ? 'Upload Daily Orders' : 'Upload Active Riders Roster'}
+              </h2>
+              <p className="section-subtitle">
+                {uploadType === 'orders'
+                  ? `Upload the daily orders file (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}.`
+                  : `Upload active riders list (.csv) for ${selectedStore?.store_code ?? 'store'} to mark Active (Yes/No).`}
+              </p>
+            </div>
+          </div>
+
+          {/* Mode Switch: Daily Orders vs Active Riders Roster */}
+          <div className="upload-mode-toggle">
+            <button
+              type="button"
+              className={`mode-toggle-btn ${uploadType === 'orders' ? 'mode-toggle-btn-active' : ''}`}
+              onClick={() => {
+                setUploadType('orders');
+                resetFileInput();
+              }}
+              disabled={parsingFile || isUploading || isSavingRoster}
+            >
+              <span className="mode-icon">📦</span>
+              <span>Daily Orders</span>
+            </button>
+            <button
+              type="button"
+              className={`mode-toggle-btn ${uploadType === 'riders' ? 'mode-toggle-btn-active' : ''}`}
+              onClick={() => {
+                setUploadType('riders');
+                resetFileInput();
+              }}
+              disabled={parsingFile || isUploading || isSavingRoster}
+            >
+              <span className="mode-icon">🚴</span>
+              <span>Active Riders</span>
+              {activeRoster && activeRoster.totalRiders > 0 && (
+                <span className="mode-pill-badge">{activeRoster.totalRiders}</span>
+              )}
+            </button>
           </div>
         </div>
 
+        {/* Active Riders Status Banner (shown when in Riders mode) */}
+        {uploadType === 'riders' && (
+          <div className="roster-status-banner">
+            <div className="roster-status-main">
+              <span className="roster-status-icon-box">🚴</span>
+              <div className="roster-status-content">
+                <div className="roster-status-heading-row">
+                  <h4 className="roster-status-heading">
+                    Active Roster for {selectedStore?.store_code} ({selectedStore?.store_name})
+                  </h4>
+                  {loadingRoster && <span className="roster-loading-tag">Checking roster...</span>}
+                </div>
+                <p className="roster-status-info">
+                  {activeRoster && activeRoster.totalRiders > 0 ? (
+                    <>
+                      Currently <strong>{activeRoster.totalRiders} active riders</strong> registered.{' '}
+                      Last updated: <strong>{activeRoster.lastUpdatedFormatted}</strong>
+                      {activeRoster.filename && (
+                        <> (file: <span className="mono">{activeRoster.filename}</span>)</>
+                      )}.
+                    </>
+                  ) : (
+                    'No active riders roster has been uploaded yet for this store. Riders in Store Analytics will show Active as "No" until a roster is uploaded.'
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Unified Clean Dropzone */}
         <div
           className={`clean-dropzone ${isDragging ? 'dropzone-active' : ''} ${
             parsingFile ? 'dropzone-busy' : ''
@@ -306,7 +485,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           onClick={() => {
-            if (!parsingFile && !isUploading) {
+            if (!parsingFile && !isUploading && !isSavingRoster) {
               fileInputRef.current?.click();
             }
           }}
@@ -317,7 +496,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             onChange={handleFileChange}
             style={{ display: 'none' }}
-            disabled={parsingFile || isUploading}
+            disabled={parsingFile || isUploading || isSavingRoster}
           />
 
           <div className="dropzone-inner">
@@ -345,14 +524,22 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             <div className="dropzone-text">
               <strong>
                 {parsingFile
-                  ? 'Analyzing and validating order file...'
+                  ? uploadType === 'riders'
+                    ? 'Validating active riders roster...'
+                    : 'Analyzing and validating order file...'
+                  : uploadType === 'riders'
+                  ? 'Click to select or drag and drop Active Riders CSV'
                   : 'Click to select or drag and drop store order file (.csv or .xlsx)'}
               </strong>
               <p>
-                {selectedStore ? (
+                {uploadType === 'riders' ? (
                   <>
-                    Target Store: <strong>{selectedStore.store_code}</strong> •
-                    Supports system-generated exports
+                    Target Store: <strong>{selectedStore?.store_code}</strong> • Expected Columns:{' '}
+                    <code>Name, Phone, Online Status, Eligibility, Attendance, Store</code>
+                  </>
+                ) : selectedStore ? (
+                  <>
+                    Target Store: <strong>{selectedStore.store_code}</strong> • Supports daily order exports
                   </>
                 ) : (
                   'Please select a store first'
@@ -363,7 +550,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             <button
               type="button"
               className="btn btn-secondary btn-sm dropzone-btn"
-              disabled={parsingFile || isUploading}
+              disabled={parsingFile || isUploading || isSavingRoster}
               onClick={(e) => {
                 e.stopPropagation();
                 fileInputRef.current?.click();
@@ -386,7 +573,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
         />
       )}
 
-      {/* Confirmation & Ingestion Prompt Modal */}
+      {/* Orders Confirmation & Ingestion Prompt Modal */}
       {showConfirmModal && validationResult && selectedStore && (
         <UploadConfirmModal
           store={selectedStore}
@@ -401,11 +588,40 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
         />
       )}
 
-      {/* Success Modal */}
+      {/* Orders Success Modal */}
       {showSuccessModal && committedResult && (
         <UploadSuccessModal
           result={committedResult}
           onDone={handleDismissSuccess}
+        />
+      )}
+
+      {/* Active Riders Roster Confirmation Modal */}
+      {showRosterConfirm && rosterParseResult && selectedStore && (
+        <RosterConfirmModal
+          store={selectedStore}
+          filename={rosterParseResult.filename}
+          totalRiders={rosterParseResult.valid_riders.length}
+          sampleRiders={rosterParseResult.valid_riders.map((r) => r.name)}
+          warnings={rosterParseResult.warnings}
+          isSaving={isSavingRoster}
+          onCancel={() => {
+            setShowRosterConfirm(false);
+            resetFileInput();
+          }}
+          onConfirm={() => void handleConfirmRosterUpload()}
+        />
+      )}
+
+      {/* Active Riders Roster Success Modal */}
+      {showRosterSuccess && activeRoster && selectedStore && (
+        <RosterSuccessModal
+          storeCode={selectedStore.store_code}
+          totalRiders={activeRoster.totalRiders}
+          lastUpdatedFormatted={activeRoster.lastUpdatedFormatted || 'Just now'}
+          onDone={() => {
+            setShowRosterSuccess(false);
+          }}
         />
       )}
     </div>

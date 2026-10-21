@@ -1,25 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
-import { supabase } from '../config/supabaseClient';
 import {
   type RiderPerformancePivotResult,
   fetchRiderPerformanceAnalytics,
   getDateRangeForDays,
 } from '../services/analyticsService';
+import {
+  type ActiveRosterSummary,
+  getActiveRidersRoster,
+} from '../services/activeRiderService';
 import { RiderPerformanceTable } from './RiderPerformanceTable';
 
 interface AnalyticsSectionProps {
   stores: StoreMaster[];
   selectedStoreId: string;
   onSelectStoreId: (id: string) => void;
-}
-
-interface AnalyticsQuickStats {
-  totalOrders: number;
-  completedOrders: number;
-  rtoOrders: number;
-  distinctDates: number;
-  loading: boolean;
 }
 
 export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
@@ -35,14 +30,6 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
 
-  const [quickStats, setQuickStats] = useState<AnalyticsQuickStats>({
-    totalOrders: 0,
-    completedOrders: 0,
-    rtoOrders: 0,
-    distinctDates: 0,
-    loading: true,
-  });
-
   const [pivotResult, setPivotResult] = useState<RiderPerformancePivotResult>({
     storeId: selectedStore?.id ?? '',
     startDate: initialRange.startDate,
@@ -56,61 +43,22 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   });
   const [loadingPivot, setLoadingPivot] = useState(false);
   const [pivotError, setPivotError] = useState<string | null>(null);
+  const [activeRoster, setActiveRoster] = useState<ActiveRosterSummary | null>(null);
 
-  // Load KPI Stats
-  const loadQuickStats = useCallback(async () => {
+  // Load Active Riders Roster
+  const loadRoster = useCallback(async () => {
     if (!selectedStore) return;
-    setQuickStats((prev) => ({ ...prev, loading: true }));
-
     try {
-      // 1. Exact total orders count via head query (bypasses PostgREST 1,000-row limit)
-      const { count: totalCount } = await supabase
-        .from('orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('store_id', selectedStore.id);
-
-      const { count: completedCount } = await supabase
-        .from('orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('store_id', selectedStore.id)
-        .eq('status', 'COMPLETED');
-
-      const { count: rtoCount } = await supabase
-        .from('orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('store_id', selectedStore.id)
-        .eq('status', 'RTO_DELIVERED');
-
-      // 2. Distinct dates from batches
-      const { data: batches } = await supabase
-        .from('ingestion_batches')
-        .select('min_order_date, max_order_date')
-        .eq('store_id', selectedStore.id)
-        .eq('status', 'Succeeded');
-
-      const dateSet = new Set<string>();
-      for (const b of batches ?? []) {
-        if (b.min_order_date) dateSet.add(b.min_order_date);
-        if (b.max_order_date) dateSet.add(b.max_order_date);
-      }
-
-      setQuickStats({
-        totalOrders: totalCount ?? 0,
-        completedOrders: completedCount ?? 0,
-        rtoOrders: rtoCount ?? 0,
-        distinctDates: dateSet.size,
-        loading: false,
-      });
-    } catch {
-      setQuickStats({
-        totalOrders: 0,
-        completedOrders: 0,
-        rtoOrders: 0,
-        distinctDates: 0,
-        loading: false,
-      });
+      const summary = await getActiveRidersRoster(selectedStore.id, selectedStore.store_code);
+      setActiveRoster(summary);
+    } catch (err) {
+      console.warn('Could not load active riders roster in analytics:', err);
     }
   }, [selectedStore]);
+
+  useEffect(() => {
+    void loadRoster();
+  }, [loadRoster]);
 
   // Load Rider Performance Pivot
   const loadRiderPivot = useCallback(async () => {
@@ -131,10 +79,6 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
       setPivotResult(res.data);
     }
   }, [selectedStore, startDate, endDate]);
-
-  useEffect(() => {
-    void loadQuickStats();
-  }, [loadQuickStats]);
 
   useEffect(() => {
     void loadRiderPivot();
@@ -186,14 +130,6 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
 
       {/* Top Quick KPI Metric Cards */}
       <div className="kpi-grid">
-        <div className="kpi-card">
-          <span className="kpi-label">Total Ingested Orders</span>
-          <strong className="kpi-value">
-            {quickStats.loading ? '...' : quickStats.totalOrders.toLocaleString()}
-          </strong>
-          <span className="kpi-sub">Across {quickStats.distinctDates} business dates</span>
-        </div>
-
         <div className="kpi-card">
           <span className="kpi-label">Active Working Riders</span>
           <strong className="kpi-value text-blue">
@@ -247,7 +183,14 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
             endDate={endDate}
             onCustomDateChange={handleCustomDateChange}
             loading={loadingPivot}
-            onRefresh={() => void loadRiderPivot()}
+            onRefresh={() => {
+              void loadRiderPivot();
+              void loadRoster();
+            }}
+            activeNamesSet={activeRoster?.activeNamesSet}
+            phoneByNameMap={activeRoster?.phoneByNameMap}
+            rosterLastUpdated={activeRoster?.lastUpdatedFormatted}
+            rosterTotalCount={activeRoster?.totalRiders}
           />
         )}
       </div>

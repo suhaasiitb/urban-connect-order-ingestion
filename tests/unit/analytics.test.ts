@@ -42,6 +42,13 @@ describe('Rider Performance Analytics Unit Tests', () => {
   });
 
   it('calculates correct start and end date ranges for presets excluding ongoing current date', () => {
+    const range3 = getDateRangeForDays(3, 'Asia/Kolkata');
+    expect(range3.startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(range3.endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(range3.startDate <= range3.endDate).toBe(true);
+    const dates3 = getAllDatesInRange(range3.startDate, range3.endDate);
+    expect(dates3).toHaveLength(3);
+
     const range7 = getDateRangeForDays(7, 'Asia/Kolkata');
     expect(range7.startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(range7.endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
