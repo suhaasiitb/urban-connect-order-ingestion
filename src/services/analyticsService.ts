@@ -412,14 +412,15 @@ export function exportRiderPerformanceToExcel(
   storeCode: string,
   useActiveAvg = false,
   activeNamesSet?: Set<string>,
-  phoneByNameMap?: Map<string, string>
+  phoneByNameMap?: Map<string, string>,
+  riderShiftsMap?: Map<string, { shiftType: string; timings?: string }>
 ): void {
   const wb = XLSX.utils.book_new();
 
   // Row 1: Group headers
-  // [Rider Name, Rider Number, Active, Date1, '', Date2, '', ... Avg, '']
-  const row1: string[] = ['Rider Name', 'Rider Number', 'Active'];
-  const row2: string[] = ['', '', ''];
+  // [Rider Name, Rider Number, Active, Shift, Timings, Date1, '', Date2, '', ... Avg, '']
+  const row1: string[] = ['Rider Name', 'Rider Number', 'Active', 'Shift', 'Timings'];
+  const row2: string[] = ['', '', '', '', ''];
 
   for (const col of pivot.dateColumns) {
     row1.push(col.formattedHeader, '');
@@ -436,7 +437,16 @@ export function exportRiderPerformanceToExcel(
     const norm = row.riderName.trim().toLowerCase().replace(/\s+/g, ' ');
     const isActive = activeNamesSet ? activeNamesSet.has(norm) : true;
     const phone = phoneByNameMap ? phoneByNameMap.get(norm) ?? '' : '';
-    const rowVals: Array<string | number> = [row.riderName, phone, isActive ? 'Yes' : 'No'];
+    const shift = riderShiftsMap?.get(norm);
+    const shiftName = shift?.shiftType ?? 'Not Set';
+    const shiftTimings = shift?.timings ?? '';
+    const rowVals: Array<string | number> = [
+      row.riderName,
+      phone,
+      isActive ? 'Yes' : 'No',
+      shiftName,
+      shiftTimings,
+    ];
 
     for (const col of pivot.dateColumns) {
       const metric = row.dailyMetrics[col.dateStr];
@@ -457,7 +467,7 @@ export function exportRiderPerformanceToExcel(
 
   // Set merge ranges for top-tier headers
   const merges: XLSX.Range[] = [];
-  let colIdx = 3;
+  let colIdx = 5;
   for (let i = 0; i < pivot.dateColumns.length; i++) {
     merges.push({
       s: { r: 0, c: colIdx },
