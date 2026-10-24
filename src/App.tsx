@@ -1,38 +1,49 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AnalyticsSection } from './components/AnalyticsSection';
-import { BatchHistoryTable } from './components/BatchHistoryTable';
 import { LoginScreen } from './components/LoginScreen';
+import { StoreLoginsModal } from './components/StoreLoginsModal';
 import { UploadWorkspace } from './components/UploadWorkspace';
 import { isSupabaseConfigured, supabase } from './config/supabaseClient';
 import type { StoreMaster } from './domain/types';
 import {
-  type AdminProfile,
-  getCurrentAdminProfile,
-  signOutAdmin,
+  type UserProfile,
+  getCurrentUserProfile,
+  signOutUser,
 } from './services/authService';
 import { fetchActiveStores } from './services/storeService';
 
 export const App: React.FC = () => {
   const [initializing, setInitializing] = useState(true);
-  const [admin, setAdmin] = useState<AdminProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [stores, setStores] = useState<StoreMaster[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [storesError, setStoresError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 'history'>('upload');
-  const [historyRefreshCount, setHistoryRefreshCount] = useState(0);
+  const [activeView, setActiveView] = useState<'upload' | 'analytics'>('upload');
 
-  const loadStoresForAdmin = useCallback(async () => {
+  // Store logins administration modal (Superadmin only)
+  const [isStoreLoginsModalOpen, setIsStoreLoginsModalOpen] = useState(false);
+
+  const loadStoresForUser = useCallback(async (user: UserProfile) => {
     setStoresError(null);
     const res = await fetchActiveStores();
     if (res.error) {
       setStoresError(res.error);
     } else {
-      setStores(res.stores);
-      if (res.stores.length > 0) {
-        setSelectedStoreId((prev) => prev || res.stores[0].id);
+      let userStores = res.stores;
+      // If store operator, restrict strictly to their assigned store
+      if (user.role === 'store_user' && user.store_id) {
+        userStores = userStores.filter((s) => s.id === user.store_id);
+      }
+      setStores(userStores);
+      if (user.role === 'store_user' && user.store_id) {
+        setSelectedStoreId(user.store_id);
+      } else if (userStores.length > 0) {
+        setSelectedStoreId((prev) =>
+          userStores.some((s) => s.id === prev) ? prev : userStores[0].id
+        );
       }
     }
   }, []);
@@ -42,14 +53,14 @@ export const App: React.FC = () => {
 
     const initSession = async () => {
       try {
-        const res = await getCurrentAdminProfile();
+        const res = await getCurrentUserProfile();
         if (!mounted) return;
         if (res.error) {
           setAuthError(res.error);
         }
-        setAdmin(res.admin);
-        if (res.admin) {
-          await loadStoresForAdmin();
+        setCurrentUser(res.user);
+        if (res.user) {
+          await loadStoresForUser(res.user);
         }
       } finally {
         if (mounted) {
@@ -63,7 +74,7 @@ export const App: React.FC = () => {
     if (isSupabaseConfigured) {
       const { data: sub } = supabase.auth.onAuthStateChange((event) => {
         if (event === 'SIGNED_OUT') {
-          setAdmin(null);
+          setCurrentUser(null);
           setStores([]);
           setSelectedStoreId('');
         }
@@ -78,17 +89,17 @@ export const App: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [loadStoresForAdmin]);
+  }, [loadStoresForUser]);
 
-  const handleLoginSuccess = async (loggedInAdmin: AdminProfile) => {
+  const handleLoginSuccess = async (loggedInUser: UserProfile) => {
     setAuthError(null);
-    setAdmin(loggedInAdmin);
-    await loadStoresForAdmin();
+    setCurrentUser(loggedInUser);
+    await loadStoresForUser(loggedInUser);
   };
 
   const handleSignOut = async () => {
-    await signOutAdmin();
-    setAdmin(null);
+    await signOutUser();
+    setCurrentUser(null);
     setStores([]);
     setSelectedStoreId('');
   };
@@ -98,13 +109,13 @@ export const App: React.FC = () => {
       <div className="login-layout">
         <div className="login-card">
           <div className="spinner" aria-hidden="true" />
-          <p className="subtitle mt-sm">Verifying administrator session...</p>
+          <p className="subtitle mt-sm">Verifying session credentials...</p>
         </div>
       </div>
     );
   }
 
-  if (!admin) {
+  if (!currentUser) {
     return (
       <LoginScreen
         initialError={authError}
@@ -140,21 +151,28 @@ export const App: React.FC = () => {
           >
             Store Analytics
           </button>
-          <button
-            type="button"
-            className={`btn btn-sm ${
-              activeView === 'history' ? 'btn-primary' : 'btn-secondary'
-            }`}
-            onClick={() => setActiveView('history')}
-          >
-            Upload Audit Log
-          </button>
         </nav>
 
         <div className="topbar-user">
-          <span className="user-pill" title={admin.email}>
-            Admin: <strong>{admin.email}</strong>
-          </span>
+          {currentUser.role === 'admin' ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setIsStoreLoginsModalOpen(true)}
+                title="Manage store user accounts and permissions"
+              >
+                Store Logins
+              </button>
+              <span className="user-pill" title={currentUser.email}>
+                Admin: <strong>{currentUser.email}</strong>
+              </span>
+            </>
+          ) : (
+            <span className="user-pill user-pill-store" title={currentUser.email}>
+              Store (<strong>{currentUser.store_code ?? 'Assigned'}</strong>): {currentUser.email}
+            </span>
+          )}
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -177,9 +195,7 @@ export const App: React.FC = () => {
             stores={stores}
             selectedStoreId={selectedStoreId}
             onSelectStoreId={setSelectedStoreId}
-            onBatchCommitted={() =>
-              setHistoryRefreshCount((prev) => prev + 1)
-            }
+            currentUser={currentUser}
           />
         )}
 
@@ -188,13 +204,16 @@ export const App: React.FC = () => {
             stores={stores}
             selectedStoreId={selectedStoreId}
             onSelectStoreId={setSelectedStoreId}
+            currentUser={currentUser}
           />
         )}
 
-        {activeView === 'history' && (
-          <BatchHistoryTable
+        {/* Superadmin Store Logins Management Modal */}
+        {currentUser.role === 'admin' && (
+          <StoreLoginsModal
             stores={stores}
-            refreshTrigger={historyRefreshCount}
+            isOpen={isStoreLoginsModalOpen}
+            onClose={() => setIsStoreLoginsModalOpen(false)}
           />
         )}
       </main>

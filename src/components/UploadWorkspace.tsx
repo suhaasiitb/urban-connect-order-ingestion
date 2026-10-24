@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { parseAndValidateOrderWorkbook } from '../domain/excelParser';
 import type { StoreMaster, WorkbookValidationResult } from '../domain/types';
+import type { UserProfile } from '../services/authService';
 import {
   type CommittedBatchResult,
   submitConfirmedOrderBatch,
@@ -29,7 +30,8 @@ interface UploadWorkspaceProps {
   stores: StoreMaster[];
   selectedStoreId: string;
   onSelectStoreId: (storeId: string) => void;
-  onBatchCommitted: () => void;
+  onBatchCommitted?: () => void;
+  currentUser?: UserProfile | null;
 }
 
 export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
@@ -37,6 +39,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   selectedStoreId,
   onSelectStoreId,
   onBatchCommitted,
+  currentUser,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -279,7 +282,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
       setCommittedResult(result);
       setShowSuccessModal(true);
       resetFileInput();
-      onBatchCommitted();
+      onBatchCommitted?.();
     } catch (err) {
       setIsUploading(false);
       setShowConfirmModal(false);
@@ -321,7 +324,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
       await loadRoster();
       setShowRosterSuccess(true);
       resetFileInput();
-      onBatchCommitted();
+      onBatchCommitted?.();
     } catch (err) {
       setIsSavingRoster(false);
       setShowRosterConfirm(false);
@@ -347,35 +350,48 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
       )
   );
 
+  const isStoreUser = currentUser?.role === 'store_user';
+
   return (
     <div className="upload-portal-container">
-      {/* 1. Store Selector Section */}
+      {/* 1. Store Selector / Store Indicator Section */}
       <div className="section-card store-selector-card">
         <div className="store-selector-row">
           <div className="store-title-group">
-            <span className="section-step">Step 1</span>
+            <span className="section-step">{isStoreUser ? 'Store' : 'Step 1'}</span>
             <div>
-              <h2 className="section-title">Select Store</h2>
+              <h2 className="section-title">
+                {isStoreUser ? 'Assigned Store' : 'Select Store'}
+              </h2>
               <p className="section-subtitle">
-                Choose the store for which you are uploading data
+                {isStoreUser
+                  ? 'All data ingestion and analytics are scoped exclusively to your assigned store.'
+                  : 'Choose the store for which you are uploading data'}
               </p>
             </div>
           </div>
 
           <div className="store-control">
-            <select
-              id="store-select"
-              className="store-dropdown"
-              value={selectedStoreId}
-              onChange={(e) => onSelectStoreId(e.target.value)}
-              disabled={parsingFile || isUploading || isSavingRoster}
-            >
-              {stores.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.store_code} — {s.store_name} (ID: {s.external_store_id ?? 'N/A'})
-                </option>
-              ))}
-            </select>
+            {isStoreUser ? (
+              <div className="store-badge-locked flex-row items-center gap-xs">
+                <span className="badge badge-primary">{selectedStore?.store_code}</span>
+                <strong>{selectedStore?.store_name}</strong>
+              </div>
+            ) : (
+              <select
+                id="store-select"
+                className="store-dropdown"
+                value={selectedStoreId}
+                onChange={(e) => onSelectStoreId(e.target.value)}
+                disabled={parsingFile || isUploading || isSavingRoster}
+              >
+                {stores.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.store_code} — {s.store_name} (ID: {s.external_store_id ?? 'N/A'})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
       </div>

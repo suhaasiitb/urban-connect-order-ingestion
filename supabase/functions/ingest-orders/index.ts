@@ -158,13 +158,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const adapter: IngestionBackendAdapter = {
-    async verifyAdminSession(authHeader: string | null) {
+    async verifySession(authHeader: string | null) {
       if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
-        return { authenticated: false, isAdmin: false, userId: null };
+        return { authenticated: false, isAdmin: false, isStoreUser: false, userId: null };
       }
       const token = authHeader.slice(7).trim();
       if (!token) {
-        return { authenticated: false, isAdmin: false, userId: null };
+        return { authenticated: false, isAdmin: false, isStoreUser: false, userId: null };
       }
 
       const supabaseUserClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -174,10 +174,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       const { data: userData, error: userErr } = await supabaseUserClient.auth.getUser(token);
       if (userErr || !userData?.user) {
-        return { authenticated: false, isAdmin: false, userId: null };
+        return { authenticated: false, isAdmin: false, isStoreUser: false, userId: null };
       }
 
       const userId = userData.user.id;
+
+      // 1. Check if user is active administrator in admin_users
       const { data: adminRow, error: adminErr } = await supabaseAdmin
         .from('admin_users')
         .select('user_id, email, is_active')
@@ -185,20 +187,51 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .eq('is_active', true)
         .maybeSingle();
 
-      if (adminErr || !adminRow) {
+      if (!adminErr && adminRow) {
+        return {
+          authenticated: true,
+          isAdmin: true,
+          isStoreUser: false,
+          userId,
+          email: adminRow.email,
+        };
+      }
+
+      // 2. Check if user is active store operator in store_users
+      const { data: storeUserRow, error: storeUserErr } = await supabaseAdmin
+        .from('store_users')
+        .select('user_id, store_id, email, is_active')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!storeUserErr && storeUserRow) {
         return {
           authenticated: true,
           isAdmin: false,
+          isStoreUser: true,
+          assignedStoreId: storeUserRow.store_id,
           userId,
-          email: userData.user.email,
+          email: storeUserRow.email,
         };
       }
 
       return {
         authenticated: true,
-        isAdmin: true,
+        isAdmin: false,
+        isStoreUser: false,
         userId,
-        email: adminRow.email,
+        email: userData.user.email,
+      };
+    },
+
+    async verifyAdminSession(authHeader: string | null) {
+      const s = await this.verifySession!(authHeader);
+      return {
+        authenticated: s.authenticated,
+        isAdmin: s.isAdmin,
+        userId: s.userId,
+        email: s.email,
       };
     },
 

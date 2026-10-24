@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
+import type { UserProfile } from '../services/authService';
 import {
   type BatchHistoryRecord,
   type BatchRowAuditRecord,
@@ -11,13 +12,18 @@ import {
 interface BatchHistoryTableProps {
   stores: StoreMaster[];
   refreshTrigger: number;
+  currentUser?: UserProfile | null;
 }
 
 export const BatchHistoryTable: React.FC<BatchHistoryTableProps> = ({
   stores,
   refreshTrigger,
+  currentUser,
 }) => {
-  const [filterStoreId, setFilterStoreId] = useState<string>('');
+  const isStoreUser = currentUser?.role === 'store_user';
+  const [filterStoreId, setFilterStoreId] = useState<string>(
+    isStoreUser && stores[0] ? stores[0].id : ''
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [batches, setBatches] = useState<BatchHistoryRecord[]>([]);
@@ -71,6 +77,12 @@ export const BatchHistoryTable: React.FC<BatchHistoryTableProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (isStoreUser && stores[0] && filterStoreId !== stores[0].id) {
+      setFilterStoreId(stores[0].id);
+    }
+  }, [isStoreUser, stores, filterStoreId]);
+
   return (
     <section className="card">
       <div className="section-header">
@@ -83,18 +95,25 @@ export const BatchHistoryTable: React.FC<BatchHistoryTableProps> = ({
         </div>
 
         <div className="action-row">
-          <select
-            aria-label="Filter by store"
-            value={filterStoreId}
-            onChange={(e) => setFilterStoreId(e.target.value)}
-          >
-            <option value="">All Configured Stores</option>
-            {stores.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.store_code} — {s.store_name}
-              </option>
-            ))}
-          </select>
+          {isStoreUser ? (
+            <div className="store-badge-locked flex-row items-center gap-xs">
+              <span className="badge badge-primary">{stores[0]?.store_code}</span>
+              <strong>{stores[0]?.store_name}</strong>
+            </div>
+          ) : (
+            <select
+              aria-label="Filter by store"
+              value={filterStoreId}
+              onChange={(e) => setFilterStoreId(e.target.value)}
+            >
+              <option value="">All Configured Stores</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.store_code} — {s.store_name}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             type="button"
             className="btn btn-secondary btn-sm"

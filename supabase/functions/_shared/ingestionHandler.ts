@@ -63,8 +63,18 @@ export interface IngestBatchRpcResponse {
   failed_count: number;
 }
 
+export interface SessionVerificationResult {
+  authenticated: boolean;
+  isAdmin: boolean;
+  isStoreUser?: boolean;
+  assignedStoreId?: string | null;
+  userId: string | null;
+  email?: string | null;
+}
+
 export interface IngestionBackendAdapter {
-  verifyAdminSession(authHeader: string | null): Promise<{
+  verifySession?: (authHeader: string | null) => Promise<SessionVerificationResult>;
+  verifyAdminSession: (authHeader: string | null) => Promise<{
     authenticated: boolean;
     isAdmin: boolean;
     userId: string | null;
@@ -141,26 +151,18 @@ export async function handleIngestOrderBatch(params: {
     };
   }
 
-  // 2. Verify authentication & administrator authorization
-  const session = await adapter.verifyAdminSession(authHeader);
+  // 2. Verify authentication
+  const session: SessionVerificationResult = adapter.verifySession
+    ? await adapter.verifySession(authHeader)
+    : await adapter.verifyAdminSession(authHeader);
+
   if (!session.authenticated || !session.userId) {
     return {
       status: 401,
       body: {
         ok: false,
         code: 'UNAUTHORIZED',
-        message: 'Authentication required. Please log in with a valid administrator session.',
-      },
-    };
-  }
-
-  if (!session.isAdmin) {
-    return {
-      status: 403,
-      body: {
-        ok: false,
-        code: 'FORBIDDEN_NOT_ADMIN',
-        message: 'Access denied. Your account is not an authorized active administrator.',
+        message: 'Authentication required. Please log in with a valid session.',
       },
     };
   }
@@ -179,6 +181,20 @@ export async function handleIngestOrderBatch(params: {
 
   const req = payload as Partial<IngestBatchRequestPayload>;
   const storeId = typeof req.store_id === 'string' ? req.store_id.trim() : '';
+
+  // 4. Verify authorization (Admins: any store; Store Users: assigned store only)
+  if (!session.isAdmin) {
+    if (!session.isStoreUser || session.assignedStoreId !== storeId) {
+      return {
+        status: 403,
+        body: {
+          ok: false,
+          code: 'FORBIDDEN_NOT_ADMIN',
+          message: 'Access denied. Your account is not authorized to ingest orders for this store.',
+        },
+      };
+    }
+  }
   const originalFilename =
     typeof req.original_filename === 'string' ? req.original_filename.trim() : '';
   const fileSizeBytes =

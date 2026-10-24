@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { isSupabaseConfigured } from '../config/supabaseClient';
-import { type AdminProfile, signInAdmin } from '../services/authService';
+import { type UserProfile, signInUser } from '../services/authService';
 
 interface LoginScreenProps {
   initialError?: string | null;
-  onLoginSuccess: (admin: AdminProfile) => void;
+  onLoginSuccess: (user: UserProfile) => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
@@ -24,11 +24,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setSubmitting(true);
 
     try {
-      const result = await signInAdmin(email, password);
-      if (result.error || !result.admin) {
+      const result = await signInUser(email, password);
+      if (result.error || !result.user) {
         setErrorMessage(result.error ?? 'Authentication failed.');
       } else {
-        onLoginSuccess(result.admin);
+        onLoginSuccess(result.user);
       }
     } finally {
       setSubmitting(false);
@@ -42,8 +42,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           <span className="badge badge-primary">Urban Connect</span>
           <h1>Daily Store Order Ingestion Portal</h1>
           <p className="subtitle">
-            Authorized administrator access only. Sign in with your Supabase
-            administrator credentials to upload and reconcile store order workbooks.
+            Sign in with your administrator or store operator credentials to upload
+            and inspect store order workbooks and performance analytics.
           </p>
         </div>
 
@@ -64,13 +64,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="admin-email">Administrator Email</label>
+            <label htmlFor="user-email">Account Email</label>
             <input
-              id="admin-email"
+              id="user-email"
               type="email"
               required
               autoComplete="email"
-              placeholder="admin@urbanconnect.in"
+              placeholder="admin@urbanconnect.in or store@urbanconnect.in"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={submitting}
@@ -78,9 +78,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </div>
 
           <div className="form-group">
-            <label htmlFor="admin-password">Password</label>
+            <label htmlFor="user-password">Password</label>
             <input
-              id="admin-password"
+              id="user-password"
               type="password"
               required
               autoComplete="current-password"
@@ -96,7 +96,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             className="btn btn-primary btn-block"
             disabled={submitting}
           >
-            {submitting ? 'Verifying Administrator Session...' : 'Sign In to Portal'}
+            {submitting ? 'Verifying Credentials...' : 'Sign In to Portal'}
           </button>
         </form>
       </div>

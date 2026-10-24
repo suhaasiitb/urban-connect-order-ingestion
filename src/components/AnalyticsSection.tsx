@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
+import type { UserProfile } from '../services/authService';
 import {
   type RiderPerformancePivotResult,
   fetchRiderPerformanceAnalytics,
@@ -27,12 +28,14 @@ interface AnalyticsSectionProps {
   stores: StoreMaster[];
   selectedStoreId: string;
   onSelectStoreId: (id: string) => void;
+  currentUser?: UserProfile | null;
 }
 
 export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   stores,
   selectedStoreId,
   onSelectStoreId,
+  currentUser,
 }) => {
   const selectedStore = stores.find((s) => s.id === selectedStoreId) ?? stores[0];
 
@@ -206,21 +209,26 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
           </div>
 
           <div className="store-selector-group">
-            <label htmlFor="analytics-store-select" className="field-label">
-              Store:
-            </label>
-            <select
-              id="analytics-store-select"
-              className="select-input"
-              value={selectedStoreId}
-              onChange={(e) => onSelectStoreId(e.target.value)}
-            >
-              {stores.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.store_code} — {s.store_name}
-                </option>
-              ))}
-            </select>
+            <span className="field-label">Store:</span>
+            {currentUser?.role === 'store_user' ? (
+              <div className="store-badge-locked flex-row items-center gap-xs">
+                <span className="badge badge-primary">{selectedStore?.store_code}</span>
+                <strong>{selectedStore?.store_name}</strong>
+              </div>
+            ) : (
+              <select
+                id="analytics-store-select"
+                className="select-input"
+                value={selectedStoreId}
+                onChange={(e) => onSelectStoreId(e.target.value)}
+              >
+                {stores.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.store_code} — {s.store_name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
