@@ -27,6 +27,8 @@ interface RiderPerformanceTableProps {
   onOpenShiftModal?: () => void;
   rosterLastUpdated?: string | null;
   rosterTotalCount?: number;
+  shiftFilter?: string;
+  onSelectShiftFilter?: (filter: string) => void;
 }
 
 export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
@@ -46,9 +48,16 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   onOpenShiftModal,
   rosterLastUpdated,
   rosterTotalCount = 0,
+  shiftFilter: shiftFilterProp,
+  onSelectShiftFilter,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [shiftFilter, setShiftFilter] = useState<string>('ALL');
+  const [internalShiftFilter, setInternalShiftFilter] = useState<string>('ALL');
+  const activeShiftFilter = shiftFilterProp !== undefined ? shiftFilterProp : internalShiftFilter;
+  const setShiftFilter = (newVal: string) => {
+    setInternalShiftFilter(newVal);
+    onSelectShiftFilter?.(newVal);
+  };
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<
     'name' | 'phone' | 'shift' | 'compliance' | 'activeDays' | 'avgOrders' | 'avgHours' | 'totalOrders'
@@ -99,21 +108,24 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     }
 
     // Shift / Compliance filter
-    if (shiftFilter !== 'ALL') {
+    if (activeShiftFilter !== 'ALL') {
       result = result.filter((r) => {
         const norm = normalizeRiderName(r.riderName);
         const shift = riderShiftsMap?.get(norm);
         const displayHours = avgMode === 'period' ? r.avgHours : r.activeAvgHours;
-        if (shiftFilter === 'COMPLIANT_8H') {
+        if (activeShiftFilter === 'COMPLIANT_8H') {
           return displayHours >= 8.0;
         }
-        if (shiftFilter === 'UNDER_8H') {
+        if (activeShiftFilter === 'UNDER_8H') {
           return displayHours < 8.0;
         }
-        if (shiftFilter === 'NOT_SET') {
+        if (activeShiftFilter === 'UNDER_6H') {
+          return displayHours < 6.0;
+        }
+        if (activeShiftFilter === 'NOT_SET') {
           return !shift;
         }
-        return shift?.shiftType === shiftFilter;
+        return shift?.shiftType === activeShiftFilter;
       });
     }
 
@@ -168,7 +180,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, shiftFilter, sortBy, sortAsc, avgMode, phoneByNameMap, riderShiftsMap]);
+  }, [data.rows, searchQuery, activeShiftFilter, sortBy, sortAsc, avgMode, phoneByNameMap, riderShiftsMap]);
 
   const compliantRidersCount = useMemo(() => {
     return filteredRows.filter((r) => {
@@ -273,7 +285,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               <select
                 id="shift-filter-select"
                 className="perf-dropdown-select"
-                value={shiftFilter}
+                value={activeShiftFilter}
                 onChange={(e) => setShiftFilter(e.target.value)}
                 disabled={loading}
               >
@@ -284,6 +296,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 <option value="Custom">Custom Shift</option>
                 <option value="COMPLIANT_8H">✓ Clocking ≥ 8h</option>
                 <option value="UNDER_8H">⚠ Clocking &lt; 8h</option>
+                <option value="UNDER_6H">⚠ Clocking &lt; 6h</option>
                 <option value="NOT_SET">Not Assigned</option>
               </select>
               <span className="select-chevron" aria-hidden="true">

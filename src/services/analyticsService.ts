@@ -37,6 +37,7 @@ export interface RiderPerformancePivotResult {
   totalRiders: number;
   overallAvgHours: number;
   overallAvgOrders: number;
+  ridersUnder6HoursCount?: number;
 }
 
 /**
@@ -382,6 +383,8 @@ export async function fetchRiderPerformanceAnalytics(params: {
         ? Math.round((cumulativeSumOrders / (rows.length * totalPeriodDays)) * 10) / 10
         : 0;
 
+    const ridersUnder6HoursCount = rows.filter((r) => r.activeAvgHours < 6.0).length;
+
     return {
       data: {
         storeId,
@@ -393,6 +396,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
         totalRiders: rows.length,
         overallAvgHours,
         overallAvgOrders,
+        ridersUnder6HoursCount,
       },
     };
   } catch (err) {

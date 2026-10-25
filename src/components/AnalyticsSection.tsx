@@ -57,11 +57,22 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     overallAvgOrders: 0,
   });
   const [activeTab, setActiveTab] = useState<'all-riders' | 'new-riders'>('all-riders');
+  const [tableShiftFilter, setTableShiftFilter] = useState<string>('ALL');
   const [loadingPivot, setLoadingPivot] = useState(false);
   const [pivotError, setPivotError] = useState<string | null>(null);
   const [activeRoster, setActiveRoster] = useState<ActiveRosterSummary | null>(null);
   const [riderShiftsMap, setRiderShiftsMap] = useState<Map<string, RiderShiftConfig>>(new Map());
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+
+  // Compute number of riders with < 6 hrs average login time on active working days
+  const under6hCount = React.useMemo(() => {
+    return pivotResult.rows.filter((r) => r.activeAvgHours < 6.0).length;
+  }, [pivotResult.rows]);
+
+  const under6hPct = React.useMemo(() => {
+    if (pivotResult.totalRiders === 0) return 0;
+    return Math.round((under6hCount / pivotResult.totalRiders) * 100);
+  }, [under6hCount, pivotResult.totalRiders]);
 
   // New Rider Onboarding State (Last 7 Days)
   const [onboardingCohortDays, setOnboardingCohortDays] = useState<number>(7);
@@ -275,8 +286,21 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
         <>
           {/* Top Quick KPI Metric Cards */}
           <div className="kpi-grid">
-            <div className="kpi-card">
-              <span className="kpi-label">Active Working Riders</span>
+            <div
+              className={`kpi-card ${tableShiftFilter !== 'ALL' ? 'kpi-card-interactive' : ''}`}
+              onClick={() => {
+                if (tableShiftFilter !== 'ALL') setTableShiftFilter('ALL');
+              }}
+              title={tableShiftFilter !== 'ALL' ? 'Click to show all working riders' : undefined}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span className="kpi-label">Active Working Riders</span>
+                {tableShiftFilter !== 'ALL' && (
+                  <span className="badge badge-secondary" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                    Show All
+                  </span>
+                )}
+              </div>
               <strong className="kpi-value text-blue">
                 {loadingPivot ? '...' : pivotResult.totalRiders}
               </strong>
@@ -297,6 +321,31 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                 {loadingPivot ? '...' : `${pivotResult.overallAvgOrders} orders`}
               </strong>
               <span className="kpi-sub">Per working rider / day</span>
+            </div>
+
+            <div
+              className={`kpi-card kpi-card-interactive ${tableShiftFilter === 'UNDER_6H' ? 'kpi-card-active' : ''}`}
+              onClick={() => {
+                setTableShiftFilter((prev) => (prev === 'UNDER_6H' ? 'ALL' : 'UNDER_6H'));
+              }}
+              title="Click to filter table to riders with < 6 hrs average login time"
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span className="kpi-label">Riders with &lt; 6h Login</span>
+                {tableShiftFilter === 'UNDER_6H' && (
+                  <span className="badge badge-warning" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                    Filtered
+                  </span>
+                )}
+              </div>
+              <strong className={`kpi-value ${under6hCount > 0 ? 'text-amber' : 'text-slate'}`}>
+                {loadingPivot ? '...' : under6hCount}
+              </strong>
+              <span className="kpi-sub">
+                {loadingPivot
+                  ? 'Calculating...'
+                  : `${under6hCount} of ${pivotResult.totalRiders} riders (${under6hPct}%) in selected period`}
+              </span>
             </div>
           </div>
 
@@ -352,6 +401,8 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                 onOpenShiftModal={() => setIsShiftModalOpen(true)}
                 rosterLastUpdated={activeRoster?.lastUpdatedFormatted}
                 rosterTotalCount={activeRoster?.totalRiders}
+                shiftFilter={tableShiftFilter}
+                onSelectShiftFilter={setTableShiftFilter}
               />
             )}
           </div>

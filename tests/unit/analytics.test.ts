@@ -114,4 +114,24 @@ describe('Rider Performance Analytics Unit Tests', () => {
     expect(activeAvgHours).toBe(4.0);
     expect(activeAvgOrders).toBe(6.0);
   });
+
+  it('correctly identifies riders with < 6 hrs average login time for selected period range', () => {
+    // Rider 1: 5 working days, 40 total hours -> activeAvgHours = 8.0 (>= 6h)
+    // Rider 2: 4 working days, 20 total hours -> activeAvgHours = 5.0 (< 6h)
+    // Rider 3: 2 working days, 11 total hours -> activeAvgHours = 5.5 (< 6h)
+    // Rider 4: 6 working days, 48 total hours -> activeAvgHours = 8.0 (>= 6h)
+    const mockRiders = [
+      { riderName: 'Rider 1', activeAvgHours: 8.0 },
+      { riderName: 'Rider 2', activeAvgHours: 5.0 },
+      { riderName: 'Rider 3', activeAvgHours: 5.5 },
+      { riderName: 'Rider 4', activeAvgHours: 8.0 },
+    ];
+
+    const under6h = mockRiders.filter((r) => r.activeAvgHours < 6.0);
+    expect(under6h).toHaveLength(2);
+    expect(under6h.map((r) => r.riderName)).toEqual(['Rider 2', 'Rider 3']);
+
+    const percentage = Math.round((under6h.length / mockRiders.length) * 100);
+    expect(percentage).toBe(50);
+  });
 });

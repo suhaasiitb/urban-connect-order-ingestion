@@ -1265,6 +1265,23 @@ select {
   color: #64748b;
 }
 
+.kpi-card-interactive {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.kpi-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
+}
+
+.kpi-card-active {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25) !important;
+  background: #fffdf5 !important;
+}
+
 .analytics-roadmap-card {
   background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
   border: 1.5px dashed #93c5fd;
