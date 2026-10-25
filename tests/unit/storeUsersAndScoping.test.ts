@@ -291,4 +291,99 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
     );
     expect(noAccessTmk7.rows[0].has_access).toBe(false);
   });
+
+  it('enforces store scoping on store_rider_shifts upserts and queries', async () => {
+    // 1. TMK7 operator can upsert shifts for their store
+    await db.exec(`SET ROLE authenticated; SET request.jwt.claim.sub = '${TMK7_USER_ID}';`);
+    await db.query(`
+      INSERT INTO public.store_rider_shifts (
+        store_id, rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, total_planned_hours, joining_date
+      ) VALUES (
+        '${tmk7StoreId}', 'Amit Sharma', 'amit sharma', 'Morning Shift', 6, 14, 8.0, '2026-10-10'
+      )
+      ON CONFLICT (store_id, normalized_name) DO UPDATE
+      SET shift_type = EXCLUDED.shift_type,
+          joining_date = EXCLUDED.joining_date;
+    `);
+
+    // Verify TMK7 operator can read the shift
+    const tmk7Shifts = await db.query<{ rider_name: string; joining_date: string }>(
+      `SELECT rider_name, joining_date::text FROM public.store_rider_shifts WHERE store_id = '${tmk7StoreId}'`
+    );
+    expect(tmk7Shifts.rows.length).toBe(1);
+    expect(tmk7Shifts.rows[0].rider_name).toBe('Amit Sharma');
+
+    // 2. TMK7 operator cannot insert shifts for TMB1 (RLS violation)
+    await expect(
+      db.query(`
+        INSERT INTO public.store_rider_shifts (
+          store_id, rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, total_planned_hours
+        ) VALUES (
+          '${tmb1StoreId}', 'Hacked Rider', 'hacked rider', 'Morning Shift', 6, 14, 8.0
+        )
+      `)
+    ).rejects.toThrow(/violates row-level security policy/);
+
+    // 3. TMK7 operator cannot view TMB1 shifts (returns 0 rows under RLS)
+    const tmb1Shifts = await db.query(
+      `SELECT * FROM public.store_rider_shifts WHERE store_id = '${tmb1StoreId}'`
+    );
+    expect(tmb1Shifts.rows.length).toBe(0);
+
+    // 4. Admin can see shifts across all stores
+    await db.exec(`SET request.jwt.claim.sub = '${ADMIN_USER_ID}';`);
+    const allShifts = await db.query(
+      `SELECT rider_name FROM public.store_rider_shifts`
+    );
+    expect(allShifts.rows.length).toBe(1);
+
+    await db.exec(`RESET ROLE;`);
+  });
+
+  it('enforces store scoping on active riders roster management', async () => {
+    // 1. TMK7 operator can insert into store_active_riders and store_rider_roster_uploads
+    await db.exec(`SET ROLE authenticated; SET request.jwt.claim.sub = '${TMK7_USER_ID}';`);
+    await db.query(`
+      INSERT INTO public.store_active_riders (
+        store_id, rider_name, normalized_name, phone, online_status
+      ) VALUES (
+        '${tmk7StoreId}', 'Suresh Patil', 'suresh patil', '9999988888', 'Active'
+      );
+    `);
+    await db.query(`
+      INSERT INTO public.store_rider_roster_uploads (
+        store_id, filename, total_riders, uploaded_by
+      ) VALUES (
+        '${tmk7StoreId}', 'tmk7_roster.xlsx', 1, 'tmk7.lead@urbanconnect.in'
+      );
+    `);
+
+    // Verify select
+    const riders = await db.query(
+      `SELECT rider_name FROM public.store_active_riders WHERE store_id = '${tmk7StoreId}'`
+    );
+    expect(riders.rows.length).toBe(1);
+
+    // 2. TMK7 operator cannot insert active riders for TMB1
+    await expect(
+      db.query(`
+        INSERT INTO public.store_active_riders (
+          store_id, rider_name, normalized_name
+        ) VALUES (
+          '${tmb1StoreId}', 'Unauthorized Rider', 'unauthorized rider'
+        );
+      `)
+    ).rejects.toThrow(/violates row-level security policy/);
+
+    // 3. TMK7 operator can delete their own store's active riders (for roster re-upload)
+    await db.query(`
+      DELETE FROM public.store_active_riders WHERE store_id = '${tmk7StoreId}'
+    `);
+    const remaining = await db.query(
+      `SELECT rider_name FROM public.store_active_riders WHERE store_id = '${tmk7StoreId}'`
+    );
+    expect(remaining.rows.length).toBe(0);
+
+    await db.exec(`RESET ROLE;`);
+  });
 });

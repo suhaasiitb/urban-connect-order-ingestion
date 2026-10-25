@@ -122,7 +122,7 @@ CREATE POLICY stores_select_admin_or_store_user
   ON public.stores
   FOR SELECT
   TO authenticated
-  USING (public.is_active_admin() OR id = public.get_user_assigned_store_id());
+  USING (public.has_store_access(id));
 
 -- B. public.orders
 DROP POLICY IF EXISTS orders_select_active_admin ON public.orders;
@@ -131,7 +131,7 @@ CREATE POLICY orders_select_admin_or_store_user
   ON public.orders
   FOR SELECT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
+  USING (public.has_store_access(store_id));
 
 -- C. public.ingestion_batches
 DROP POLICY IF EXISTS ingestion_batches_select_active_admin ON public.ingestion_batches;
@@ -140,7 +140,7 @@ CREATE POLICY ingestion_batches_select_admin_or_store_user
   ON public.ingestion_batches
   FOR SELECT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
+  USING (public.has_store_access(store_id));
 
 -- D. public.ingestion_batch_rows
 DROP POLICY IF EXISTS ingestion_batch_rows_select_active_admin ON public.ingestion_batch_rows;
@@ -149,7 +149,7 @@ CREATE POLICY ingestion_batch_rows_select_admin_or_store_user
   ON public.ingestion_batch_rows
   FOR SELECT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
+  USING (public.has_store_access(store_id));
 
 -- E. public.order_revision_history
 DROP POLICY IF EXISTS order_revision_history_select_active_admin ON public.order_revision_history;
@@ -158,7 +158,7 @@ CREATE POLICY order_revision_history_select_admin_or_store_user
   ON public.order_revision_history
   FOR SELECT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
+  USING (public.has_store_access(store_id));
 
 -- F. public.store_active_riders
 CREATE TABLE IF NOT EXISTS public.store_active_riders (
@@ -182,15 +182,31 @@ DROP POLICY IF EXISTS "Allow authenticated select store_active_riders" ON public
 DROP POLICY IF EXISTS "Allow authenticated modify store_active_riders" ON public.store_active_riders;
 DROP POLICY IF EXISTS "store_active_riders_select_policy" ON public.store_active_riders;
 DROP POLICY IF EXISTS "store_active_riders_modify_policy" ON public.store_active_riders;
-CREATE POLICY "store_active_riders_select_policy"
+DROP POLICY IF EXISTS "store_active_riders_select" ON public.store_active_riders;
+DROP POLICY IF EXISTS "store_active_riders_insert" ON public.store_active_riders;
+DROP POLICY IF EXISTS "store_active_riders_update" ON public.store_active_riders;
+DROP POLICY IF EXISTS "store_active_riders_delete" ON public.store_active_riders;
+
+CREATE POLICY "store_active_riders_select"
   ON public.store_active_riders FOR SELECT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
-CREATE POLICY "store_active_riders_modify_policy"
-  ON public.store_active_riders FOR ALL
+  USING (public.has_store_access(store_id));
+
+CREATE POLICY "store_active_riders_insert"
+  ON public.store_active_riders FOR INSERT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id())
-  WITH CHECK (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
+  WITH CHECK (public.has_store_access(store_id));
+
+CREATE POLICY "store_active_riders_update"
+  ON public.store_active_riders FOR UPDATE
+  TO authenticated
+  USING (public.has_store_access(store_id))
+  WITH CHECK (public.has_store_access(store_id));
+
+CREATE POLICY "store_active_riders_delete"
+  ON public.store_active_riders FOR DELETE
+  TO authenticated
+  USING (public.has_store_access(store_id));
 
 -- G. public.store_rider_roster_uploads
 CREATE TABLE IF NOT EXISTS public.store_rider_roster_uploads (
@@ -208,15 +224,31 @@ DROP POLICY IF EXISTS "Allow authenticated select store_rider_roster_uploads" ON
 DROP POLICY IF EXISTS "Allow authenticated modify store_rider_roster_uploads" ON public.store_rider_roster_uploads;
 DROP POLICY IF EXISTS "store_rider_roster_uploads_select_policy" ON public.store_rider_roster_uploads;
 DROP POLICY IF EXISTS "store_rider_roster_uploads_modify_policy" ON public.store_rider_roster_uploads;
-CREATE POLICY "store_rider_roster_uploads_select_policy"
+DROP POLICY IF EXISTS "store_rider_roster_uploads_select" ON public.store_rider_roster_uploads;
+DROP POLICY IF EXISTS "store_rider_roster_uploads_insert" ON public.store_rider_roster_uploads;
+DROP POLICY IF EXISTS "store_rider_roster_uploads_update" ON public.store_rider_roster_uploads;
+DROP POLICY IF EXISTS "store_rider_roster_uploads_delete" ON public.store_rider_roster_uploads;
+
+CREATE POLICY "store_rider_roster_uploads_select"
   ON public.store_rider_roster_uploads FOR SELECT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
-CREATE POLICY "store_rider_roster_uploads_modify_policy"
-  ON public.store_rider_roster_uploads FOR ALL
+  USING (public.has_store_access(store_id));
+
+CREATE POLICY "store_rider_roster_uploads_insert"
+  ON public.store_rider_roster_uploads FOR INSERT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id())
-  WITH CHECK (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
+  WITH CHECK (public.has_store_access(store_id));
+
+CREATE POLICY "store_rider_roster_uploads_update"
+  ON public.store_rider_roster_uploads FOR UPDATE
+  TO authenticated
+  USING (public.has_store_access(store_id))
+  WITH CHECK (public.has_store_access(store_id));
+
+CREATE POLICY "store_rider_roster_uploads_delete"
+  ON public.store_rider_roster_uploads FOR DELETE
+  TO authenticated
+  USING (public.has_store_access(store_id));
 
 -- H. public.store_rider_shifts
 CREATE TABLE IF NOT EXISTS public.store_rider_shifts (
@@ -238,19 +270,39 @@ CREATE TABLE IF NOT EXISTS public.store_rider_shifts (
 ALTER TABLE public.store_rider_shifts ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.store_rider_shifts TO authenticated, service_role;
 
+-- Ensure joining_date column exists even if table was created in an earlier migration
+ALTER TABLE public.store_rider_shifts
+  ADD COLUMN IF NOT EXISTS joining_date DATE;
+
 DROP POLICY IF EXISTS "authenticated_store_rider_shifts_select" ON public.store_rider_shifts;
 DROP POLICY IF EXISTS "authenticated_store_rider_shifts_all" ON public.store_rider_shifts;
 DROP POLICY IF EXISTS "store_rider_shifts_select_policy" ON public.store_rider_shifts;
 DROP POLICY IF EXISTS "store_rider_shifts_modify_policy" ON public.store_rider_shifts;
-CREATE POLICY "store_rider_shifts_select_policy"
+DROP POLICY IF EXISTS "store_rider_shifts_select" ON public.store_rider_shifts;
+DROP POLICY IF EXISTS "store_rider_shifts_insert" ON public.store_rider_shifts;
+DROP POLICY IF EXISTS "store_rider_shifts_update" ON public.store_rider_shifts;
+DROP POLICY IF EXISTS "store_rider_shifts_delete" ON public.store_rider_shifts;
+
+CREATE POLICY "store_rider_shifts_select"
   ON public.store_rider_shifts FOR SELECT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
-CREATE POLICY "store_rider_shifts_modify_policy"
-  ON public.store_rider_shifts FOR ALL
+  USING (public.has_store_access(store_id));
+
+CREATE POLICY "store_rider_shifts_insert"
+  ON public.store_rider_shifts FOR INSERT
   TO authenticated
-  USING (public.is_active_admin() OR store_id = public.get_user_assigned_store_id())
-  WITH CHECK (public.is_active_admin() OR store_id = public.get_user_assigned_store_id());
+  WITH CHECK (public.has_store_access(store_id));
+
+CREATE POLICY "store_rider_shifts_update"
+  ON public.store_rider_shifts FOR UPDATE
+  TO authenticated
+  USING (public.has_store_access(store_id))
+  WITH CHECK (public.has_store_access(store_id));
+
+CREATE POLICY "store_rider_shifts_delete"
+  ON public.store_rider_shifts FOR DELETE
+  TO authenticated
+  USING (public.has_store_access(store_id));
 
 -- ------------------------------------------------------------------------------
 -- 5. Update RPC ingest_order_batch Authorization
@@ -854,6 +906,12 @@ AS $$
     AND TRIM(r.rider_name) <> ''
   GROUP BY r.rider_name;
 $$;
+
+REVOKE ALL ON FUNCTION public.get_rider_daily_performance(UUID, DATE, DATE) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_rider_daily_performance(UUID, DATE, DATE) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION public.get_store_riders_first_dates(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_store_riders_first_dates(UUID) TO authenticated, service_role;
 
 -- ------------------------------------------------------------------------------
 -- 7. Administrator Helper: Provision & Link Store User

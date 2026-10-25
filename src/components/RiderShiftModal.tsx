@@ -34,6 +34,7 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
   const [filterShift, setFilterShift] = useState<string>('ALL');
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Initialize editable state from active riders + existing shifts
   const [shiftsState, setShiftsState] = useState<Record<string, RiderShiftConfig>>(() => {
@@ -224,17 +225,24 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
   // Save changes
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     const shiftsToSave = Object.values(shiftsState);
     try {
-      await saveRiderShiftsForStore({
+      const res = await saveRiderShiftsForStore({
         storeId,
         shifts: shiftsToSave,
       });
+      if (!res.ok) {
+        setSaveError(res.error || 'Failed to save rider shifts.');
+        return;
+      }
       setSaveSuccess(true);
       onSaved();
       setTimeout(() => {
         onClose();
       }, 700);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -279,6 +287,12 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
 
         {/* Scrollable Modal Body */}
         <div className="shift-modal-body">
+          {saveError && (
+            <div className="alert alert-error mb-md" role="alert">
+              <strong>Save Error:</strong> {saveError}
+            </div>
+          )}
+
           {/* Stats & Quick Presets Toolbar */}
           <div className="shift-toolbar">
             <div className="shift-metrics-strip">

@@ -198,9 +198,11 @@ export async function submitConfirmedOrderBatch(params: {
   const { storeId, storeCode, validation, forceReprocess = false } = params;
 
   const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-  const accessToken = sessionData.session?.access_token;
+  const session = sessionData.session;
+  const accessToken = session?.access_token;
+  const userId = session?.user?.id;
 
-  if (sessionErr || !accessToken) {
+  if (sessionErr || !accessToken || !userId) {
     return {
       ok: false,
       batch_id: null,
@@ -218,10 +220,85 @@ export async function submitConfirmedOrderBatch(params: {
       rejected_count: validation.invalid_rows_count,
       failed_count: 0,
       error_message:
-        'Your administrator session has expired. Please sign in again and retry the upload.',
+        'Your session has expired. Please sign in again and retry the upload.',
     };
   }
 
+  // 1. Primary Ingestion Path: Direct Database RPC ingest_order_batch
+  // Calls public.ingest_order_batch natively via authenticated Supabase client.
+  // This verifies authorization against public.admin_users (Superadmin) or public.store_users (Store operator)
+  // directly in PostgreSQL without requiring Edge Function redeployment.
+  const rpcRecords = validation.rows.map((r) => ({
+    source_row_number: r.source_row_number,
+    source_row_hash: r.source_row_hash,
+    raw_source_snapshot: r.raw_source_snapshot,
+    normalized_source: r.normalized_source,
+    derived_fields: r.derived_fields,
+  }));
+
+  try {
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('ingest_order_batch', {
+      p_store_id: storeId,
+      p_uploaded_by: userId,
+      p_original_filename: validation.filename,
+      p_file_checksum_sha256: validation.file_checksum_sha256,
+      p_records: rpcRecords,
+      p_force_reprocess: forceReprocess,
+      p_processing_metadata: {
+        client_version: '1.0.0',
+        uploaded_by_email: session.user.email,
+        timezone: 'Asia/Kolkata',
+      },
+    });
+
+    if (!rpcErr && rpcData && typeof rpcData === 'object') {
+      const res = rpcData as Record<string, unknown>;
+      return {
+        ok: true,
+        batch_id: typeof res.batch_id === 'string' ? res.batch_id : null,
+        prior_batch_id: typeof res.prior_batch_id === 'string' ? res.prior_batch_id : null,
+        already_processed: Boolean(res.already_processed),
+        status: (res.status as 'Succeeded' | 'Duplicate Skipped' | 'Failed') || 'Succeeded',
+        store_id: storeId,
+        store_code: storeCode,
+        min_order_date: typeof res.min_order_date === 'string' ? res.min_order_date : validation.min_order_date,
+        max_order_date: typeof res.max_order_date === 'string' ? res.max_order_date : validation.max_order_date,
+        total_rows: typeof res.total_rows === 'number' ? res.total_rows : validation.total_rows_detected,
+        inserted_count: typeof res.inserted_count === 'number' ? res.inserted_count : 0,
+        updated_count: typeof res.updated_count === 'number' ? res.updated_count : 0,
+        unchanged_count: typeof res.unchanged_count === 'number' ? res.unchanged_count : 0,
+        rejected_count: typeof res.rejected_count === 'number' ? res.rejected_count : 0,
+        failed_count: typeof res.failed_count === 'number' ? res.failed_count : 0,
+        file_warnings: validation.file_warnings,
+      };
+    }
+
+    if (rpcErr) {
+      return {
+        ok: false,
+        batch_id: null,
+        prior_batch_id: null,
+        already_processed: false,
+        status: 'Failed',
+        store_id: storeId,
+        store_code: storeCode,
+        min_order_date: validation.min_order_date,
+        max_order_date: validation.max_order_date,
+        total_rows: validation.total_rows_detected,
+        inserted_count: 0,
+        updated_count: 0,
+        unchanged_count: 0,
+        rejected_count: validation.invalid_rows_count,
+        failed_count: 0,
+        error_message: rpcErr.message,
+      };
+    }
+  } catch (directRpcErr) {
+    const msg = directRpcErr instanceof Error ? directRpcErr.message : String(directRpcErr);
+    console.warn('Direct RPC execution caught exception, falling back to edge function:', msg);
+  }
+
+  // 2. Secondary Path: Edge Function Endpoint (fallback)
   const endpoint = `${supabaseUrl}/functions/v1/ingest-orders`;
   const requestBody = {
     store_id: storeId,

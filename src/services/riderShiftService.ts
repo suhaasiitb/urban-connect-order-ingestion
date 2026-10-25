@@ -243,11 +243,13 @@ export async function saveRiderShiftsForStore(params: {
 
     if (upsertErr) {
       console.warn('Supabase upsert to store_rider_shifts failed, using localStorage:', upsertErr.message);
+      return { ok: false, savedCount: 0, error: upsertErr.message };
     }
 
     return { ok: true, savedCount: shifts.length };
   } catch (err) {
-    console.warn('Supabase store_rider_shifts save error:', err);
-    return { ok: true, savedCount: shifts.length };
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('Supabase store_rider_shifts save error:', msg);
+    return { ok: false, savedCount: 0, error: msg };
   }
 }
