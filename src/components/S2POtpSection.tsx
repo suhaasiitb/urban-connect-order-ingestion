@@ -8,97 +8,6 @@ import {
   fetchS2POtpAnalytics,
 } from '../services/s2pOtpService';
 
-const SERVER_AGG_SQL = `-- Migration: 20261026000001_s2p_otp_analytics.sql
--- Run in Supabase SQL Editor to enable 50x faster S2P, OTP & DPH loading
-
-BEGIN;
-
-DROP FUNCTION IF EXISTS public.get_s2p_otp_slot_metrics(UUID, DATE, DATE);
-
-CREATE OR REPLACE FUNCTION public.get_s2p_otp_slot_metrics(
-  p_store_id UUID,
-  p_start_date DATE,
-  p_end_date DATE
-)
-RETURNS TABLE (
-  order_date DATE,
-  slot_hour SMALLINT,
-  orders_count BIGINT,
-  riders_count BIGINT,
-  s2p_sum NUMERIC,
-  s2p_count BIGINT,
-  otp_achieved_count BIGINT,
-  otp_breached_count BIGINT,
-  day_distinct_riders BIGINT,
-  period_distinct_riders BIGINT
-)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  WITH slot_agg AS (
-    SELECT
-      o.order_date,
-      o.slot_hour,
-      COUNT(o.order_id)::BIGINT AS orders_count,
-      COUNT(DISTINCT o.rider_number)::BIGINT AS riders_count,
-      COALESCE(SUM(o.s2p_minutes), 0)::NUMERIC AS s2p_sum,
-      COUNT(o.s2p_minutes)::BIGINT AS s2p_count,
-      COUNT(*) FILTER (WHERE o.otp_plus_3_performance = 'OTP Achieved')::BIGINT AS otp_achieved_count,
-      COUNT(*) FILTER (WHERE o.otp_plus_3_performance = 'OTP Breached')::BIGINT AS otp_breached_count
-    FROM public.orders o
-    WHERE o.store_id = p_store_id
-      AND public.has_store_access(p_store_id)
-      AND o.order_date >= p_start_date
-      AND o.order_date <= p_end_date
-    GROUP BY o.order_date, o.slot_hour
-  ),
-  day_riders AS (
-    SELECT
-      o.order_date,
-      COUNT(DISTINCT o.rider_number)::BIGINT AS day_distinct_riders
-    FROM public.orders o
-    WHERE o.store_id = p_store_id
-      AND public.has_store_access(p_store_id)
-      AND o.order_date >= p_start_date
-      AND o.order_date <= p_end_date
-    GROUP BY o.order_date
-  ),
-  period_riders AS (
-    SELECT
-      COUNT(DISTINCT o.rider_number)::BIGINT AS period_distinct_riders
-    FROM public.orders o
-    WHERE o.store_id = p_store_id
-      AND public.has_store_access(p_store_id)
-      AND o.order_date >= p_start_date
-      AND o.order_date <= p_end_date
-  )
-  SELECT
-    s.order_date,
-    s.slot_hour,
-    s.orders_count,
-    s.riders_count,
-    s.s2p_sum,
-    s.s2p_count,
-    s.otp_achieved_count,
-    s.otp_breached_count,
-    COALESCE(d.day_distinct_riders, 0)::BIGINT AS day_distinct_riders,
-    COALESCE(p.period_distinct_riders, 0)::BIGINT AS period_distinct_riders
-  FROM slot_agg s
-  JOIN day_riders d ON d.order_date = s.order_date
-  CROSS JOIN period_riders p
-  ORDER BY s.order_date DESC, s.slot_hour ASC;
-$$;
-
-COMMENT ON FUNCTION public.get_s2p_otp_slot_metrics(UUID, DATE, DATE) IS
-  'Aggregates orders, distinct riders, S2P duration, and OTP+3 compliance per slot for a store and date range with day and period distinct rider totals.';
-
-REVOKE ALL ON FUNCTION public.get_s2p_otp_slot_metrics(UUID, DATE, DATE) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.get_s2p_otp_slot_metrics(UUID, DATE, DATE) TO authenticated, service_role;
-
-COMMIT;`;
-
 interface S2POtpSectionProps {
   stores: StoreMaster[];
   selectedStoreId: string;
@@ -130,10 +39,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   const [loading, setLoading] = useState(false);
   const [loadSource, setLoadSource] = useState<'cache' | 'rpc' | 'client' | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // SQL Boost modal state
-  const [showSqlModal, setShowSqlModal] = useState(false);
-  const [copiedSql, setCopiedSql] = useState(false);
 
   // Set of dates that are currently expanded to show slot breakdown
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
@@ -248,80 +153,35 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
   return (
     <div className="analytics-container s2p-otp-container">
-      {/* 1. Header & Store Selector Card */}
+      {/* 1. Filter & Controls Bar */}
       <div className="section-card">
-        <div className="analytics-header">
-          <div>
-            <div className="flex-row items-center gap-xs flex-wrap">
-              <span className="badge badge-primary">Operations KPI</span>
-              <h2 className="section-title">S2P, OTP & DPH Analytics</h2>
-              {loadSource === 'rpc' && (
-                <span
-                  className="badge badge-success flex-row items-center gap-xs"
-                  title="Database-level aggregation active on indexed columns (<50ms)"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                  </svg>
-                  ⚡ Server Aggregated
-                </span>
-              )}
-              {loadSource === 'cache' && (
-                <span
-                  className="badge badge-info flex-row items-center gap-xs"
-                  title="Loaded instantaneously from memory cache (0ms)"
-                >
-                  ⚡ Instant Cache
-                </span>
-              )}
-              {loadSource === 'client' && (
-                <div className="flex-row items-center gap-xs">
-                  <span className="badge badge-amber" title="Parallel batched table queries">
-                    Parallel Queries
-                  </span>
-                  <button
-                    type="button"
-                    className="btn-speedup-hint"
-                    onClick={() => setShowSqlModal(true)}
-                    title="Enable 50x faster database aggregation"
-                  >
-                    🚀 Boost Speed 50x (SQL)
-                  </button>
+        <div className="perf-controls-bar" style={{ marginTop: 0 }}>
+          <div className="perf-controls-left flex-wrap items-center">
+            {/* Store Selector */}
+            <div className="store-selector-group mr-md">
+              <span className="field-label">Store:</span>
+              {currentUser?.role === 'store_user' ? (
+                <div className="store-badge-locked flex-row items-center gap-xs">
+                  <span className="badge badge-primary">{selectedStore?.store_code}</span>
+                  <strong>{selectedStore?.store_name}</strong>
                 </div>
+              ) : (
+                <select
+                  id="s2p-store-select"
+                  className="select-input"
+                  value={selectedStoreId}
+                  onChange={(e) => onSelectStoreId(e.target.value)}
+                >
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.store_code} — {s.store_name}
+                    </option>
+                  ))}
+                </select>
               )}
             </div>
-            <p className="section-subtitle">
-              Daily and slot-level tracking of Staging-to-Pickup (S2P), OTP+3 performance compliance, and Deliveries Per Hour (DPH).
-            </p>
-          </div>
 
-          <div className="store-selector-group">
-            <span className="field-label">Store:</span>
-            {currentUser?.role === 'store_user' ? (
-              <div className="store-badge-locked flex-row items-center gap-xs">
-                <span className="badge badge-primary">{selectedStore?.store_code}</span>
-                <strong>{selectedStore?.store_name}</strong>
-              </div>
-            ) : (
-              <select
-                id="s2p-store-select"
-                className="select-input"
-                value={selectedStoreId}
-                onChange={(e) => onSelectStoreId(e.target.value)}
-              >
-                {stores.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.store_code} — {s.store_name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
-
-        {/* Date Filter Presets Bar */}
-        <div className="perf-controls-bar mt-md">
-          <div className="perf-controls-left">
+            {/* Period Segmented Control */}
             <div className="perf-filter-group">
               <span className="perf-control-label">Period:</span>
               <div className="segmented-control">
@@ -397,7 +257,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               className="btn btn-secondary btn-sm perf-btn-refresh"
               onClick={() => void loadData(true)}
               disabled={loading}
-              title="Force fresh refresh from database (bypasses cache)"
+              title="Refresh S2P & OTP data"
             >
               <svg
                 className={`btn-icon ${loading ? 'spin-icon' : ''}`}
@@ -911,73 +771,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           </div>
         )}
       </div>
-      {/* 4. Speed Boost SQL Modal */}
-      {showSqlModal && (
-        <div className="modal-backdrop" onClick={() => setShowSqlModal(false)}>
-          <div
-            className="modal-container max-w-lg"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="modal-header">
-              <div className="flex-row items-center gap-xs">
-                <span className="badge badge-success">50x Speed Boost</span>
-                <h3 className="modal-title">Enable Ultra-Fast Server Aggregation</h3>
-              </div>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setShowSqlModal(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="modal-body">
-              <p className="text-sm text-slate mb-sm">
-                Run this SQL query once in your <strong>Supabase Dashboard → SQL Editor</strong>.
-                It installs the server aggregation function <code>get_s2p_otp_slot_metrics</code>,
-                allowing PostgreSQL to compute S2P, OTP+3, and DPH in milliseconds directly on indexed columns
-                instead of downloading thousands of order records over the network.
-              </p>
-              <div className="sql-box-wrapper relative">
-                <button
-                  type="button"
-                  className="btn btn-xs btn-primary sql-copy-btn"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(SERVER_AGG_SQL);
-                    setCopiedSql(true);
-                    setTimeout(() => setCopiedSql(false), 2500);
-                  }}
-                >
-                  {copiedSql ? '✓ Copied SQL!' : 'Copy SQL'}
-                </button>
-                <pre className="sql-code-block">{SERVER_AGG_SQL}</pre>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setShowSqlModal(false)}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  void navigator.clipboard.writeText(SERVER_AGG_SQL);
-                  setCopiedSql(true);
-                  setTimeout(() => setCopiedSql(false), 2500);
-                }}
-              >
-                {copiedSql ? '✓ Copied to Clipboard!' : 'Copy SQL Query'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

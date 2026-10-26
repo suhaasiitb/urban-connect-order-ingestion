@@ -22,7 +22,7 @@ export const App: React.FC = () => {
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [storesError, setStoresError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 's2p_otp'>('upload');
+  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 's2p_otp'>('s2p_otp');
 
   // Store logins administration modal (Superadmin only)
   const [isStoreLoginsModalOpen, setIsStoreLoginsModalOpen] = useState(false);
@@ -137,11 +137,11 @@ export const App: React.FC = () => {
           <button
             type="button"
             className={`btn btn-sm ${
-              activeView === 'upload' ? 'btn-primary' : 'btn-secondary'
+              activeView === 's2p_otp' ? 'btn-primary' : 'btn-secondary'
             }`}
-            onClick={() => setActiveView('upload')}
+            onClick={() => setActiveView('s2p_otp')}
           >
-            Data Ingestion
+            S2P &amp; OTP
           </button>
           <button
             type="button"
@@ -155,11 +155,11 @@ export const App: React.FC = () => {
           <button
             type="button"
             className={`btn btn-sm ${
-              activeView === 's2p_otp' ? 'btn-primary' : 'btn-secondary'
+              activeView === 'upload' ? 'btn-primary' : 'btn-secondary'
             }`}
-            onClick={() => setActiveView('s2p_otp')}
+            onClick={() => setActiveView('upload')}
           >
-            S2P &amp; OTP
+            Data Ingestion
           </button>
         </nav>
 
@@ -200,8 +200,8 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {activeView === 'upload' && (
-          <UploadWorkspace
+        {activeView === 's2p_otp' && (
+          <S2POtpSection
             stores={stores}
             selectedStoreId={selectedStoreId}
             onSelectStoreId={setSelectedStoreId}
@@ -215,12 +215,11 @@ export const App: React.FC = () => {
             selectedStoreId={selectedStoreId}
             onSelectStoreId={setSelectedStoreId}
             currentUser={currentUser}
-            onNavigateToS2POtp={() => setActiveView('s2p_otp')}
           />
         )}
 
-        {activeView === 's2p_otp' && (
-          <S2POtpSection
+        {activeView === 'upload' && (
+          <UploadWorkspace
             stores={stores}
             selectedStoreId={selectedStoreId}
             onSelectStoreId={setSelectedStoreId}

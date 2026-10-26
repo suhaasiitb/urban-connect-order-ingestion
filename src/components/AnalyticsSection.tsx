@@ -29,7 +29,6 @@ interface AnalyticsSectionProps {
   selectedStoreId: string;
   onSelectStoreId: (id: string) => void;
   currentUser?: UserProfile | null;
-  onNavigateToS2POtp?: () => void;
 }
 
 export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
@@ -37,7 +36,6 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   selectedStoreId,
   onSelectStoreId,
   currentUser,
-  onNavigateToS2POtp,
 }) => {
   const selectedStore = stores.find((s) => s.id === selectedStoreId) ?? stores[0];
 
@@ -211,42 +209,9 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
 
   return (
     <div className="analytics-container">
-      {/* Header & Store Selector */}
+      {/* Tab Switcher & Store Selector */}
       <div className="section-card">
-        <div className="analytics-header">
-          <div>
-            <h2 className="section-title">Store & Rider Analytics</h2>
-            <p className="section-subtitle">
-              Comprehensive rider operations dashboard: daily hours, order volumes, shift compliance, and new joiner ramp-up.
-            </p>
-          </div>
-
-          <div className="store-selector-group">
-            <span className="field-label">Store:</span>
-            {currentUser?.role === 'store_user' ? (
-              <div className="store-badge-locked flex-row items-center gap-xs">
-                <span className="badge badge-primary">{selectedStore?.store_code}</span>
-                <strong>{selectedStore?.store_name}</strong>
-              </div>
-            ) : (
-              <select
-                id="analytics-store-select"
-                className="select-input"
-                value={selectedStoreId}
-                onChange={(e) => onSelectStoreId(e.target.value)}
-              >
-                {stores.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.store_code} — {s.store_name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
-
-        {/* Dedicated Tab Switcher: All Riders vs New Rider Onboarding */}
-        <div className="analytics-view-switch-bar">
+        <div className="flex-row items-center justify-between gap-md flex-wrap">
           <div className="analytics-tab-pill-group">
             <button
               type="button"
@@ -279,19 +244,28 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                 </span>
               )}
             </button>
+          </div>
 
-            {onNavigateToS2POtp && (
-              <button
-                type="button"
-                className="analytics-tab-pill"
-                onClick={onNavigateToS2POtp}
-                title="Switch to S2P, OTP & DPH Operations Dashboard"
+          <div className="store-selector-group">
+            <span className="field-label">Store:</span>
+            {currentUser?.role === 'store_user' ? (
+              <div className="store-badge-locked flex-row items-center gap-xs">
+                <span className="badge badge-primary">{selectedStore?.store_code}</span>
+                <strong>{selectedStore?.store_name}</strong>
+              </div>
+            ) : (
+              <select
+                id="analytics-store-select"
+                className="select-input"
+                value={selectedStoreId}
+                onChange={(e) => onSelectStoreId(e.target.value)}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                  <path d="M18 20V10M12 20V4M6 20v-6" />
-                </svg>
-                <span>S2P, OTP &amp; DPH Analytics →</span>
-              </button>
+                {stores.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.store_code} — {s.store_name}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
         </div>
