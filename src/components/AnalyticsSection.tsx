@@ -283,7 +283,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
               }}
               title={tableShiftFilter !== 'ALL' ? 'Click to show all working riders' : undefined}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="kpi-header-row">
                 <span className="kpi-label">Active Working Riders</span>
                 {tableShiftFilter !== 'ALL' && (
                   <span className="badge badge-secondary" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
@@ -300,16 +300,30 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
             </div>
 
             <div className="kpi-card">
-              <span className="kpi-label">Store Avg Daily Hours</span>
-              <strong className="kpi-value">
+              <div className="kpi-header-row">
+                <span className="kpi-label">Store Avg Daily Hours</span>
+                <span className="kpi-target-badge">Target: ≥ 8 hrs</span>
+              </div>
+              <strong
+                className={`kpi-value ${
+                  !loadingPivot && (pivotResult.overallAvgHours ?? 0) < 8 ? 'text-red' : 'text-green'
+                }`}
+              >
                 {loadingPivot ? '...' : `${pivotResult.overallAvgHours} hrs`}
               </strong>
               <span className="kpi-sub">Per working rider / day</span>
             </div>
 
             <div className="kpi-card">
-              <span className="kpi-label">Store Avg Daily Orders</span>
-              <strong className="kpi-value text-green">
+              <div className="kpi-header-row">
+                <span className="kpi-label">Store Avg Daily Orders</span>
+                <span className="kpi-target-badge">Target: ≥ 16 orders</span>
+              </div>
+              <strong
+                className={`kpi-value ${
+                  !loadingPivot && (pivotResult.overallAvgOrders ?? 0) < 16 ? 'text-red' : 'text-green'
+                }`}
+              >
                 {loadingPivot ? '...' : `${pivotResult.overallAvgOrders} orders`}
               </strong>
               <span className="kpi-sub">Per working rider / day</span>
@@ -322,7 +336,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
               }}
               title="Click to filter table to riders with < 6 hrs average login time"
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="kpi-header-row">
                 <span className="kpi-label">Riders with &lt; 6h Login</span>
                 {tableShiftFilter === 'UNDER_6H' && (
                   <span className="badge badge-warning" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>

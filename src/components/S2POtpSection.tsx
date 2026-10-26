@@ -300,9 +300,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       {/* 2. Top Summary KPI Cards */}
       <div className="kpi-grid mt-md">
         <div className="kpi-card">
-          <div className="flex-row items-center justify-between flex-wrap gap-xs">
+          <div className="kpi-header-row">
             <span className="kpi-label">Average S2P Time</span>
-            <span className="kpi-target text-green">Target: ≤ 0.60 min</span>
+            <span className="kpi-target-badge">Target: ≤ 0.60 min</span>
           </div>
           <strong
             className={`kpi-value ${
@@ -317,9 +317,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         </div>
 
         <div className="kpi-card">
-          <div className="flex-row items-center justify-between flex-wrap gap-xs">
+          <div className="kpi-header-row">
             <span className="kpi-label">OTP+3 Performance</span>
-            <span className="kpi-target text-green">Target: ≥ 98%</span>
+            <span className="kpi-target-badge">Target: ≥ 98%</span>
           </div>
           <strong
             className={`kpi-value ${
@@ -335,9 +335,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         </div>
 
         <div className="kpi-card">
-          <div className="flex-row items-center justify-between flex-wrap gap-xs">
+          <div className="kpi-header-row">
             <span className="kpi-label">Deliveries Per Hour (DPH)</span>
-            <span className="kpi-target text-green">Target: ≤ 2.1</span>
+            <span className="kpi-target-badge">Target: ≤ 2.1</span>
           </div>
           <strong
             className={`kpi-value ${
@@ -352,7 +352,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">Total Volume &amp; Riders</span>
+          <div className="kpi-header-row">
+            <span className="kpi-label">Total Volume &amp; Riders</span>
+          </div>
           <strong className="kpi-value text-slate">
             {loading ? '...' : `${summary?.overallTotalOrders.toLocaleString() ?? '0'}`}
           </strong>
