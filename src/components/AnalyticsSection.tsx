@@ -294,7 +294,9 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
               <strong className="kpi-value text-blue">
                 {loadingPivot ? '...' : pivotResult.totalRiders}
               </strong>
-              <span className="kpi-sub">In selected period ({selectedDays} days)</span>
+              <span className="kpi-sub">
+                In selected period ({selectedDays} {selectedDays === 1 ? 'day' : 'days'})
+              </span>
             </div>
 
             <div className="kpi-card">

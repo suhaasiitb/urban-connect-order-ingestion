@@ -5,6 +5,7 @@ import {
   formatDateToHeader,
   formatSlotHourLabel,
   getDayOfWeekName,
+  getDphImpactedSlots,
   invalidateS2POtpCache,
 } from '../../src/services/s2pOtpService';
 
@@ -178,5 +179,124 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
     // Invalidate cache without error
     expect(() => invalidateS2POtpCache()).not.toThrow();
     expect(() => invalidateS2POtpCache('store-123')).not.toThrow();
+  });
+
+  it('getDphImpactedSlots detects slots where DPH went beyond 2.1 and returns empty array if none', () => {
+    const slots = [
+      {
+        slotHour: 7,
+        slotLabel: '07:00 – 08:00',
+        ordersCount: 33,
+        ridersCount: 12,
+        dph: 2.8, // > 2.1 -> IMPACTED
+        avgS2p: 0.94,
+        otpAchievedCount: 33,
+        otpBreachedCount: 0,
+        otpApplicableCount: 33,
+        otpAchievedPct: 100,
+        otpBreachedPct: 0,
+      },
+      {
+        slotHour: 8,
+        slotLabel: '08:00 – 09:00',
+        ordersCount: 44,
+        ridersCount: 19,
+        dph: 2.3, // > 2.1 -> IMPACTED
+        avgS2p: 0.66,
+        otpAchievedCount: 44,
+        otpBreachedCount: 0,
+        otpApplicableCount: 44,
+        otpAchievedPct: 100,
+        otpBreachedPct: 0,
+      },
+      {
+        slotHour: 9,
+        slotLabel: '09:00 – 10:00',
+        ordersCount: 53,
+        ridersCount: 24,
+        dph: 2.2, // > 2.1 -> IMPACTED
+        avgS2p: 0.45,
+        otpAchievedCount: 51,
+        otpBreachedCount: 2,
+        otpApplicableCount: 53,
+        otpAchievedPct: 96.23,
+        otpBreachedPct: 3.77,
+      },
+      {
+        slotHour: 10,
+        slotLabel: '10:00 – 11:00',
+        ordersCount: 42,
+        ridersCount: 21,
+        dph: 2.0, // <= 2.1 -> NOT impacted
+        avgS2p: 0.21,
+        otpAchievedCount: 42,
+        otpBreachedCount: 0,
+        otpApplicableCount: 42,
+        otpAchievedPct: 100,
+        otpBreachedPct: 0,
+      },
+      {
+        slotHour: 18,
+        slotLabel: '18:00 – 19:00',
+        ordersCount: 62,
+        ridersCount: 27,
+        dph: 2.3, // > 2.1 -> IMPACTED
+        avgS2p: 5.15,
+        otpAchievedCount: 44,
+        otpBreachedCount: 18,
+        otpApplicableCount: 62,
+        otpAchievedPct: 70.97,
+        otpBreachedPct: 29.03,
+      },
+      {
+        slotHour: 19,
+        slotLabel: '19:00 – 20:00',
+        ordersCount: 60,
+        ridersCount: 27,
+        dph: 2.2, // > 2.1 -> IMPACTED
+        avgS2p: 15.53,
+        otpAchievedCount: 59,
+        otpBreachedCount: 1,
+        otpApplicableCount: 60,
+        otpAchievedPct: 98.33,
+        otpBreachedPct: 1.67,
+      },
+    ];
+
+    const impacted = getDphImpactedSlots(slots, 2.1);
+    expect(impacted).toEqual([7, 8, 9, 18, 19]);
+
+    // Test with only low-DPH slots (all <= 2.1)
+    const lowDphSlots = [
+      {
+        slotHour: 11,
+        slotLabel: '11:00 – 12:00',
+        ordersCount: 20,
+        ridersCount: 10,
+        dph: 2.0,
+        avgS2p: 0.5,
+        otpAchievedCount: 20,
+        otpBreachedCount: 0,
+        otpApplicableCount: 20,
+        otpAchievedPct: 100,
+        otpBreachedPct: 0,
+      },
+      {
+        slotHour: 12,
+        slotLabel: '12:00 – 13:00',
+        ordersCount: 21,
+        ridersCount: 10,
+        dph: 2.1,
+        avgS2p: 0.5,
+        otpAchievedCount: 21,
+        otpBreachedCount: 0,
+        otpApplicableCount: 21,
+        otpAchievedPct: 100,
+        otpBreachedPct: 0,
+      },
+    ];
+
+    const noImpact = getDphImpactedSlots(lowDphSlots, 2.1);
+    expect(noImpact).toEqual([]);
   });
 });

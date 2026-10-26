@@ -90,6 +90,16 @@ export function invalidateS2POtpCache(storeId?: string): void {
 }
 
 /**
+ * Extracts slot hours for which DPH exceeded a given threshold (default > 2.1).
+ * Returns empty array if no slots exceed the threshold.
+ */
+export function getDphImpactedSlots(slots: SlotPerformanceMetrics[], threshold = 2.1): number[] {
+  return slots
+    .filter((s) => s.ordersCount > 0 && s.dph > threshold)
+    .map((s) => s.slotHour);
+}
+
+/**
  * Formats slot hour into human readable slot label (e.g. 6 -> "06:00 – 07:00").
  */
 export function formatSlotHourLabel(hour: number): string {
@@ -728,13 +738,14 @@ export function exportS2POtpToExcel(summary: S2POtpSummaryResult, storeCode: str
     'Actual Riders Turn-up',
     'Total Rider Slot Hours',
     'DPH (Deliveries/Hour)',
+    'DPH Impacted Slots (>2.1)',
     'AVERAGE of S2P (min)',
     'OTP+3 Achieved %',
-    'OTP+3 Breached %',
   ];
 
   const dailyRows: Array<Array<string | number>> = [dailySummaryHeaders];
   for (const day of summary.days) {
+    const impactedSlots = getDphImpactedSlots(day.slots).join(', ');
     dailyRows.push([
       day.dateStr,
       day.dayOfWeek,
@@ -742,9 +753,9 @@ export function exportS2POtpToExcel(summary: S2POtpSummaryResult, storeCode: str
       day.distinctRidersCount,
       day.totalRiderSlotHours,
       day.avgDph,
+      impactedSlots,
       day.avgS2p,
       `${day.avgOtpAchievedPct.toFixed(2)}%`,
-      `${day.avgOtpBreachedPct.toFixed(2)}%`,
     ]);
   }
   // Total Row
@@ -755,9 +766,9 @@ export function exportS2POtpToExcel(summary: S2POtpSummaryResult, storeCode: str
     summary.overallDistinctRiders,
     summary.overallTotalRiderSlotHours,
     summary.overallAvgDph,
+    '',
     summary.overallAvgS2p,
     `${summary.overallOtpAchievedPct.toFixed(2)}%`,
-    `${summary.overallOtpBreachedPct.toFixed(2)}%`,
   ]);
 
   const wsDaily = XLSX.utils.aoa_to_sheet(dailyRows);

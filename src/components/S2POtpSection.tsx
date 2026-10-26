@@ -6,6 +6,7 @@ import {
   type S2POtpSummaryResult,
   exportS2POtpToExcel,
   fetchS2POtpAnalytics,
+  getDphImpactedSlots,
 } from '../services/s2pOtpService';
 
 interface S2POtpSectionProps {
@@ -46,7 +47,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   // Active slot sub-view per date (defaults to 'all', can switch to 's2p', 'otp', 'dph')
   const [slotViewModes, setSlotViewModes] = useState<Record<string, SlotViewType>>({});
 
-  const presets = [3, 7, 10, 14, 20, 30];
+  const presets = [1, 3, 7, 10, 14, 20, 30];
 
   const loadData = useCallback(async (forceRefresh = false) => {
     if (!selectedStore) return;
@@ -191,9 +192,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                     type="button"
                     className={`segmented-btn ${selectedDays === days && !showCustomRange ? 'segmented-btn-active' : ''}`}
                     onClick={() => handleSelectPreset(days)}
-                    title={`Last ${days} days`}
+                    title={days === 1 ? "Yesterday's date (1 Day)" : `Last ${days} days`}
                   >
-                    {days} Days
+                    {days === 1 ? '1 Day (Yesterday)' : `${days} Days`}
                   </button>
                 ))}
                 <button
@@ -314,7 +315,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
             {loading ? '...' : `${summary?.overallAvgS2p.toFixed(2) ?? '0.00'} min`}
           </strong>
           <span className="kpi-sub">
-            Staging-to-Pickup duration across {summary?.periodDays ?? selectedDays} days
+            Staging-to-Pickup duration across {summary?.periodDays ?? selectedDays} {(summary?.periodDays ?? selectedDays) === 1 ? 'day' : 'days'}
           </span>
         </div>
 
@@ -409,9 +410,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                   <th className="text-right">Orders</th>
                   <th className="text-right">Actual Riders Turn-up</th>
                   <th className="text-right">DPH</th>
+                  <th className="text-center">DPH Impacted Slots</th>
                   <th className="text-right">Avg S2P (min)</th>
                   <th className="text-right">OTP+3 Achieved %</th>
-                  <th className="text-right">OTP+3 Breached %</th>
                   <th className="text-center">Action</th>
                 </tr>
               </thead>
@@ -419,6 +420,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                 {summary.days.map((day) => {
                   const isExpanded = expandedDates.has(day.dateStr);
                   const activeView = slotViewModes[day.dateStr] || 'all';
+                  const impactedSlots = getDphImpactedSlots(day.slots);
 
                   return (
                     <React.Fragment key={day.dateStr}>
@@ -463,14 +465,23 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                             {day.avgDph.toFixed(1)}
                           </span>
                         </td>
+                        <td className="text-center">
+                          {impactedSlots.length > 0 ? (
+                            <span
+                              className="dph-impacted-slots"
+                              title={`Slots with DPH > 2.1: ${impactedSlots.join(', ')}`}
+                            >
+                              {impactedSlots.join(', ')}
+                            </span>
+                          ) : (
+                            ''
+                          )}
+                        </td>
                         <td className={`text-right ${getS2pBadgeClass(day.avgS2p)}`}>
                           {day.avgS2p.toFixed(2)} min
                         </td>
                         <td className="text-right font-bold text-green">
                           {day.avgOtpAchievedPct.toFixed(2)}%
-                        </td>
-                        <td className="text-right text-red">
-                          {day.avgOtpBreachedPct > 0 ? `${day.avgOtpBreachedPct.toFixed(2)}%` : '0.00%'}
                         </td>
                         <td className="text-center">
                           <button
@@ -746,7 +757,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               <tfoot>
                 <tr className="s2p-overall-grand-total">
                   <td colSpan={3} className="font-bold">
-                    Period Grand Total ({summary.periodDays} Days)
+                    Period Grand Total ({summary.periodDays} {summary.periodDays === 1 ? 'Day' : 'Days'})
                   </td>
                   <td className="text-right font-bold">{summary.overallTotalOrders.toLocaleString()}</td>
                   <td className="text-right font-bold">{summary.overallDistinctRiders} riders</td>
@@ -755,14 +766,12 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                       {summary.overallAvgDph.toFixed(1)}
                     </span>
                   </td>
+                  <td className="text-center font-normal text-muted" />
                   <td className={`text-right font-bold ${getS2pBadgeClass(summary.overallAvgS2p)}`}>
                     {summary.overallAvgS2p.toFixed(2)} min
                   </td>
                   <td className="text-right font-bold text-green">
                     {summary.overallOtpAchievedPct.toFixed(2)}%
-                  </td>
-                  <td className="text-right font-bold text-red">
-                    {summary.overallOtpBreachedPct.toFixed(2)}%
                   </td>
                   <td />
                 </tr>
