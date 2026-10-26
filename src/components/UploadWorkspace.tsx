@@ -10,6 +10,7 @@ import {
   type StoreCoverageSummary,
   fetchStoreDateCoverage,
 } from '../services/storeService';
+import { invalidateS2POtpCache } from '../services/s2pOtpService';
 import {
   type ActiveRosterParseResult,
   type ActiveRosterSummary,
@@ -279,6 +280,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
       }
 
       // Succeeded: show success popup!
+      invalidateS2POtpCache(selectedStoreId);
       setCommittedResult(result);
       setShowSuccessModal(true);
       resetFileInput();

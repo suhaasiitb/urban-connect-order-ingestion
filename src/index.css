@@ -3520,6 +3520,269 @@ select {
   border-radius: 8px;
 }
 
+/* ==========================================================================
+   S2P, OTP & DPH Analytics Section
+   ========================================================================== */
+
+.s2p-daily-table-container {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  margin-top: 0.75rem;
+}
+
+.s2p-daily-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  text-align: left;
+}
+
+.s2p-daily-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.s2p-day-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.s2p-day-row:hover {
+  background: #f8fafc;
+}
+
+.s2p-day-row-expanded {
+  background: #f1f5f9 !important;
+  border-bottom: 2px solid #cbd5e1 !important;
+}
+
+.s2p-day-row td {
+  padding: 0.75rem 0.85rem;
+  color: #1e293b;
+}
+
+.s2p-expand-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #3b82f6;
+  font-weight: 800;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.s2p-expand-toggle-btn:hover {
+  background: #3b82f6;
+  color: #ffffff;
+  border-color: #3b82f6;
+}
+
+.s2p-expanded-cell {
+  padding: 0 !important;
+  background: #f8fafc !important;
+}
+
+.s2p-slot-breakdown-card {
+  padding: 1.25rem;
+  background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.s2p-slot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.s2p-slot-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+/* Excel Replica Pivot Table Styles */
+.excel-pivot-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.excel-pivot-table-container {
+  overflow-x: auto;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.excel-pivot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.excel-pivot-table th {
+  background: #708aab; /* Excel Pivot header classic slate-blue */
+  color: #ffffff;
+  font-weight: 700;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #5b7391;
+  white-space: nowrap;
+}
+
+.excel-pivot-table td {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+}
+
+.excel-pivot-table tbody tr:nth-child(even) {
+  background: #fbfcfe;
+}
+
+.excel-pivot-table tbody tr:hover {
+  background: #f1f5f9;
+}
+
+.excel-pivot-grand-total {
+  background: #e2e8f0 !important;
+  font-weight: 800;
+  color: #0f172a;
+  border-top: 3px double #64748b !important;
+  border-bottom: 2px solid #475569 !important;
+}
+
+.excel-pivot-grand-total td {
+  padding: 0.6rem 0.75rem;
+  border-top: 3px double #64748b !important;
+}
+
+.excel-pivot-legend-note {
+  padding: 0.25rem 0.5rem;
+}
+
+.dph-pill {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
+.s2p-overall-grand-total {
+  background: #f1f5f9;
+  border-top: 3px double #94a3b8;
+  border-bottom: 2px solid #64748b;
+  font-size: 0.88rem;
+}
+
+.s2p-overall-grand-total td {
+  padding: 0.85rem;
+}
+
+.max-w-sm {
+  max-width: 380px;
+}
+
+.max-w-md {
+  max-width: 520px;
+}
+
+.max-w-lg {
+  max-width: 620px;
+}
+
+.s2p-loading-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: #f0fdf4;
+  color: #166534;
+  border-bottom: 1px solid #bbf7d0;
+  padding: 0.5rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.opacity-70 {
+  opacity: 0.7;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.btn-speedup-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-speedup-hint:hover {
+  background: #fde68a;
+  color: #78350f;
+  transform: translateY(-1px);
+}
+
+.sql-box-wrapper {
+  position: relative;
+  margin-top: 0.75rem;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sql-code-block {
+  max-height: 280px;
+  overflow-y: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  padding: 0.85rem;
+  border-radius: 6px;
+  margin: 0;
+  white-space: pre;
+}
+
+.sql-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+}
+
+
 
 
 

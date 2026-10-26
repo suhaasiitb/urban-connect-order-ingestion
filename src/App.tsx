@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AnalyticsSection } from './components/AnalyticsSection';
 import { LoginScreen } from './components/LoginScreen';
+import { S2POtpSection } from './components/S2POtpSection';
 import { StoreLoginsModal } from './components/StoreLoginsModal';
 import { UploadWorkspace } from './components/UploadWorkspace';
 import { isSupabaseConfigured, supabase } from './config/supabaseClient';
@@ -21,7 +22,7 @@ export const App: React.FC = () => {
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [storesError, setStoresError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'upload' | 'analytics'>('upload');
+  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 's2p_otp'>('upload');
 
   // Store logins administration modal (Superadmin only)
   const [isStoreLoginsModalOpen, setIsStoreLoginsModalOpen] = useState(false);
@@ -149,7 +150,16 @@ export const App: React.FC = () => {
             }`}
             onClick={() => setActiveView('analytics')}
           >
-            Store Analytics
+            Rider Analytics
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${
+              activeView === 's2p_otp' ? 'btn-primary' : 'btn-secondary'
+            }`}
+            onClick={() => setActiveView('s2p_otp')}
+          >
+            S2P &amp; OTP
           </button>
         </nav>
 
@@ -201,6 +211,16 @@ export const App: React.FC = () => {
 
         {activeView === 'analytics' && (
           <AnalyticsSection
+            stores={stores}
+            selectedStoreId={selectedStoreId}
+            onSelectStoreId={setSelectedStoreId}
+            currentUser={currentUser}
+            onNavigateToS2POtp={() => setActiveView('s2p_otp')}
+          />
+        )}
+
+        {activeView === 's2p_otp' && (
+          <S2POtpSection
             stores={stores}
             selectedStoreId={selectedStoreId}
             onSelectStoreId={setSelectedStoreId}

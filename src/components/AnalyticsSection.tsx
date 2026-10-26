@@ -29,6 +29,7 @@ interface AnalyticsSectionProps {
   selectedStoreId: string;
   onSelectStoreId: (id: string) => void;
   currentUser?: UserProfile | null;
+  onNavigateToS2POtp?: () => void;
 }
 
 export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
@@ -36,6 +37,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   selectedStoreId,
   onSelectStoreId,
   currentUser,
+  onNavigateToS2POtp,
 }) => {
   const selectedStore = stores.find((s) => s.id === selectedStoreId) ?? stores[0];
 
@@ -277,6 +279,20 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                 </span>
               )}
             </button>
+
+            {onNavigateToS2POtp && (
+              <button
+                type="button"
+                className="analytics-tab-pill"
+                onClick={onNavigateToS2POtp}
+                title="Switch to S2P, OTP & DPH Operations Dashboard"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <path d="M18 20V10M12 20V4M6 20v-6" />
+                </svg>
+                <span>S2P, OTP &amp; DPH Analytics →</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
