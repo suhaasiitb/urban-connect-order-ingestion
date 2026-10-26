@@ -144,11 +144,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     return { backgroundColor: '#f8fafc', color: '#475569' };
   };
 
-  // Helper for S2P duration color badge
+  // Helper for S2P duration color badge (Target: <= 0.60 min)
   const getS2pBadgeClass = (s2p: number): string => {
-    if (s2p <= 2.0) return 'text-green font-bold';
-    if (s2p <= 4.0) return 'text-blue font-semibold';
-    if (s2p <= 8.0) return 'text-amber font-bold';
+    if (s2p <= 0.60) return 'text-green font-bold';
     return 'text-red font-bold';
   };
 
@@ -302,14 +300,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       {/* 2. Top Summary KPI Cards */}
       <div className="kpi-grid mt-md">
         <div className="kpi-card">
-          <span className="kpi-label">Average S2P Time</span>
+          <div className="flex-row items-center justify-between flex-wrap gap-xs">
+            <span className="kpi-label">Average S2P Time</span>
+            <span className="kpi-target text-green">Target: ≤ 0.60 min</span>
+          </div>
           <strong
             className={`kpi-value ${
-              (summary?.overallAvgS2p ?? 0) <= 3.0
-                ? 'text-green'
-                : (summary?.overallAvgS2p ?? 0) <= 6.0
-                ? 'text-amber'
-                : 'text-red'
+              (summary?.overallAvgS2p ?? 0) > 0.60 ? 'text-red' : 'text-green'
             }`}
           >
             {loading ? '...' : `${summary?.overallAvgS2p.toFixed(2) ?? '0.00'} min`}
@@ -320,14 +317,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">OTP+3 Performance</span>
+          <div className="flex-row items-center justify-between flex-wrap gap-xs">
+            <span className="kpi-label">OTP+3 Performance</span>
+            <span className="kpi-target text-green">Target: ≥ 98%</span>
+          </div>
           <strong
             className={`kpi-value ${
-              (summary?.overallOtpAchievedPct ?? 0) >= 95
-                ? 'text-green'
-                : (summary?.overallOtpAchievedPct ?? 0) >= 90
-                ? 'text-amber'
-                : 'text-red'
+              (summary?.overallOtpAchievedPct ?? 0) < 98.0 ? 'text-red' : 'text-green'
             }`}
           >
             {loading ? '...' : `${summary?.overallOtpAchievedPct.toFixed(2) ?? '0.00'}%`}
@@ -339,8 +335,15 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">Deliveries Per Hour (DPH)</span>
-          <strong className="kpi-value text-blue">
+          <div className="flex-row items-center justify-between flex-wrap gap-xs">
+            <span className="kpi-label">Deliveries Per Hour (DPH)</span>
+            <span className="kpi-target text-green">Target: ≤ 2.1</span>
+          </div>
+          <strong
+            className={`kpi-value ${
+              (summary?.overallAvgDph ?? 0) > 2.1 ? 'text-red' : 'text-green'
+            }`}
+          >
             {loading ? '...' : summary?.overallAvgDph.toFixed(1) ?? '0.0'}
           </strong>
           <span className="kpi-sub">
@@ -349,7 +352,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">Total Volume & Riders</span>
+          <span className="kpi-label">Total Volume &amp; Riders</span>
           <strong className="kpi-value text-slate">
             {loading ? '...' : `${summary?.overallTotalOrders.toLocaleString() ?? '0'}`}
           </strong>

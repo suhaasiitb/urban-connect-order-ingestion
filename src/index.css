@@ -1265,6 +1265,12 @@ select {
   color: #64748b;
 }
 
+.kpi-target {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .kpi-card-interactive {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
