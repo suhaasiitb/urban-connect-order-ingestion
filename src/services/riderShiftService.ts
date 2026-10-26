@@ -127,7 +127,9 @@ export function calculatePlannedHours(params: {
   slot2StartHour?: number | null;
   slot2EndHour?: number | null;
 }): number {
-  let h1 = params.slot1EndHour - params.slot1StartHour;
+  const s1Start = Number(params.slot1StartHour ?? 0);
+  const s1End = Number(params.slot1EndHour ?? 0);
+  let h1 = s1End - s1Start;
   if (h1 < 0) h1 += 24;
 
   let h2 = 0;
@@ -137,7 +139,9 @@ export function calculatePlannedHours(params: {
     params.slot2EndHour !== undefined &&
     params.slot2EndHour !== null
   ) {
-    h2 = params.slot2EndHour - params.slot2StartHour;
+    const s2Start = Number(params.slot2StartHour);
+    const s2End = Number(params.slot2EndHour);
+    h2 = s2End - s2Start;
     if (h2 < 0) h2 += 24;
   }
 
@@ -164,15 +168,29 @@ export async function getRiderShiftsForStore(
     if (!error && Array.isArray(data) && data.length > 0) {
       for (const row of data) {
         const norm = row.normalized_name || normalizeRiderName(row.rider_name);
+        const s1Start = Number(row.slot1_start_hour ?? 6);
+        const s1End = Number(row.slot1_end_hour ?? 14);
+        const s2Start = row.slot2_start_hour != null ? Number(row.slot2_start_hour) : null;
+        const s2End = row.slot2_end_hour != null ? Number(row.slot2_end_hour) : null;
+        const calcHours = calculatePlannedHours({
+          slot1StartHour: s1Start,
+          slot1EndHour: s1End,
+          slot2StartHour: s2Start,
+          slot2EndHour: s2End,
+        });
+        const totalPlanned = row.total_planned_hours != null && Number(row.total_planned_hours) > 0
+          ? Math.max(Number(row.total_planned_hours), calcHours)
+          : calcHours;
+
         shiftMap.set(norm, {
           riderName: row.rider_name,
           normalizedName: norm,
           shiftType: (row.shift_type as ShiftType) || 'Morning Shift',
-          slot1StartHour: Number(row.slot1_start_hour ?? 6),
-          slot1EndHour: Number(row.slot1_end_hour ?? 14),
-          slot2StartHour: row.slot2_start_hour != null ? Number(row.slot2_start_hour) : null,
-          slot2EndHour: row.slot2_end_hour != null ? Number(row.slot2_end_hour) : null,
-          totalPlannedHours: Number(row.total_planned_hours ?? 8),
+          slot1StartHour: s1Start,
+          slot1EndHour: s1End,
+          slot2StartHour: s2Start,
+          slot2EndHour: s2End,
+          totalPlannedHours: totalPlanned,
           joiningDate: row.joining_date ? String(row.joining_date).slice(0, 10) : null,
         });
       }
@@ -190,7 +208,14 @@ export async function getRiderShiftsForStore(
       if (Array.isArray(parsed)) {
         for (const item of parsed) {
           const norm = item.normalizedName || normalizeRiderName(item.riderName);
-          shiftMap.set(norm, item);
+          const calcHours = calculatePlannedHours(item);
+          const totalPlanned = item.totalPlannedHours != null && Number(item.totalPlannedHours) > 0
+            ? Math.max(Number(item.totalPlannedHours), calcHours)
+            : calcHours;
+          shiftMap.set(norm, {
+            ...item,
+            totalPlannedHours: totalPlanned,
+          });
         }
       }
     }

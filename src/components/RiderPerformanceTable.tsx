@@ -8,6 +8,7 @@ import { normalizeRiderName } from '../services/activeRiderService';
 import {
   type RiderShiftConfig,
   formatShiftTimings,
+  calculatePlannedHours,
 } from '../services/riderShiftService';
 
 interface RiderPerformanceTableProps {
@@ -152,9 +153,13 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           break;
         }
         case 'compliance': {
-          const valA = avgMode === 'period' ? a.avgHours : a.activeAvgHours;
-          const valB = avgMode === 'period' ? b.avgHours : b.activeAvgHours;
-          comparison = valA - valB;
+          const normA = normalizeRiderName(a.riderName);
+          const normB = normalizeRiderName(b.riderName);
+          const shiftA = riderShiftsMap?.get(normA);
+          const shiftB = riderShiftsMap?.get(normB);
+          const hoursA = shiftA ? Math.max(shiftA.totalPlannedHours ?? 0, calculatePlannedHours(shiftA)) : 0;
+          const hoursB = shiftB ? Math.max(shiftB.totalPlannedHours ?? 0, calculatePlannedHours(shiftB)) : 0;
+          comparison = hoursA - hoursB;
           break;
         }
         case 'activeDays':
@@ -182,12 +187,15 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     return result;
   }, [data.rows, searchQuery, activeShiftFilter, sortBy, sortAsc, avgMode, phoneByNameMap, riderShiftsMap]);
 
-  const compliantRidersCount = useMemo(() => {
+  const compliantShiftCount = useMemo(() => {
     return filteredRows.filter((r) => {
-      const val = avgMode === 'period' ? r.avgHours : r.activeAvgHours;
-      return val >= 8.0;
+      const norm = normalizeRiderName(r.riderName);
+      const shift = riderShiftsMap?.get(norm);
+      if (!shift) return false;
+      const hours = Math.max(shift.totalPlannedHours ?? 0, calculatePlannedHours(shift));
+      return hours >= 8.0;
     }).length;
-  }, [filteredRows, avgMode]);
+  }, [filteredRows, riderShiftsMap]);
 
   const totalOrdersSum = useMemo(() => {
     return filteredRows.reduce((sum, r) => sum + r.totalOrders, 0);
@@ -811,7 +819,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   ? activeNamesSet.has(normName)
                   : false;
                 const riderShift = riderShiftsMap?.get(normName);
-                const meets8hTarget = displayHours >= 8.0;
+                const shiftPlannedHours = riderShift
+                  ? Math.max(riderShift.totalPlannedHours ?? 0, calculatePlannedHours(riderShift))
+                  : 0;
+                const meetsShift8hTarget = riderShift ? shiftPlannedHours >= 8.0 : false;
+                const meetsActual8hTarget = displayHours >= 8.0;
 
                 return (
                   <tr key={row.riderName} className="perf-data-row">
@@ -869,24 +881,24 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
 
                     {/* 8-Hour Shift Target Compliance */}
                     <td className="td-compliance text-center">
-                      {displayHours > 0 ? (
-                        meets8hTarget ? (
+                      {riderShift ? (
+                        meetsShift8hTarget ? (
                           <span
                             className="badge-compliance-ok"
-                            title={`Averaging ${displayHours.toFixed(1)}h/day (≥ 8h mandatory target met)`}
+                            title={`Assigned shift planned for ${shiftPlannedHours}h (≥ 8h mandatory target met)`}
                           >
                             ✓ ≥ 8h
                           </span>
                         ) : (
                           <span
                             className="badge-compliance-warn"
-                            title={`Averaging ${displayHours.toFixed(1)}h/day (Below 8h mandatory target)`}
+                            title={`Assigned shift planned for ${shiftPlannedHours}h (Below 8h mandatory target)`}
                           >
                             ⚠ &lt; 8h
                           </span>
                         )
                       ) : (
-                        <span className="cell-dash">—</span>
+                        <span className="cell-dash" title="No shift assigned">—</span>
                       )}
                     </td>
 
@@ -944,7 +956,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     <td className="td-metric td-avg-hours text-center" title={tooltipText}>
                       <div className="avg-hours-wrapper">
                         <div className="avg-val-row">
-                          <strong className={`avg-num-text ${meets8hTarget ? 'val-target-met' : 'val-target-under'}`}>
+                          <strong className={`avg-num-text ${meetsActual8hTarget ? 'val-target-met' : 'val-target-under'}`}>
                             {displayHours > 0 ? displayHours.toFixed(1) : '—'}
                           </strong>
                           {displayHours > 0 && <span className="avg-unit-tag">h/d</span>}
@@ -957,7 +969,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             )}%)`}
                           >
                             <div
-                              className={`mini-progress-fill ${meets8hTarget ? 'fill-target-met' : 'fill-target-under'}`}
+                              className={`mini-progress-fill ${meetsActual8hTarget ? 'fill-target-met' : 'fill-target-under'}`}
                               style={{ width: `${Math.min(100, Math.round((displayHours / 8) * 100))}%` }}
                             />
                           </div>
@@ -993,9 +1005,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 <td className="text-center">—</td>
                 <td className="text-center">
                   <strong className="summary-compliance-rate">
-                    {compliantRidersCount} / {filteredRows.length} (
+                    {compliantShiftCount} / {filteredRows.length} (
                     {filteredRows.length > 0
-                      ? Math.round((compliantRidersCount / filteredRows.length) * 100)
+                      ? Math.round((compliantShiftCount / filteredRows.length) * 100)
                       : 0}
                     %)
                   </strong>
@@ -1036,11 +1048,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
         </div>
         <div className="caption-summary-pill pill-compliance-summary">
           <span>
-            8h Shift Compliance: <strong>{compliantRidersCount} / {filteredRows.length}</strong> riders (
+            8h Shift Target: <strong>{compliantShiftCount} / {filteredRows.length}</strong> riders (
             {filteredRows.length > 0
-              ? Math.round((compliantRidersCount / filteredRows.length) * 100)
+              ? Math.round((compliantShiftCount / filteredRows.length) * 100)
               : 0}
-            %) clocking ≥ 8h daily average.
+            %) with assigned shifts ≥ 8h.
           </span>
         </div>
         <div className="roster-last-updated-pill">

@@ -77,6 +77,34 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
         slot1EndHour: 14,
       })
     ).toBe(5);
+
+    // Morning Shift: 6 AM to 2 PM (8h)
+    expect(
+      calculatePlannedHours({
+        slot1StartHour: 6,
+        slot1EndHour: 14,
+      })
+    ).toBe(8);
+
+    // Split Shift: 8 AM to 3 PM (7h) & 4 PM to 12 AM (8h) = 15h
+    expect(
+      calculatePlannedHours({
+        slot1StartHour: 8,
+        slot1EndHour: 15,
+        slot2StartHour: 16,
+        slot2EndHour: 24,
+      })
+    ).toBe(15);
+
+    // Split Shift wrapping at midnight (slot2EndHour = 0)
+    expect(
+      calculatePlannedHours({
+        slot1StartHour: 8,
+        slot1EndHour: 15,
+        slot2StartHour: 16,
+        slot2EndHour: 0,
+      })
+    ).toBe(15);
   });
 
   it('verifies all standard shift presets fulfill the mandatory 8-hour shift target', () => {
