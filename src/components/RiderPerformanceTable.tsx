@@ -145,6 +145,41 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     }
 
     result.sort((a: RiderPivotRow, b: RiderPivotRow) => {
+      // When Highlight DNR is active, sort riders with DNR cases to the top
+      if (highlightDnr) {
+        const normA = normalizeRiderName(a.riderName);
+        const normB = normalizeRiderName(b.riderName);
+        const dnrA = dnrSummary?.riderSummariesMap.get(normA);
+        const dnB = dnrSummary?.riderSummariesMap.get(normB);
+        const countA = dnrA?.totalDnrCount ?? 0;
+        const countB = dnB?.totalDnrCount ?? 0;
+        const isDnrA = countA > 0;
+        const isDnrB = countB > 0;
+
+        if (isDnrA !== isDnrB) {
+          return isDnrA ? -1 : 1;
+        }
+
+        if (isDnrA && isDnrB) {
+          // Frequent exploiters (2+ DNRs) first
+          const freqA = dnrA?.isFrequentExploiter ? 1 : 0;
+          const freqB = dnB?.isFrequentExploiter ? 1 : 0;
+          if (freqA !== freqB) {
+            return freqB - freqA;
+          }
+          // Genuine delivery failures (Non_abusive) before customer flags
+          const nonAbusiveA = dnrA?.nonAbusiveCount ?? 0;
+          const nonAbusiveB = dnB?.nonAbusiveCount ?? 0;
+          if (nonAbusiveA !== nonAbusiveB) {
+            return nonAbusiveB - nonAbusiveA;
+          }
+          // Higher total DNR count first
+          if (countA !== countB) {
+            return countB - countA;
+          }
+        }
+      }
+
       let comparison = 0;
       switch (sortBy) {
         case 'name':
@@ -199,7 +234,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, activeShiftFilter, sortBy, sortAsc, avgMode, phoneByNameMap, riderShiftsMap, dnrSummary]);
+  }, [data.rows, searchQuery, activeShiftFilter, sortBy, sortAsc, avgMode, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr]);
 
   const compliantShiftCount = useMemo(() => {
     return filteredRows.filter((r) => {
@@ -346,8 +381,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               onClick={() => setHighlightDnr(!highlightDnr)}
               title={
                 highlightDnr
-                  ? 'Click to turn off DNR visual highlights'
-                  : `Highlight riders with DNR records (${dnrSummary?.records.length ?? 0} incidents in ${storeCode})`
+                  ? 'DNR riders sorted to top and highlighted. Click to restore normal sorting'
+                  : `Highlight riders with DNR cases and sort them to the top (${dnrSummary?.records.length ?? 0} incidents in ${storeCode})`
               }
             >
               <span className="btn-dnr-icon">⚠️</span>

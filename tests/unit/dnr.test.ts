@@ -197,4 +197,72 @@ describe('DNR (Delivery Not Received) Service Suite', () => {
       expect(lastUpload.uploadedBy).toBe('Manager');
     });
   });
+
+  describe('6. Highlight DNR Priority Sorting', () => {
+    it('sorts riders with DNR cases to the top with frequent exploiters first', () => {
+      const summary = getDnrSummaryForStore('TPH1');
+
+      // Riders sample
+      const riders = [
+        { riderName: 'Aaron Zebra' }, // No DNR
+        { riderName: 'Nagnath Datta Kokate' }, // 1 DNR (Genuine)
+        { riderName: 'Sehbudi Shekh' }, // 2 DNRs (Frequent Exploiter)
+        { riderName: 'Zachary Apple' }, // No DNR
+      ];
+
+      const sortWithHighlight = (highlight: boolean) => {
+        return [...riders].sort((a, b) => {
+          if (highlight) {
+            const normA = normalizeRiderName(a.riderName);
+            const normB = normalizeRiderName(b.riderName);
+            const dnrA = summary.riderSummariesMap.get(normA);
+            const dnB = summary.riderSummariesMap.get(normB);
+            const countA = dnrA?.totalDnrCount ?? 0;
+            const countB = dnB?.totalDnrCount ?? 0;
+            const isDnrA = countA > 0;
+            const isDnrB = countB > 0;
+
+            if (isDnrA !== isDnrB) {
+              return isDnrA ? -1 : 1;
+            }
+
+            if (isDnrA && isDnrB) {
+              const freqA = dnrA?.isFrequentExploiter ? 1 : 0;
+              const freqB = dnB?.isFrequentExploiter ? 1 : 0;
+              if (freqA !== freqB) {
+                return freqB - freqA;
+              }
+              const nonAbusiveA = dnrA?.nonAbusiveCount ?? 0;
+              const nonAbusiveB = dnB?.nonAbusiveCount ?? 0;
+              if (nonAbusiveA !== nonAbusiveB) {
+                return nonAbusiveB - nonAbusiveA;
+              }
+              if (countA !== countB) {
+                return countB - countA;
+              }
+            }
+          }
+          return a.riderName.localeCompare(b.riderName);
+        });
+      };
+
+      // When highlight is OFF: alphabetical sort
+      const unhighlighted = sortWithHighlight(false);
+      expect(unhighlighted.map((r) => r.riderName)).toEqual([
+        'Aaron Zebra',
+        'Nagnath Datta Kokate',
+        'Sehbudi Shekh',
+        'Zachary Apple',
+      ]);
+
+      // When highlight is ON: Sehbudi Shekh (frequent exploiter) first, then Nagnath, then non-DNR riders
+      const highlighted = sortWithHighlight(true);
+      expect(highlighted.map((r) => r.riderName)).toEqual([
+        'Sehbudi Shekh',
+        'Nagnath Datta Kokate',
+        'Aaron Zebra',
+        'Zachary Apple',
+      ]);
+    });
+  });
 });
