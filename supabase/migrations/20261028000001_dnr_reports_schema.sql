@@ -81,4 +81,41 @@ CREATE POLICY "Allow authenticated modify store_dnr_uploads"
   USING (true)
   WITH CHECK (true);
 
+-- ==============================================================================
+-- Baseline Audit Pre-seed (13 Historical Cases from User Audit File)
+-- ==============================================================================
+INSERT INTO public.store_dnr_records (
+  week, order_date, site_code, dp_id, order_id, rider_name, normalized_name, marked_del_from, abuse_flag, delivery_time, scan_data_delivered
+) VALUES
+  (43, '2026-10-21 00:00', 'TPH1', '1083794', '405-8852180-8267501', 'Sehbudi Shekh', 'sehbudi shekh', 'From App', 'Non_abusive', '2026-10-22 00:12', '0-30m'),
+  (43, '2026-10-18 00:00', 'TPE2', '1121550', '408-1216432-6134753', 'Prathamesh Balasaheb Kadam', 'prathamesh balasaheb kadam', 'From App', 'Potential_abuse', '2026-10-18 10:33', '0-30m'),
+  (43, '2026-10-22 00:00', 'TPH1', '768878', '171-2515326-5568315', 'VISLAVATH ANIL NAIK', 'vislavath anil naik', 'Manual', 'Potential_abuse', '2026-10-22 21:16', '>500m'),
+  (43, '2026-10-22 00:00', 'TMK7', '724190', '408-0582958-9981911', 'Chate Ashok Bharat', 'chate ashok bharat', 'From App', 'Potential_abuse', '2026-10-22 16:09', '0-30m'),
+  (43, '2026-10-19 00:00', 'TPH1', '888547', '404-5173617-4043512', 'Nagnath Datta Kokate', 'nagnath datta kokate', 'From App', 'Non_abusive', '2026-10-19 20:29', '0-30m'),
+  (43, '2026-10-18 00:00', 'TPH1', '1035267', '406-0769305-3459565', 'Ramrao Utthamrao Rathod', 'ramrao utthamrao rathod', 'From App', 'Non_abusive', '2026-10-18 20:16', '0-30m'),
+  (43, '2026-10-19 00:00', 'TPH1', '767944', '406-6156536-1520306', 'Sunil ', 'sunil', 'Manual', 'Non_abusive', '2026-10-19 19:01', '>500m'),
+  (43, '2026-10-18 00:00', 'TMK7', '1067791', '406-3978694-5733940', 'Rider (DP: 1067791)', 'dp:1067791', 'From App', 'Potential_abuse', '2026-10-18 00:12', '50-100m'),
+  (43, '2026-10-19 00:00', 'TPH1', '938424', '404-9709272-3993968', 'Manohar Prabhakar Budhavant', 'manohar prabhakar budhavant', 'From App', 'Potential_abuse', '2026-10-19 14:19', '0-30m'),
+  (43, '2026-10-18 00:00', 'TMK7', '1030709', '407-0286236-8549956', 'HEMANT DHOTRE', 'hemant dhotre', 'From App', 'Potential_abuse', '2026-10-18 19:10', '0-30m'),
+  (43, '2026-10-20 00:00', 'TPH1', '1083794', '171-0205363-5333955', 'Sehbudi Shekh', 'sehbudi shekh', 'From App', 'Non_abusive', '2026-10-20 18:19', '0-30m'),
+  (43, '2026-10-19 00:00', 'TPE2', '1126116', '405-4470710-1402748', 'JETHARAM CHOUDHARY', 'jetharam choudhary', 'From App', 'Non_abusive', '2026-10-19 13:10', '50-100m'),
+  (43, '2026-10-18 00:00', 'TPH1', '875863', '408-5264812-3578756', 'Sushil Kumar Rai', 'sushil kumar rai', 'Manual', 'Non_abusive', '2026-10-18 14:08', '>500m')
+ON CONFLICT (order_id) DO UPDATE SET
+  week = EXCLUDED.week,
+  order_date = EXCLUDED.order_date,
+  site_code = EXCLUDED.site_code,
+  dp_id = EXCLUDED.dp_id,
+  rider_name = EXCLUDED.rider_name,
+  normalized_name = EXCLUDED.normalized_name,
+  marked_del_from = EXCLUDED.marked_del_from,
+  abuse_flag = EXCLUDED.abuse_flag,
+  delivery_time = EXCLUDED.delivery_time,
+  scan_data_delivered = EXCLUDED.scan_data_delivered;
+
+INSERT INTO public.store_dnr_uploads (
+  site_code, filename, total_records, non_abusive_count, potential_abuse_count, uploaded_by
+) VALUES (
+  'ALL', 'Amazon_DNR_Baseline_Audit.xlsx', 13, 7, 6, 'System Pre-seed'
+);
+
 COMMIT;

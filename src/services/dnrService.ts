@@ -720,3 +720,72 @@ export function getDnrSummaryForStore(siteCode: string): StoreDnrSummary {
     records: storeRecords,
   };
 }
+
+/**
+ * Asynchronously synchronizes DNR records from Supabase and returns the up-to-date StoreDnrSummary.
+ * Merges Supabase records into the local storage cache so analytics are persistent across all devices.
+ */
+export async function fetchDnrSummaryForStore(siteCode: string): Promise<StoreDnrSummary> {
+  const normSite = siteCode.trim().toUpperCase();
+
+  try {
+    const { data: dbRecords, error: recErr } = await supabase
+      .from('store_dnr_records')
+      .select('*')
+      .order('uploaded_at', { ascending: false });
+
+    if (!recErr && dbRecords && dbRecords.length > 0) {
+      const mapped: DnrRecord[] = dbRecords.map((r: Record<string, unknown>) => ({
+        id: String(r.id ?? ''),
+        week: r.week != null ? String(r.week) : undefined,
+        orderDate: r.order_date != null ? String(r.order_date) : undefined,
+        siteCode: String(r.site_code || '').toUpperCase(),
+        dpId: r.dp_id != null ? String(r.dp_id) : undefined,
+        orderId: String(r.order_id ?? ''),
+        riderName: r.rider_name != null ? String(r.rider_name) : (r.dp_id ? `Rider (DP: ${r.dp_id})` : 'Unassigned Rider'),
+        normalizedRiderName: r.normalized_name != null ? String(r.normalized_name) : normalizeRiderName(r.rider_name as string),
+        markedDelFrom: r.marked_del_from != null ? String(r.marked_del_from) : undefined,
+        abuseFlag: (r.abuse_flag === 'Potential_abuse' ? 'Potential_abuse' : 'Non_abusive') as DnrAbuseFlag,
+        deliveryTime: r.delivery_time != null ? String(r.delivery_time) : undefined,
+        scanDataDelivered: r.scan_data_delivered != null ? String(r.scan_data_delivered) : undefined,
+        uploadedAt: r.uploaded_at != null ? String(r.uploaded_at) : undefined,
+      }));
+
+      // Merge into master records in localStorage
+      const master = getAllMasterDnrRecords();
+      const map = new Map<string, DnrRecord>();
+      for (const m of master) map.set(m.orderId, m);
+      for (const m of mapped) map.set(m.orderId, m);
+      const merged = Array.from(map.values());
+      localStorage.setItem(LOCAL_STORAGE_DNR_MASTER_KEY, JSON.stringify(merged));
+
+      // Fetch latest upload metadata
+      const { data: uploadLog } = await supabase
+        .from('store_dnr_uploads')
+        .select('*')
+        .order('uploaded_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (uploadLog) {
+        localStorage.setItem(
+          LOCAL_STORAGE_DNR_LAST_UPLOAD_KEY,
+          JSON.stringify({
+            filename: uploadLog.filename,
+            uploadedAt: uploadLog.uploaded_at,
+            totalRecords: uploadLog.total_records,
+            nonAbusiveCount: uploadLog.non_abusive_count,
+            potentialAbuseCount: uploadLog.potential_abuse_count,
+            uploadedBy: uploadLog.uploaded_by,
+            siteCode: uploadLog.site_code,
+          })
+        );
+      }
+    }
+  } catch (err) {
+    console.warn('Supabase store_dnr_records sync note (using local cache):', err);
+  }
+
+  return getDnrSummaryForStore(normSite);
+}
+

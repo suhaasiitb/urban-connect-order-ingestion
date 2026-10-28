@@ -136,6 +136,14 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           const dnr = dnrSummary?.riderSummariesMap.get(norm);
           return Boolean(dnr && dnr.totalDnrCount > 0);
         }
+        if (activeShiftFilter === 'DNR_NON_ABUSIVE') {
+          const dnr = dnrSummary?.riderSummariesMap.get(norm);
+          return Boolean(dnr && dnr.nonAbusiveCount > 0);
+        }
+        if (activeShiftFilter === 'DNR_POTENTIAL_ABUSE') {
+          const dnr = dnrSummary?.riderSummariesMap.get(norm);
+          return Boolean(dnr && dnr.potentialAbuseCount > 0);
+        }
         if (activeShiftFilter === 'DNR_FREQUENT') {
           const dnr = dnrSummary?.riderSummariesMap.get(norm);
           return Boolean(dnr && dnr.isFrequentExploiter);
@@ -167,7 +175,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           if (freqA !== freqB) {
             return freqB - freqA;
           }
-          // Genuine delivery failures (Non_abusive) before customer flags
+          // Non_abusive before Potential_abuse
           const nonAbusiveA = dnrA?.nonAbusiveCount ?? 0;
           const nonAbusiveB = dnB?.nonAbusiveCount ?? 0;
           if (nonAbusiveA !== nonAbusiveB) {
@@ -245,6 +253,24 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
       return hours >= 8.0;
     }).length;
   }, [filteredRows, riderShiftsMap]);
+
+  const ridersWithNonAbusiveCount = useMemo(() => {
+    if (!dnrSummary) return 0;
+    let count = 0;
+    for (const s of dnrSummary.riderSummariesMap.values()) {
+      if (s.nonAbusiveCount > 0) count++;
+    }
+    return count;
+  }, [dnrSummary]);
+
+  const ridersWithPotentialAbuseCount = useMemo(() => {
+    if (!dnrSummary) return 0;
+    let count = 0;
+    for (const s of dnrSummary.riderSummariesMap.values()) {
+      if (s.potentialAbuseCount > 0) count++;
+    }
+    return count;
+  }, [dnrSummary]);
 
   const totalOrdersSum = useMemo(() => {
     return filteredRows.reduce((sum, r) => sum + r.totalOrders, 0);
@@ -357,7 +383,13 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 {dnrSummary && dnrSummary.totalRidersAffected > 0 && (
                   <>
                     <option value="DNR_ONLY">
-                      ⚠️ Riders with DNR ({dnrSummary.totalRidersAffected})
+                      ⚠️ All DNR ({dnrSummary.totalRidersAffected})
+                    </option>
+                    <option value="DNR_NON_ABUSIVE">
+                      ⚠️ Non_abusive ({ridersWithNonAbusiveCount})
+                    </option>
+                    <option value="DNR_POTENTIAL_ABUSE">
+                      ⚠️ Potential_abuse ({ridersWithPotentialAbuseCount})
                     </option>
                     <option value="DNR_FREQUENT">
                       🚨 Frequent DNR ({dnrSummary.frequentExploitersCount})
@@ -932,31 +964,35 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             <strong className="rider-name-text" title={row.riderName}>
                               {row.riderName}
                             </strong>
-                            {/* Visual Cue for DNR exploitation */}
+                            {/* Visual Cue for DNR tracking both Non_abusive and Potential_abuse with counts */}
                             {riderDnr && riderDnr.totalDnrCount > 0 && (
-                              isFrequentExploiter ? (
-                                <span
-                                  className="badge-dnr badge-dnr-frequent"
-                                  title={`🚨 FREQUENT DNR EXPLOITER!\nTotal DNR cases: ${riderDnr.totalDnrCount} (${riderDnr.nonAbusiveCount} Genuine Rider Failures, ${riderDnr.potentialAbuseCount} Customer Abuse Flags)\nOrders:\n${riderDnr.records.map((r) => `• ${r.orderId} (${r.abuseFlag === 'Non_abusive' ? 'Genuine Failure' : 'Customer Flag'}, ${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
-                                >
-                                  <span className="dnr-flame">🚨</span>
-                                  <span>Frequent DNR ({riderDnr.totalDnrCount})</span>
-                                </span>
-                              ) : riderDnr.nonAbusiveCount > 0 ? (
-                                <span
-                                  className="badge-dnr badge-dnr-genuine"
-                                  title={`⚠️ GENUINE DELIVERY FAILURE (Rider Fault)\nTotal DNR cases: ${riderDnr.totalDnrCount}\nOrders:\n${riderDnr.records.map((r) => `• ${r.orderId} (Genuine Failure, ${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
-                                >
-                                  ⚠️ {riderDnr.totalDnrCount} DNR (Genuine)
-                                </span>
-                              ) : (
-                                <span
-                                  className="badge-dnr badge-dnr-suspect"
-                                  title={`ℹ️ CUSTOMER ABUSE FLAGGED (Potential Customer Abuse)\nTotal DNR cases: ${riderDnr.totalDnrCount}\nOrders:\n${riderDnr.records.map((r) => `• ${r.orderId} (Customer Flag, ${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
-                                >
-                                  ℹ️ {riderDnr.totalDnrCount} DNR (Cust. Flag)
-                                </span>
-                              )
+                              <div className="dnr-badges-wrapper flex-row items-center gap-xs">
+                                {isFrequentExploiter && (
+                                  <span
+                                    className="badge-dnr badge-dnr-frequent"
+                                    title={`🚨 Frequent DNR Exploit (${riderDnr.totalDnrCount} total cases)`}
+                                  >
+                                    <span className="dnr-flame">🚨</span>
+                                    <span>Frequent DNR</span>
+                                  </span>
+                                )}
+                                {riderDnr.nonAbusiveCount > 0 && (
+                                  <span
+                                    className="badge-dnr badge-dnr-non-abusive"
+                                    title={`Non_abusive: ${riderDnr.nonAbusiveCount} cases\nOrders:\n${riderDnr.records.filter((r) => r.abuseFlag === 'Non_abusive').map((r) => `• ${r.orderId} (${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
+                                  >
+                                    ⚠️ Non_abusive: {riderDnr.nonAbusiveCount}
+                                  </span>
+                                )}
+                                {riderDnr.potentialAbuseCount > 0 && (
+                                  <span
+                                    className="badge-dnr badge-dnr-potential-abuse"
+                                    title={`Potential_abuse: ${riderDnr.potentialAbuseCount} cases\nOrders:\n${riderDnr.records.filter((r) => r.abuseFlag === 'Potential_abuse').map((r) => `• ${r.orderId} (${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
+                                  >
+                                    ℹ️ Potential_abuse: {riderDnr.potentialAbuseCount}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                           {riderPhone ? (
@@ -1183,8 +1219,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           <div className="caption-summary-pill pill-dnr-summary">
             <span>
               ⚠️ DNR Tracking: <strong>{dnrSummary.totalRecords}</strong> cases (
-              <span className="text-danger font-semibold">{dnrSummary.totalNonAbusive} genuine</span>,{' '}
-              <span className="text-blue font-semibold">{dnrSummary.totalPotentialAbuse} customer flags</span>) across{' '}
+              <span className="text-danger font-semibold">Non_abusive: {dnrSummary.totalNonAbusive}</span>,{' '}
+              <span className="text-blue font-semibold">Potential_abuse: {dnrSummary.totalPotentialAbuse}</span>) across{' '}
               <strong>{dnrSummary.totalRidersAffected}</strong> riders
               {dnrSummary.frequentExploitersCount > 0 && (
                 <> • <strong className="text-danger">🚨 {dnrSummary.frequentExploitersCount} Frequent Exploiters</strong></>

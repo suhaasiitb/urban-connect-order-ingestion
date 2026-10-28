@@ -19,6 +19,7 @@ import {
 import {
   type StoreDnrSummary,
   getDnrSummaryForStore,
+  fetchDnrSummaryForStore,
 } from '../services/dnrService';
 import {
   type NewRiderOnboardingSummary,
@@ -111,8 +112,11 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   const loadDnr = useCallback(async () => {
     if (!selectedStore) return;
     try {
-      const summary = getDnrSummaryForStore(selectedStore.store_code);
-      setDnrSummary(summary);
+      // 1. Instant local display
+      setDnrSummary(getDnrSummaryForStore(selectedStore.store_code));
+      // 2. Background sync with Supabase PostgreSQL
+      const remote = await fetchDnrSummaryForStore(selectedStore.store_code);
+      setDnrSummary(remote);
     } catch (err) {
       console.warn('Could not load DNR summary in analytics:', err);
     }

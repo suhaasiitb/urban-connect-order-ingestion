@@ -22,6 +22,7 @@ import {
   type DnrParseResult,
   type StoreDnrSummary,
   getDnrSummaryForStore,
+  fetchDnrSummaryForStore,
   parseDnrFile,
   saveDnrRecords,
 } from '../services/dnrService';
@@ -130,8 +131,11 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     if (!selectedStore) return;
     setLoadingDnr(true);
     try {
-      const summary = getDnrSummaryForStore(selectedStore.store_code);
-      setDnrSummary(summary);
+      // 1. Instant local display
+      setDnrSummary(getDnrSummaryForStore(selectedStore.store_code));
+      // 2. Background sync with Supabase PostgreSQL
+      const remote = await fetchDnrSummaryForStore(selectedStore.store_code);
+      setDnrSummary(remote);
     } finally {
       setLoadingDnr(false);
     }
@@ -538,7 +542,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                   ? `Upload the daily orders file (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}.`
                   : uploadType === 'riders'
                   ? `Upload active riders list (.csv) for ${selectedStore?.store_code ?? 'store'} to mark Active (Yes/No).`
-                  : `Upload DNR incident report (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'} to track genuine delivery failures vs customer abuse.`}
+                  : `Upload DNR incident report (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'} to track Non_abusive and Potential_abuse cases.`}
               </p>
             </div>
           </div>
@@ -637,8 +641,8 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                     <>
                       Currently tracking <strong>{dnrSummary.totalRecords} DNR cases</strong> across{' '}
                       <strong>{dnrSummary.totalRidersAffected} riders</strong> (
-                      <span className="text-danger font-semibold">{dnrSummary.totalNonAbusive} genuine rider failures</span>,{' '}
-                      <span className="text-blue font-semibold">{dnrSummary.totalPotentialAbuse} customer abuse flags</span>).{' '}
+                      <span className="text-danger font-semibold">Non_abusive: {dnrSummary.totalNonAbusive}</span>,{' '}
+                      <span className="text-blue font-semibold">Potential_abuse: {dnrSummary.totalPotentialAbuse}</span>).{' '}
                       {dnrSummary.frequentExploitersCount > 0 && (
                         <span className="dnr-exploiter-alert">
                           🚨 <strong>{dnrSummary.frequentExploitersCount} frequent exploiter(s)</strong> detected with multiple DNRs.{' '}
@@ -650,7 +654,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                       )}.
                     </>
                   ) : (
-                    'No DNR records found for this store. Upload a DNR report (.csv or .xlsx) to flag rider delivery failures and suspected customer abuse.'
+                    'No DNR records found for this store. Upload a DNR report (.csv or .xlsx) with abuse_flag (Non_abusive / Potential_abuse).'
                   )}
                 </p>
               </div>

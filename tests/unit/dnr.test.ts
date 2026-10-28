@@ -51,7 +51,7 @@ describe('DNR (Delivery Not Received) Service Suite', () => {
       expect(byStore.TPE2).toBe(2);
     });
 
-    it('identifies Sehbudi Shekh as a frequent exploiter with 2 genuine non-abusive delivery failures', () => {
+    it('identifies Sehbudi Shekh as a frequent exploiter with 2 Non_abusive delivery cases', () => {
       const sehbudiCases = INITIAL_SEED_DNR_RECORDS.filter(
         (r) => normalizeRiderName(r.riderName) === 'sehbudi shekh'
       );
@@ -101,7 +101,7 @@ describe('DNR (Delivery Not Received) Service Suite', () => {
       expect(chate?.potentialAbuseCount).toBe(1);
     });
 
-    it('aggregates TPE2 store summary correctly with 1 genuine failure and 1 customer abuse flag', () => {
+    it('aggregates TPE2 store summary correctly with 1 Non_abusive case and 1 Potential_abuse case', () => {
       const summary = getDnrSummaryForStore('TPE2');
       expect(summary.siteCode).toBe('TPE2');
       expect(summary.totalRecords).toBe(2);
@@ -205,7 +205,7 @@ describe('DNR (Delivery Not Received) Service Suite', () => {
       // Riders sample
       const riders = [
         { riderName: 'Aaron Zebra' }, // No DNR
-        { riderName: 'Nagnath Datta Kokate' }, // 1 DNR (Genuine)
+        { riderName: 'Nagnath Datta Kokate' }, // 1 DNR (Non_abusive)
         { riderName: 'Sehbudi Shekh' }, // 2 DNRs (Frequent Exploiter)
         { riderName: 'Zachary Apple' }, // No DNR
       ];

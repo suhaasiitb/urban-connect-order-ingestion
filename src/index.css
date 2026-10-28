@@ -3977,18 +3977,27 @@ select {
   line-height: 1;
 }
 
-/* Genuine Delivery Failure (Rider Fault) */
+/* Non_abusive (Delivery Not Received) */
+.badge-dnr-non-abusive,
 .badge-dnr-genuine {
   background-color: #ffedd5;
   color: #c2410c;
   border: 1px solid #fdba74;
 }
 
-/* Suspected Customer Abuse / Fraudulent Claim */
+/* Potential_abuse (Customer Abuse Flagged) */
+.badge-dnr-potential-abuse,
 .badge-dnr-suspect {
   background-color: #eff6ff;
   color: #1d4ed8;
   border: 1px solid #bfdbfe;
+}
+
+.dnr-badges-wrapper {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
 }
 
 /* Row Highlight Styling when DNR Toggle is Active */

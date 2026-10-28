@@ -430,12 +430,12 @@ export const DnrConfirmModal: React.FC<DnrConfirmModalProps> = ({
               <span className="confirm-value font-bold text-amber">{totalRecords} cases</span>
             </div>
             <div className="confirm-row">
-              <span className="confirm-label">Genuine Non-Delivery (Rider):</span>
-              <span className="confirm-value font-semibold text-danger">{nonAbusiveCount} cases (Non_abusive)</span>
+              <span className="confirm-label">Non_abusive:</span>
+              <span className="confirm-value font-semibold text-danger">{nonAbusiveCount} cases</span>
             </div>
             <div className="confirm-row">
-              <span className="confirm-label">Customer Abuse Flagged:</span>
-              <span className="confirm-value font-semibold text-blue">{potentialAbuseCount} cases (Potential_abuse)</span>
+              <span className="confirm-label">Potential_abuse:</span>
+              <span className="confirm-value font-semibold text-blue">{potentialAbuseCount} cases</span>
             </div>
           </div>
 
@@ -464,7 +464,7 @@ export const DnrConfirmModal: React.FC<DnrConfirmModalProps> = ({
                         rec.abuseFlag === 'Non_abusive' ? 'badge-danger' : 'badge-info'
                       }`}
                     >
-                      {rec.abuseFlag === 'Non_abusive' ? 'Genuine Failure' : 'Customer Abuse'}
+                      {rec.abuseFlag}
                     </span>
                     {rec.scanDataDelivered && (
                       <span className="badge badge-secondary">{rec.scanDataDelivered}</span>
@@ -476,7 +476,7 @@ export const DnrConfirmModal: React.FC<DnrConfirmModalProps> = ({
           </div>
 
           <p className="confirm-prompt-text">
-            Ingesting this DNR report will update the <strong>DNR exploitation cues</strong> and <strong>abuse flags</strong> across Rider Analytics.
+            Ingesting this DNR report will update the <strong>Non_abusive</strong> and <strong>Potential_abuse</strong> tracking across Rider Analytics.
           </p>
         </div>
 
@@ -520,7 +520,7 @@ export const DnrSuccessModal: React.FC<DnrSuccessModalProps> = ({
           <div className="success-icon-circle">✓</div>
           <h2 className="success-title">DNR Report Ingested Successfully!</h2>
           <p className="success-subtitle">
-            Recorded <strong>{totalRecords} DNR cases</strong> ({nonAbusiveCount} genuine failures, {potentialAbuseCount} customer flags).
+            Recorded <strong>{totalRecords} DNR cases</strong> (Non_abusive: {nonAbusiveCount}, Potential_abuse: {potentialAbuseCount}).
           </p>
           <p className="batch-id-note">
             Target Store: <strong>{storeCode}</strong> • Last Updated: <strong>{lastUpdatedFormatted}</strong>
