@@ -17,6 +17,10 @@ import {
   saveRiderShiftsForStore,
 } from '../services/riderShiftService';
 import {
+  type StoreDnrSummary,
+  getDnrSummaryForStore,
+} from '../services/dnrService';
+import {
   type NewRiderOnboardingSummary,
   fetchNewRiderOnboardingAnalytics,
 } from '../services/newRiderOnboardingService';
@@ -63,6 +67,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   const [activeRoster, setActiveRoster] = useState<ActiveRosterSummary | null>(null);
   const [riderShiftsMap, setRiderShiftsMap] = useState<Map<string, RiderShiftConfig>>(new Map());
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+  const [dnrSummary, setDnrSummary] = useState<StoreDnrSummary | null>(null);
 
   // Compute number of riders with < 6 hrs average login time on active working days
   const under6hCount = React.useMemo(() => {
@@ -102,10 +107,22 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     }
   }, [selectedStore]);
 
+  // Load DNR Summary for store
+  const loadDnr = useCallback(async () => {
+    if (!selectedStore) return;
+    try {
+      const summary = getDnrSummaryForStore(selectedStore.store_code);
+      setDnrSummary(summary);
+    } catch (err) {
+      console.warn('Could not load DNR summary in analytics:', err);
+    }
+  }, [selectedStore]);
+
   useEffect(() => {
     void loadRoster();
     void loadShifts();
-  }, [loadRoster, loadShifts]);
+    void loadDnr();
+  }, [loadRoster, loadShifts, loadDnr]);
 
   // Load Rider Performance Pivot
   const loadRiderPivot = useCallback(async () => {
@@ -399,11 +416,13 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                   void loadRiderPivot();
                   void loadRoster();
                   void loadShifts();
+                  void loadDnr();
                   void loadOnboarding();
                 }}
                 activeNamesSet={activeRoster?.activeNamesSet}
                 phoneByNameMap={activeRoster?.phoneByNameMap}
                 riderShiftsMap={riderShiftsMap}
+                dnrSummary={dnrSummary}
                 onOpenShiftModal={() => setIsShiftModalOpen(true)}
                 rosterLastUpdated={activeRoster?.lastUpdatedFormatted}
                 rosterTotalCount={activeRoster?.totalRiders}

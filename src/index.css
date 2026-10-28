@@ -3877,6 +3877,211 @@ select {
   z-index: 10;
 }
 
+/* ==============================================================================
+   DNR (Delivery Not Received) Feature Styles
+   ============================================================================== */
+
+/* DNR Highlight Toggle Button */
+.btn-dnr-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+  background-color: #ffffff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.btn-dnr-toggle:hover {
+  background-color: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.btn-dnr-toggle-active {
+  background-color: #fef3c7 !important;
+  color: #92400e !important;
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+.btn-dnr-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.badge-dnr-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f59e0b;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+}
+
+.btn-dnr-toggle-active .badge-dnr-pill {
+  background: #b45309;
+}
+
+/* Visual Cue Badges in Table Rows */
+.badge-dnr {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  line-height: 1.2;
+  cursor: help;
+  transition: transform 0.1s ease;
+}
+
+.badge-dnr:hover {
+  transform: translateY(-1px);
+}
+
+/* Frequent Exploiter: High-visibility warning badge */
+.badge-dnr-frequent {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #f87171;
+  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.15);
+  animation: dnr-subtle-pulse 2.5s infinite;
+}
+
+@keyframes dnr-subtle-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+  }
+}
+
+.dnr-flame {
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+/* Genuine Delivery Failure (Rider Fault) */
+.badge-dnr-genuine {
+  background-color: #ffedd5;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+}
+
+/* Suspected Customer Abuse / Fraudulent Claim */
+.badge-dnr-suspect {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+/* Row Highlight Styling when DNR Toggle is Active */
+.row-dnr-highlight {
+  background-color: #fffbeb !important;
+  border-left: 3px solid #f59e0b !important;
+}
+
+.row-dnr-highlight.row-dnr-frequent {
+  background-color: #fef2f2 !important;
+  border-left: 4px solid #ef4444 !important;
+}
+
+.row-dnr-highlight .td-rider-name {
+  background-color: #fffbeb !important;
+}
+
+.row-dnr-highlight.row-dnr-frequent .td-rider-name {
+  background-color: #fef2f2 !important;
+}
+
+/* DNR Status Banner in Data Ingestion */
+.dnr-status-banner {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+}
+
+.dnr-icon-box {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border: 1px solid #fde68a !important;
+}
+
+.dnr-exploiter-alert {
+  display: inline;
+  color: #991b1b;
+  font-weight: 600;
+  margin-left: 0.35rem;
+}
+
+.mode-pill-badge-warning {
+  background-color: #f59e0b !important;
+  color: #ffffff !important;
+}
+
+.pill-dnr-summary {
+  background-color: #fef3c7 !important;
+  color: #92400e !important;
+  border: 1px solid #fde68a !important;
+}
+
+.dnr-sample-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.dnr-sample-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.dnr-sample-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dnr-sample-order {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.dnr-sample-rider {
+  color: #0f172a;
+}
+
+.dnr-sample-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+
 
 
 

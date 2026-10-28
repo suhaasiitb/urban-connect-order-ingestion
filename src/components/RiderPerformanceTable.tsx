@@ -11,6 +11,7 @@ import {
   calculatePlannedHours,
   classifyShiftType,
 } from '../services/riderShiftService';
+import type { StoreDnrSummary } from '../services/dnrService';
 
 interface RiderPerformanceTableProps {
   data: RiderPerformancePivotResult;
@@ -26,6 +27,7 @@ interface RiderPerformanceTableProps {
   activeNamesSet?: Set<string>;
   phoneByNameMap?: Map<string, string>;
   riderShiftsMap?: Map<string, RiderShiftConfig>;
+  dnrSummary?: StoreDnrSummary | null;
   onOpenShiftModal?: () => void;
   rosterLastUpdated?: string | null;
   rosterTotalCount?: number;
@@ -47,6 +49,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   activeNamesSet,
   phoneByNameMap,
   riderShiftsMap,
+  dnrSummary,
   onOpenShiftModal,
   rosterLastUpdated,
   rosterTotalCount = 0,
@@ -60,6 +63,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     setInternalShiftFilter(newVal);
     onSelectShiftFilter?.(newVal);
   };
+  const [highlightDnr, setHighlightDnr] = useState<boolean>(false);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<
     'name' | 'phone' | 'shift' | 'compliance' | 'activeDays' | 'avgOrders' | 'avgHours' | 'totalOrders'
@@ -128,6 +132,14 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
         if (activeShiftFilter === 'NOT_SET') {
           return !shift;
         }
+        if (activeShiftFilter === 'DNR_ONLY') {
+          const dnr = dnrSummary?.riderSummariesMap.get(norm);
+          return Boolean(dnr && dnr.totalDnrCount > 0);
+        }
+        if (activeShiftFilter === 'DNR_FREQUENT') {
+          const dnr = dnrSummary?.riderSummariesMap.get(norm);
+          return Boolean(dnr && dnr.isFrequentExploiter);
+        }
         return effectiveType === activeShiftFilter;
       });
     }
@@ -187,7 +199,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, activeShiftFilter, sortBy, sortAsc, avgMode, phoneByNameMap, riderShiftsMap]);
+  }, [data.rows, searchQuery, activeShiftFilter, sortBy, sortAsc, avgMode, phoneByNameMap, riderShiftsMap, dnrSummary]);
 
   const compliantShiftCount = useMemo(() => {
     return filteredRows.filter((r) => {
@@ -307,6 +319,16 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 <option value="UNDER_8H">⚠ Clocking &lt; 8h</option>
                 <option value="UNDER_6H">⚠ Clocking &lt; 6h</option>
                 <option value="NOT_SET">Not Assigned</option>
+                {dnrSummary && dnrSummary.totalRidersAffected > 0 && (
+                  <>
+                    <option value="DNR_ONLY">
+                      ⚠️ Riders with DNR ({dnrSummary.totalRidersAffected})
+                    </option>
+                    <option value="DNR_FREQUENT">
+                      🚨 Frequent DNR ({dnrSummary.frequentExploitersCount})
+                    </option>
+                  </>
+                )}
               </select>
               <span className="select-chevron" aria-hidden="true">
                 <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -314,6 +336,28 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 </svg>
               </span>
             </div>
+          </div>
+
+          {/* DNR Highlight Toggle Button */}
+          <div className="perf-filter-group">
+            <button
+              type="button"
+              className={`btn-dnr-toggle ${highlightDnr ? 'btn-dnr-toggle-active' : ''}`}
+              onClick={() => setHighlightDnr(!highlightDnr)}
+              title={
+                highlightDnr
+                  ? 'Click to turn off DNR visual highlights'
+                  : `Highlight riders with DNR records (${dnrSummary?.records.length ?? 0} incidents in ${storeCode})`
+              }
+            >
+              <span className="btn-dnr-icon">⚠️</span>
+              <span>Highlight DNR</span>
+              {dnrSummary && dnrSummary.totalRidersAffected > 0 && (
+                <span className="badge-dnr-pill">
+                  {dnrSummary.totalRidersAffected}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Inline Custom Range Inputs when Custom is Selected */}
@@ -827,8 +871,21 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 const meetsShift8hTarget = riderShift ? shiftPlannedHours >= 8.0 : false;
                 const meetsActual8hTarget = displayHours >= 8.0;
 
+                const riderDnr = dnrSummary?.riderSummariesMap.get(normName);
+                const hasDnr = Boolean(riderDnr && riderDnr.totalDnrCount > 0);
+                const isFrequentExploiter = Boolean(riderDnr?.isFrequentExploiter);
+
                 return (
-                  <tr key={row.riderName} className="perf-data-row">
+                  <tr
+                    key={row.riderName}
+                    className={`perf-data-row ${
+                      highlightDnr && hasDnr
+                        ? isFrequentExploiter
+                          ? 'row-dnr-highlight row-dnr-frequent'
+                          : 'row-dnr-highlight'
+                        : ''
+                    }`}
+                  >
                     {/* Sticky Rider Name & Stacked Phone Number */}
                     <td className="td-rider-name sticky-col text-left">
                       <div className="rider-cell-content">
@@ -836,9 +893,37 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                           {getInitials(row.riderName)}
                         </span>
                         <div className="rider-info-stacked">
-                          <strong className="rider-name-text" title={row.riderName}>
-                            {row.riderName}
-                          </strong>
+                          <div className="rider-name-row flex-row items-center gap-xs">
+                            <strong className="rider-name-text" title={row.riderName}>
+                              {row.riderName}
+                            </strong>
+                            {/* Visual Cue for DNR exploitation */}
+                            {riderDnr && riderDnr.totalDnrCount > 0 && (
+                              isFrequentExploiter ? (
+                                <span
+                                  className="badge-dnr badge-dnr-frequent"
+                                  title={`🚨 FREQUENT DNR EXPLOITER!\nTotal DNR cases: ${riderDnr.totalDnrCount} (${riderDnr.nonAbusiveCount} Genuine Rider Failures, ${riderDnr.potentialAbuseCount} Customer Abuse Flags)\nOrders:\n${riderDnr.records.map((r) => `• ${r.orderId} (${r.abuseFlag === 'Non_abusive' ? 'Genuine Failure' : 'Customer Flag'}, ${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
+                                >
+                                  <span className="dnr-flame">🚨</span>
+                                  <span>Frequent DNR ({riderDnr.totalDnrCount})</span>
+                                </span>
+                              ) : riderDnr.nonAbusiveCount > 0 ? (
+                                <span
+                                  className="badge-dnr badge-dnr-genuine"
+                                  title={`⚠️ GENUINE DELIVERY FAILURE (Rider Fault)\nTotal DNR cases: ${riderDnr.totalDnrCount}\nOrders:\n${riderDnr.records.map((r) => `• ${r.orderId} (Genuine Failure, ${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
+                                >
+                                  ⚠️ {riderDnr.totalDnrCount} DNR (Genuine)
+                                </span>
+                              ) : (
+                                <span
+                                  className="badge-dnr badge-dnr-suspect"
+                                  title={`ℹ️ CUSTOMER ABUSE FLAGGED (Potential Customer Abuse)\nTotal DNR cases: ${riderDnr.totalDnrCount}\nOrders:\n${riderDnr.records.map((r) => `• ${r.orderId} (Customer Flag, ${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
+                                >
+                                  ℹ️ {riderDnr.totalDnrCount} DNR (Cust. Flag)
+                                </span>
+                              )
+                            )}
+                          </div>
                           {riderPhone ? (
                             <span className="rider-phone-sub" title={`Phone: ${riderPhone}`}>
                               {riderPhone}
@@ -1059,6 +1144,19 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
             %) with assigned shifts ≥ 8h.
           </span>
         </div>
+        {dnrSummary && dnrSummary.totalRecords > 0 && (
+          <div className="caption-summary-pill pill-dnr-summary">
+            <span>
+              ⚠️ DNR Tracking: <strong>{dnrSummary.totalRecords}</strong> cases (
+              <span className="text-danger font-semibold">{dnrSummary.totalNonAbusive} genuine</span>,{' '}
+              <span className="text-blue font-semibold">{dnrSummary.totalPotentialAbuse} customer flags</span>) across{' '}
+              <strong>{dnrSummary.totalRidersAffected}</strong> riders
+              {dnrSummary.frequentExploitersCount > 0 && (
+                <> • <strong className="text-danger">🚨 {dnrSummary.frequentExploitersCount} Frequent Exploiters</strong></>
+              )}.
+            </span>
+          </div>
+        )}
         <div className="roster-last-updated-pill">
           <span className={`roster-dot ${rosterLastUpdated ? 'dot-active' : 'dot-none'}`} />
           <span>

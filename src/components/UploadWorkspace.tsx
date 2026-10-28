@@ -18,8 +18,17 @@ import {
   parseActiveRidersFile,
   saveActiveRidersRoster,
 } from '../services/activeRiderService';
+import {
+  type DnrParseResult,
+  type StoreDnrSummary,
+  getDnrSummaryForStore,
+  parseDnrFile,
+  saveDnrRecords,
+} from '../services/dnrService';
 import { StoreCalendarView } from './StoreCalendarView';
 import {
+  DnrConfirmModal,
+  DnrSuccessModal,
   RosterConfirmModal,
   RosterSuccessModal,
   UploadConfirmModal,
@@ -47,8 +56,8 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [parsingFile, setParsingFile] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Upload Mode: 'orders' (Daily Store Orders) vs 'riders' (Active Riders Roster)
-  const [uploadType, setUploadType] = useState<'orders' | 'riders'>('orders');
+  // Upload Mode: 'orders' (Daily Store Orders) vs 'riders' (Active Riders Roster) vs 'dnr' (DNR Reports)
+  const [uploadType, setUploadType] = useState<'orders' | 'riders' | 'dnr'>('orders');
 
   // 30-Day Ingestion Coverage
   const [coverage, setCoverage] = useState<StoreCoverageSummary | null>(null);
@@ -62,6 +71,14 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [showRosterConfirm, setShowRosterConfirm] = useState(false);
   const [showRosterSuccess, setShowRosterSuccess] = useState(false);
   const [isSavingRoster, setIsSavingRoster] = useState(false);
+
+  // DNR Reports state
+  const [dnrSummary, setDnrSummary] = useState<StoreDnrSummary | null>(null);
+  const [loadingDnr, setLoadingDnr] = useState(false);
+  const [dnrParseResult, setDnrParseResult] = useState<DnrParseResult | null>(null);
+  const [showDnrConfirm, setShowDnrConfirm] = useState(false);
+  const [showDnrSuccess, setShowDnrSuccess] = useState(false);
+  const [isSavingDnr, setIsSavingDnr] = useState(false);
 
   // Validation & Modal states for Orders
   const [validationResult, setValidationResult] =
@@ -108,10 +125,23 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     }
   }, [selectedStore]);
 
+  // Load DNR cases summary when selected store changes
+  const loadDnr = useCallback(async () => {
+    if (!selectedStore) return;
+    setLoadingDnr(true);
+    try {
+      const summary = getDnrSummaryForStore(selectedStore.store_code);
+      setDnrSummary(summary);
+    } finally {
+      setLoadingDnr(false);
+    }
+  }, [selectedStore]);
+
   useEffect(() => {
     void loadCoverage();
     void loadRoster();
-  }, [loadCoverage, loadRoster]);
+    void loadDnr();
+  }, [loadCoverage, loadRoster, loadDnr]);
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
@@ -119,6 +149,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     }
     setValidationResult(null);
     setRosterParseResult(null);
+    setDnrParseResult(null);
   };
 
   // Handle file selection and parsing for either Orders or Riders
@@ -178,7 +209,42 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
       return;
     }
 
-    // 2. Process Daily Orders report file
+    // 2. Process DNR (Delivery Not Received) Reports file
+    if (uploadType === 'dnr') {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const parsed = parseDnrFile({
+          fileBytes: arrayBuffer,
+          filename: file.name,
+          targetSiteCode: selectedStore.store_code,
+        });
+
+        setParsingFile(false);
+
+        if (!parsed.is_valid) {
+          setErrorModalData({
+            filename: file.name,
+            errors: parsed.errors,
+          });
+          resetFileInput();
+          return;
+        }
+
+        setDnrParseResult(parsed);
+        setShowDnrConfirm(true);
+      } catch (err) {
+        setParsingFile(false);
+        const msg = err instanceof Error ? err.message : String(err);
+        setErrorModalData({
+          filename: file.name,
+          errors: [`Failed to parse DNR report file: ${msg}`],
+        });
+        resetFileInput();
+      }
+      return;
+    }
+
+    // 3. Process Daily Orders report file
     try {
       const arrayBuffer = await file.arrayBuffer();
       const result = parseAndValidateOrderWorkbook({
@@ -339,6 +405,48 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     }
   };
 
+  // Confirm and save DNR report records
+  const handleConfirmDnrUpload = async () => {
+    if (!selectedStore || !dnrParseResult) return;
+
+    setIsSavingDnr(true);
+
+    try {
+      const result = await saveDnrRecords({
+        filename: dnrParseResult.filename,
+        records: dnrParseResult.valid_records,
+        uploadedBy: currentUser?.full_name || 'Admin',
+        targetSiteCode: selectedStore.store_code,
+      });
+
+      setIsSavingDnr(false);
+      setShowDnrConfirm(false);
+
+      if (!result.ok) {
+        setErrorModalData({
+          filename: dnrParseResult.filename,
+          errors: [result.error || 'Failed to save DNR report.'],
+        });
+        resetFileInput();
+        return;
+      }
+
+      await loadDnr();
+      setShowDnrSuccess(true);
+      resetFileInput();
+      onBatchCommitted?.();
+    } catch (err) {
+      setIsSavingDnr(false);
+      setShowDnrConfirm(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorModalData({
+        filename: dnrParseResult.filename,
+        errors: [`Could not save DNR report: ${msg}`],
+      });
+      resetFileInput();
+    }
+  };
+
   const handleDismissSuccess = () => {
     setShowSuccessModal(false);
     setCommittedResult(null);
@@ -419,17 +527,23 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             <span className="section-step">Step 2</span>
             <div>
               <h2 className="section-title">
-                {uploadType === 'orders' ? 'Upload Daily Orders' : 'Upload Active Riders Roster'}
+                {uploadType === 'orders'
+                  ? 'Upload Daily Orders'
+                  : uploadType === 'riders'
+                  ? 'Upload Active Riders Roster'
+                  : 'Upload DNR (Delivery Not Received) Reports'}
               </h2>
               <p className="section-subtitle">
                 {uploadType === 'orders'
                   ? `Upload the daily orders file (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}.`
-                  : `Upload active riders list (.csv) for ${selectedStore?.store_code ?? 'store'} to mark Active (Yes/No).`}
+                  : uploadType === 'riders'
+                  ? `Upload active riders list (.csv) for ${selectedStore?.store_code ?? 'store'} to mark Active (Yes/No).`
+                  : `Upload DNR incident report (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'} to track genuine delivery failures vs customer abuse.`}
               </p>
             </div>
           </div>
 
-          {/* Mode Switch: Daily Orders vs Active Riders Roster */}
+          {/* Mode Switch: Daily Orders vs Active Riders Roster vs DNR Reports */}
           <div className="upload-mode-toggle">
             <button
               type="button"
@@ -438,7 +552,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                 setUploadType('orders');
                 resetFileInput();
               }}
-              disabled={parsingFile || isUploading || isSavingRoster}
+              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
             >
               <span className="mode-icon">📦</span>
               <span>Daily Orders</span>
@@ -450,12 +564,27 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                 setUploadType('riders');
                 resetFileInput();
               }}
-              disabled={parsingFile || isUploading || isSavingRoster}
+              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
             >
               <span className="mode-icon">🚴</span>
               <span>Active Riders</span>
               {activeRoster && activeRoster.totalRiders > 0 && (
                 <span className="mode-pill-badge">{activeRoster.totalRiders}</span>
+              )}
+            </button>
+            <button
+              type="button"
+              className={`mode-toggle-btn ${uploadType === 'dnr' ? 'mode-toggle-btn-active' : ''}`}
+              onClick={() => {
+                setUploadType('dnr');
+                resetFileInput();
+              }}
+              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
+            >
+              <span className="mode-icon">⚠️</span>
+              <span>DNR Reports</span>
+              {dnrSummary && dnrSummary.totalRecords > 0 && (
+                <span className="mode-pill-badge mode-pill-badge-warning">{dnrSummary.totalRecords}</span>
               )}
             </button>
           </div>
@@ -491,6 +620,44 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           </div>
         )}
 
+        {/* DNR Incident Reports Status Banner (shown when in DNR mode) */}
+        {uploadType === 'dnr' && (
+          <div className="roster-status-banner dnr-status-banner">
+            <div className="roster-status-main">
+              <span className="roster-status-icon-box dnr-icon-box">⚠️</span>
+              <div className="roster-status-content">
+                <div className="roster-status-heading-row">
+                  <h4 className="roster-status-heading">
+                    DNR Monitoring for {selectedStore?.store_code} ({selectedStore?.store_name})
+                  </h4>
+                  {loadingDnr && <span className="roster-loading-tag">Updating DNR stats...</span>}
+                </div>
+                <p className="roster-status-info">
+                  {dnrSummary && dnrSummary.totalRecords > 0 ? (
+                    <>
+                      Currently tracking <strong>{dnrSummary.totalRecords} DNR cases</strong> across{' '}
+                      <strong>{dnrSummary.totalRidersAffected} riders</strong> (
+                      <span className="text-danger font-semibold">{dnrSummary.totalNonAbusive} genuine rider failures</span>,{' '}
+                      <span className="text-blue font-semibold">{dnrSummary.totalPotentialAbuse} customer abuse flags</span>).{' '}
+                      {dnrSummary.frequentExploitersCount > 0 && (
+                        <span className="dnr-exploiter-alert">
+                          🚨 <strong>{dnrSummary.frequentExploitersCount} frequent exploiter(s)</strong> detected with multiple DNRs.{' '}
+                        </span>
+                      )}
+                      Last upload: <strong>{dnrSummary.lastUpdatedFormatted || 'Baseline Audit'}</strong>
+                      {dnrSummary.filename && (
+                        <> (file: <span className="mono">{dnrSummary.filename}</span>)</>
+                      )}.
+                    </>
+                  ) : (
+                    'No DNR records found for this store. Upload a DNR report (.csv or .xlsx) to flag rider delivery failures and suspected customer abuse.'
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Unified Clean Dropzone */}
         <div
           className={`clean-dropzone ${isDragging ? 'dropzone-active' : ''} ${
@@ -503,7 +670,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           onClick={() => {
-            if (!parsingFile && !isUploading && !isSavingRoster) {
+            if (!parsingFile && !isUploading && !isSavingRoster && !isSavingDnr) {
               fileInputRef.current?.click();
             }
           }}
@@ -514,7 +681,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             onChange={handleFileChange}
             style={{ display: 'none' }}
-            disabled={parsingFile || isUploading || isSavingRoster}
+            disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
           />
 
           <div className="dropzone-inner">
@@ -544,9 +711,13 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                 {parsingFile
                   ? uploadType === 'riders'
                     ? 'Validating active riders roster...'
+                    : uploadType === 'dnr'
+                    ? 'Analyzing and validating DNR incident report...'
                     : 'Analyzing and validating order file...'
                   : uploadType === 'riders'
                   ? 'Click to select or drag and drop Active Riders CSV'
+                  : uploadType === 'dnr'
+                  ? 'Click to select or drag and drop DNR Report (.csv or .xlsx)'
                   : 'Click to select or drag and drop store order file (.csv or .xlsx)'}
               </strong>
               <p>
@@ -554,6 +725,11 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                   <>
                     Target Store: <strong>{selectedStore?.store_code}</strong> • Expected Columns:{' '}
                     <code>Name, Phone, Online Status, Eligibility, Attendance, Store</code>
+                  </>
+                ) : uploadType === 'dnr' ? (
+                  <>
+                    Target Store: <strong>{selectedStore?.store_code}</strong> • Expected Columns:{' '}
+                    <code>week, order_date, site_code, dp_id, order_id, Ride Name, abuse_flag, delivery_time, scan_data_delivered</code>
                   </>
                 ) : selectedStore ? (
                   <>
@@ -568,7 +744,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             <button
               type="button"
               className="btn btn-secondary btn-sm dropzone-btn"
-              disabled={parsingFile || isUploading || isSavingRoster}
+              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
               onClick={(e) => {
                 e.stopPropagation();
                 fileInputRef.current?.click();
@@ -639,6 +815,44 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           lastUpdatedFormatted={activeRoster.lastUpdatedFormatted || 'Just now'}
           onDone={() => {
             setShowRosterSuccess(false);
+          }}
+        />
+      )}
+
+      {/* DNR Confirmation Modal */}
+      {showDnrConfirm && dnrParseResult && selectedStore && (
+        <DnrConfirmModal
+          store={selectedStore}
+          filename={dnrParseResult.filename}
+          totalRecords={dnrParseResult.valid_records.length}
+          nonAbusiveCount={dnrParseResult.nonAbusiveCount}
+          potentialAbuseCount={dnrParseResult.potentialAbuseCount}
+          sampleRecords={dnrParseResult.valid_records.slice(0, 5).map((r) => ({
+            orderId: r.orderId,
+            riderName: r.riderName,
+            abuseFlag: r.abuseFlag,
+            scanDataDelivered: r.scanDataDelivered,
+          }))}
+          warnings={dnrParseResult.warnings}
+          isSaving={isSavingDnr}
+          onCancel={() => {
+            setShowDnrConfirm(false);
+            resetFileInput();
+          }}
+          onConfirm={() => void handleConfirmDnrUpload()}
+        />
+      )}
+
+      {/* DNR Success Modal */}
+      {showDnrSuccess && dnrSummary && selectedStore && (
+        <DnrSuccessModal
+          storeCode={selectedStore.store_code}
+          totalRecords={dnrSummary.totalRecords}
+          nonAbusiveCount={dnrSummary.totalNonAbusive}
+          potentialAbuseCount={dnrSummary.totalPotentialAbuse}
+          lastUpdatedFormatted={dnrSummary.lastUpdatedFormatted || 'Just now'}
+          onDone={() => {
+            setShowDnrSuccess(false);
           }}
         />
       )}

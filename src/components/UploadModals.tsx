@@ -372,3 +372,166 @@ export const RosterSuccessModal: React.FC<RosterSuccessModalProps> = ({
     </div>
   );
 };
+
+// -----------------------------------------------------------------------------
+// 6. DNR Confirmation Modal
+// -----------------------------------------------------------------------------
+interface DnrConfirmModalProps {
+  store: StoreMaster;
+  filename: string;
+  totalRecords: number;
+  nonAbusiveCount: number;
+  potentialAbuseCount: number;
+  sampleRecords: Array<{ orderId: string; riderName: string; abuseFlag: string; scanDataDelivered?: string }>;
+  warnings: string[];
+  isSaving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+export const DnrConfirmModal: React.FC<DnrConfirmModalProps> = ({
+  store,
+  filename,
+  totalRecords,
+  nonAbusiveCount,
+  potentialAbuseCount,
+  sampleRecords,
+  warnings,
+  isSaving,
+  onCancel,
+  onConfirm,
+}) => {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="modal-card modal-confirm">
+        <div className="modal-header">
+          <div className="modal-title-with-icon">
+            <span className="modal-icon-badge badge-warning">⚠️</span>
+            <div>
+              <h3 className="modal-title">Confirm DNR (Delivery Not Received) Ingestion</h3>
+              <p className="modal-subtitle">
+                Store: <strong>{store.store_code} — {store.store_name}</strong>
+              </p>
+            </div>
+          </div>
+          <button type="button" className="btn-close" onClick={onCancel} disabled={isSaving}>
+            ×
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="confirm-summary-box">
+            <div className="confirm-row">
+              <span className="confirm-label">File:</span>
+              <span className="confirm-value mono">{filename}</span>
+            </div>
+            <div className="confirm-row">
+              <span className="confirm-label">Total DNR Cases:</span>
+              <span className="confirm-value font-bold text-amber">{totalRecords} cases</span>
+            </div>
+            <div className="confirm-row">
+              <span className="confirm-label">Genuine Non-Delivery (Rider):</span>
+              <span className="confirm-value font-semibold text-danger">{nonAbusiveCount} cases (Non_abusive)</span>
+            </div>
+            <div className="confirm-row">
+              <span className="confirm-label">Customer Abuse Flagged:</span>
+              <span className="confirm-value font-semibold text-blue">{potentialAbuseCount} cases (Potential_abuse)</span>
+            </div>
+          </div>
+
+          {warnings.length > 0 && (
+            <div className="confirm-warning-box">
+              {warnings.map((w, idx) => (
+                <p key={idx} className="warning-text">⚠️ {w}</p>
+              ))}
+            </div>
+          )}
+
+          <div className="roster-sample-preview">
+            <span className="sample-label">
+              Sample Flagged DNR Incidents ({Math.min(5, sampleRecords.length)} of {totalRecords}):
+            </span>
+            <div className="dnr-sample-cards">
+              {sampleRecords.slice(0, 5).map((rec, i) => (
+                <div key={i} className="dnr-sample-row">
+                  <div className="dnr-sample-meta">
+                    <span className="dnr-sample-order mono">{rec.orderId}</span>
+                    <span className="dnr-sample-rider font-medium">{rec.riderName}</span>
+                  </div>
+                  <div className="dnr-sample-tags">
+                    <span
+                      className={`badge ${
+                        rec.abuseFlag === 'Non_abusive' ? 'badge-danger' : 'badge-info'
+                      }`}
+                    >
+                      {rec.abuseFlag === 'Non_abusive' ? 'Genuine Failure' : 'Customer Abuse'}
+                    </span>
+                    {rec.scanDataDelivered && (
+                      <span className="badge badge-secondary">{rec.scanDataDelivered}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="confirm-prompt-text">
+            Ingesting this DNR report will update the <strong>DNR exploitation cues</strong> and <strong>abuse flags</strong> across Rider Analytics.
+          </p>
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={isSaving}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={isSaving}>
+            {isSaving ? 'Ingesting Cases...' : `Confirm & Save ${totalRecords} Records`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// 7. DNR Success Modal
+// -----------------------------------------------------------------------------
+interface DnrSuccessModalProps {
+  storeCode: string;
+  totalRecords: number;
+  nonAbusiveCount: number;
+  potentialAbuseCount: number;
+  lastUpdatedFormatted: string;
+  onDone: () => void;
+}
+
+export const DnrSuccessModal: React.FC<DnrSuccessModalProps> = ({
+  storeCode,
+  totalRecords,
+  nonAbusiveCount,
+  potentialAbuseCount,
+  lastUpdatedFormatted,
+  onDone,
+}) => {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="modal-card modal-success">
+        <div className="modal-body text-center pt-md">
+          <div className="success-icon-circle">✓</div>
+          <h2 className="success-title">DNR Report Ingested Successfully!</h2>
+          <p className="success-subtitle">
+            Recorded <strong>{totalRecords} DNR cases</strong> ({nonAbusiveCount} genuine failures, {potentialAbuseCount} customer flags).
+          </p>
+          <p className="batch-id-note">
+            Target Store: <strong>{storeCode}</strong> • Last Updated: <strong>{lastUpdatedFormatted}</strong>
+          </p>
+        </div>
+        <div className="modal-footer justify-center">
+          <button type="button" className="btn btn-primary btn-wide" onClick={onDone}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
