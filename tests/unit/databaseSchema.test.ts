@@ -80,6 +80,26 @@ describe('PostgreSQL Schema, RLS, Grants & Atomic RPC Verification (PGlite)', ()
       { store_code: 'TMK7', external_store_id: '4247' },
     ]);
 
+    // Apply Planning & SNOP Migration on real PostgreSQL (PGlite)
+    const mPlanning = fs.readFileSync(
+      path.join(MIGRATIONS_DIR, '20261028000002_planning_snop_schema.sql'),
+      'utf8'
+    );
+    await db.exec(mPlanning);
+
+    // Verify store_planning_config table seed
+    const dphRes = await db.query<{ site_code: string; target_dph: number }>(
+      `SELECT site_code, target_dph FROM public.store_planning_config WHERE site_code = 'TMK7'`
+    );
+    expect(dphRes.rows).toHaveLength(1);
+    expect(Number(dphRes.rows[0].target_dph)).toBe(2.1);
+
+    // Verify 504 rows seeded into store_snop_forecast
+    const countRes = await db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM public.store_snop_forecast WHERE warehouse_id = 'TMK7'`
+    );
+    expect(countRes.rows[0].count).toBe('504');
+
     await db.close();
   });
 });

@@ -26,12 +26,21 @@ import {
   parseDnrFile,
   saveDnrRecords,
 } from '../services/dnrService';
+import {
+  type SnopParseResult,
+  type SnopUploadMeta,
+  getSnopUploadMeta,
+  parseSnopFile,
+  saveSnopRecords,
+} from '../services/planningService';
 import { StoreCalendarView } from './StoreCalendarView';
 import {
   DnrConfirmModal,
   DnrSuccessModal,
   RosterConfirmModal,
   RosterSuccessModal,
+  SnopConfirmModal,
+  SnopSuccessModal,
   UploadConfirmModal,
   UploadErrorModal,
   UploadSuccessModal,
@@ -42,6 +51,7 @@ interface UploadWorkspaceProps {
   selectedStoreId: string;
   onSelectStoreId: (storeId: string) => void;
   onBatchCommitted?: () => void;
+  onNavigateToPlanning?: () => void;
   currentUser?: UserProfile | null;
 }
 
@@ -50,6 +60,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   selectedStoreId,
   onSelectStoreId,
   onBatchCommitted,
+  onNavigateToPlanning,
   currentUser,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -57,8 +68,8 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [parsingFile, setParsingFile] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Upload Mode: 'orders' (Daily Store Orders) vs 'riders' (Active Riders Roster) vs 'dnr' (DNR Reports)
-  const [uploadType, setUploadType] = useState<'orders' | 'riders' | 'dnr'>('orders');
+  // Upload Mode: 'orders' (Daily Store Orders) vs 'riders' (Active Riders Roster) vs 'dnr' (DNR Reports) vs 'snop' (SNOP Forecast)
+  const [uploadType, setUploadType] = useState<'orders' | 'riders' | 'dnr' | 'snop'>('orders');
 
   // 30-Day Ingestion Coverage
   const [coverage, setCoverage] = useState<StoreCoverageSummary | null>(null);
@@ -80,6 +91,14 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [showDnrConfirm, setShowDnrConfirm] = useState(false);
   const [showDnrSuccess, setShowDnrSuccess] = useState(false);
   const [isSavingDnr, setIsSavingDnr] = useState(false);
+
+  // SNOP Forecast state
+  const [snopMeta, setSnopMeta] = useState<SnopUploadMeta | null>(null);
+  const [loadingSnop, setLoadingSnop] = useState(false);
+  const [snopParseResult, setSnopParseResult] = useState<SnopParseResult | null>(null);
+  const [showSnopConfirm, setShowSnopConfirm] = useState(false);
+  const [showSnopSuccess, setShowSnopSuccess] = useState(false);
+  const [isSavingSnop, setIsSavingSnop] = useState(false);
 
   // Validation & Modal states for Orders
   const [validationResult, setValidationResult] =
@@ -141,11 +160,24 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     }
   }, [selectedStore]);
 
+  // Load SNOP forecast metadata when selected store changes
+  const loadSnop = useCallback(async () => {
+    if (!selectedStore) return;
+    setLoadingSnop(true);
+    try {
+      const meta = getSnopUploadMeta(selectedStore.store_code);
+      setSnopMeta(meta);
+    } finally {
+      setLoadingSnop(false);
+    }
+  }, [selectedStore]);
+
   useEffect(() => {
     void loadCoverage();
     void loadRoster();
     void loadDnr();
-  }, [loadCoverage, loadRoster, loadDnr]);
+    void loadSnop();
+  }, [loadCoverage, loadRoster, loadDnr, loadSnop]);
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
@@ -154,6 +186,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     setValidationResult(null);
     setRosterParseResult(null);
     setDnrParseResult(null);
+    setSnopParseResult(null);
   };
 
   // Handle file selection and parsing for either Orders or Riders
@@ -248,7 +281,42 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
       return;
     }
 
-    // 3. Process Daily Orders report file
+    // 3. Process SNOP Orders Forecast file
+    if (uploadType === 'snop') {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const parsed = await parseSnopFile({
+          fileBytes: arrayBuffer,
+          filename: file.name,
+          targetSiteCode: selectedStore.store_code,
+        });
+
+        setParsingFile(false);
+
+        if (!parsed.is_valid) {
+          setErrorModalData({
+            filename: file.name,
+            errors: parsed.errors,
+          });
+          resetFileInput();
+          return;
+        }
+
+        setSnopParseResult(parsed);
+        setShowSnopConfirm(true);
+      } catch (err) {
+        setParsingFile(false);
+        const msg = err instanceof Error ? err.message : String(err);
+        setErrorModalData({
+          filename: file.name,
+          errors: [`Failed to parse SNOP forecast file: ${msg}`],
+        });
+        resetFileInput();
+      }
+      return;
+    }
+
+    // 4. Process Daily Orders report file
     try {
       const arrayBuffer = await file.arrayBuffer();
       const result = parseAndValidateOrderWorkbook({
@@ -451,6 +519,81 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     }
   };
 
+  // Confirm and rewrite SNOP Orders Forecast
+  const handleConfirmSnopUpload = async () => {
+    if (!selectedStore || !snopParseResult) return;
+
+    setIsSavingSnop(true);
+
+    try {
+      const result = await saveSnopRecords({
+        warehouseId: selectedStore.store_code,
+        records: snopParseResult.records,
+        filename: snopParseResult.filename,
+        uploadedBy: currentUser?.email || 'User',
+      });
+
+      setIsSavingSnop(false);
+      setShowSnopConfirm(false);
+
+      if (!result.ok) {
+        setErrorModalData({
+          filename: snopParseResult.filename,
+          errors: [result.error || 'Failed to save SNOP forecast.'],
+        });
+        resetFileInput();
+        return;
+      }
+
+      await loadSnop();
+      setShowSnopSuccess(true);
+      resetFileInput();
+      onBatchCommitted?.();
+    } catch (err) {
+      setIsSavingSnop(false);
+      setShowSnopConfirm(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorModalData({
+        filename: snopParseResult.filename,
+        errors: [`Could not save SNOP forecast: ${msg}`],
+      });
+      resetFileInput();
+    }
+  };
+
+  const handleDownloadSnopTemplate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const templateCsv =
+      'City,Warehouse Id,Date,Hour,Order\n' +
+      'Pune,TMK7,2026-10-25,6,6\n' +
+      'Pune,TMK7,2026-10-25,7,21\n' +
+      'Pune,TMK7,2026-10-25,8,55\n' +
+      'Pune,TMK7,2026-10-25,9,80\n' +
+      'Pune,TMK7,2026-10-25,10,88\n' +
+      'Pune,TMK7,2026-10-25,11,87\n' +
+      'Pune,TMK7,2026-10-25,12,71\n' +
+      'Pune,TMK7,2026-10-25,13,60\n' +
+      'Pune,TMK7,2026-10-25,14,52\n' +
+      'Pune,TMK7,2026-10-25,15,47\n' +
+      'Pune,TMK7,2026-10-25,16,49\n' +
+      'Pune,TMK7,2026-10-25,17,62\n' +
+      'Pune,TMK7,2026-10-25,18,71\n' +
+      'Pune,TMK7,2026-10-25,19,71\n' +
+      'Pune,TMK7,2026-10-25,20,70\n' +
+      'Pune,TMK7,2026-10-25,21,60\n' +
+      'Pune,TMK7,2026-10-25,22,43\n' +
+      'Pune,TMK7,2026-10-25,23,24\n';
+
+    const blob = new Blob([templateCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'SNOP_Orders_Forecast_Template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleDismissSuccess = () => {
     setShowSuccessModal(false);
     setCommittedResult(null);
@@ -535,14 +678,18 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                   ? 'Upload Daily Orders'
                   : uploadType === 'riders'
                   ? 'Upload Active Riders Roster'
-                  : 'Upload DNR (Delivery Not Received) Reports'}
+                  : uploadType === 'dnr'
+                  ? 'Upload DNR (Delivery Not Received) Reports'
+                  : 'Upload SNOP Orders Forecast'}
               </h2>
               <p className="section-subtitle">
                 {uploadType === 'orders'
                   ? `Upload the daily orders file (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}.`
                   : uploadType === 'riders'
                   ? `Upload active riders list (.csv) for ${selectedStore?.store_code ?? 'store'} to mark Active (Yes/No).`
-                  : `Upload DNR incident report (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'} to track Non_abusive and Potential_abuse cases.`}
+                  : uploadType === 'dnr'
+                  ? `Upload DNR incident report (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'} to track Non_abusive and Potential_abuse cases.`
+                  : `Upload future orders forecast (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}. New upload rewrites existing store forecast.`}
               </p>
             </div>
           </div>
@@ -583,7 +730,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                 setUploadType('dnr');
                 resetFileInput();
               }}
-              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
+              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr || isSavingSnop}
             >
               <span className="mode-icon">⚠️</span>
               <span>DNR Reports</span>
@@ -591,8 +738,68 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                 <span className="mode-pill-badge mode-pill-badge-warning">{dnrSummary.totalRecords}</span>
               )}
             </button>
+            <button
+              type="button"
+              className={`mode-toggle-btn ${uploadType === 'snop' ? 'mode-toggle-btn-active' : ''}`}
+              onClick={() => {
+                setUploadType('snop');
+                resetFileInput();
+              }}
+              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr || isSavingSnop}
+            >
+              <span className="mode-icon">📈</span>
+              <span>SNOP Forecast</span>
+              {snopMeta && snopMeta.totalRows > 0 && (
+                <span className="mode-pill-badge mode-pill-badge-info">{snopMeta.totalRows}</span>
+              )}
+            </button>
           </div>
         </div>
+
+        {/* SNOP Orders Forecast Status Banner (shown when in SNOP mode) */}
+        {uploadType === 'snop' && (
+          <div className="roster-status-banner snop-status-banner">
+            <div className="roster-status-main">
+              <span className="roster-status-icon-box snop-icon-box">📈</span>
+              <div className="roster-status-content">
+                <div className="roster-status-heading-row">
+                  <h4 className="roster-status-heading">
+                    SNOP Orders Forecast for {selectedStore?.store_code} ({selectedStore?.store_name})
+                  </h4>
+                  {loadingSnop && <span className="roster-loading-tag">Checking forecast...</span>}
+                </div>
+                <p className="roster-status-info">
+                  {snopMeta && snopMeta.totalRows > 0 ? (
+                    <>
+                      Active forecast covers <strong>{snopMeta.totalRows} hourly slots</strong> from{' '}
+                      <strong>{snopMeta.startDate}</strong> to <strong>{snopMeta.endDate}</strong>{' '}
+                      (Total volume: <strong>{snopMeta.totalProjectedOrders.toLocaleString()} orders</strong>).{' '}
+                      Last updated: <strong>{new Date(snopMeta.uploadedAt).toLocaleDateString()}</strong>
+                      {snopMeta.filename && (
+                        <> (file: <span className="mono">{snopMeta.filename}</span>)</>
+                      )}.
+                    </>
+                  ) : (
+                    'No active SNOP forecast found for this store. Upload a forecast file (.csv or .xlsx) with columns: City, Warehouse Id, Date, Hour, Order.'
+                  )}
+                </p>
+                <div className="snop-banner-meta mt-xs flex-row items-center gap-sm">
+                  <span className="badge badge-warning">⚠️ Full Rewrite Policy</span>
+                  <span className="text-secondary text-sm">
+                    New uploads overwrite and replace existing forecast data for this store.
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs ml-auto"
+                    onClick={handleDownloadSnopTemplate}
+                  >
+                    ⬇ Download Template
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Active Riders Status Banner (shown when in Riders mode) */}
         {uploadType === 'riders' && (
@@ -717,11 +924,15 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                     ? 'Validating active riders roster...'
                     : uploadType === 'dnr'
                     ? 'Analyzing and validating DNR incident report...'
+                    : uploadType === 'snop'
+                    ? 'Analyzing and validating SNOP orders forecast...'
                     : 'Analyzing and validating order file...'
                   : uploadType === 'riders'
                   ? 'Click to select or drag and drop Active Riders CSV'
                   : uploadType === 'dnr'
                   ? 'Click to select or drag and drop DNR Report (.csv or .xlsx)'
+                  : uploadType === 'snop'
+                  ? 'Click to select or drag and drop SNOP Orders Forecast (.csv or .xlsx)'
                   : 'Click to select or drag and drop store order file (.csv or .xlsx)'}
               </strong>
               <p>
@@ -734,6 +945,11 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                   <>
                     Target Store: <strong>{selectedStore?.store_code}</strong> • Expected Columns:{' '}
                     <code>week, order_date, site_code, dp_id, order_id, Ride Name, abuse_flag, delivery_time, scan_data_delivered</code>
+                  </>
+                ) : uploadType === 'snop' ? (
+                  <>
+                    Target Store: <strong>{selectedStore?.store_code}</strong> • Expected Columns:{' '}
+                    <code>City, Warehouse Id, Date, Hour, Order</code> (Rewrites existing forecast)
                   </>
                 ) : selectedStore ? (
                   <>
@@ -748,7 +964,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             <button
               type="button"
               className="btn btn-secondary btn-sm dropzone-btn"
-              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
+              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr || isSavingSnop}
               onClick={(e) => {
                 e.stopPropagation();
                 fileInputRef.current?.click();
@@ -857,6 +1073,41 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           lastUpdatedFormatted={dnrSummary.lastUpdatedFormatted || 'Just now'}
           onDone={() => {
             setShowDnrSuccess(false);
+          }}
+        />
+      )}
+
+      {/* SNOP Forecast Confirmation Modal */}
+      {showSnopConfirm && snopParseResult && selectedStore && (
+        <SnopConfirmModal
+          store={selectedStore}
+          filename={snopParseResult.filename}
+          totalRows={snopParseResult.total_rows}
+          startDate={snopParseResult.start_date}
+          endDate={snopParseResult.end_date}
+          totalProjectedOrders={snopParseResult.total_projected_orders}
+          sampleRecords={snopParseResult.records.slice(0, 5)}
+          warnings={snopParseResult.warnings}
+          isSaving={isSavingSnop}
+          onCancel={() => {
+            setShowSnopConfirm(false);
+            resetFileInput();
+          }}
+          onConfirm={() => void handleConfirmSnopUpload()}
+        />
+      )}
+
+      {/* SNOP Forecast Success Modal */}
+      {showSnopSuccess && snopMeta && selectedStore && (
+        <SnopSuccessModal
+          storeCode={selectedStore.store_code}
+          totalRows={snopMeta.totalRows}
+          startDate={snopMeta.startDate}
+          endDate={snopMeta.endDate}
+          totalProjectedOrders={snopMeta.totalProjectedOrders}
+          onGoToPlanning={onNavigateToPlanning}
+          onDone={() => {
+            setShowSnopSuccess(false);
           }}
         />
       )}

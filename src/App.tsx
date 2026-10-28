@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AnalyticsSection } from './components/AnalyticsSection';
 import { LoginScreen } from './components/LoginScreen';
+import { PlanningSection } from './components/PlanningSection';
 import { S2POtpSection } from './components/S2POtpSection';
 import { StoreLoginsModal } from './components/StoreLoginsModal';
 import { UploadWorkspace } from './components/UploadWorkspace';
@@ -22,7 +23,7 @@ export const App: React.FC = () => {
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [storesError, setStoresError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 's2p_otp'>('s2p_otp');
+  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 's2p_otp' | 'planning'>('s2p_otp');
 
   // Store logins administration modal (Superadmin only)
   const [isStoreLoginsModalOpen, setIsStoreLoginsModalOpen] = useState(false);
@@ -146,6 +147,15 @@ export const App: React.FC = () => {
           <button
             type="button"
             className={`btn btn-sm ${
+              activeView === 'planning' ? 'btn-primary' : 'btn-secondary'
+            }`}
+            onClick={() => setActiveView('planning')}
+          >
+            Planning
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${
               activeView === 'analytics' ? 'btn-primary' : 'btn-secondary'
             }`}
             onClick={() => setActiveView('analytics')}
@@ -209,6 +219,16 @@ export const App: React.FC = () => {
           />
         )}
 
+        {activeView === 'planning' && (
+          <PlanningSection
+            stores={stores}
+            selectedStoreId={selectedStoreId}
+            onSelectStoreId={setSelectedStoreId}
+            currentUser={currentUser}
+            onNavigateToUploadSnop={() => setActiveView('upload')}
+          />
+        )}
+
         {activeView === 'analytics' && (
           <AnalyticsSection
             stores={stores}
@@ -224,6 +244,7 @@ export const App: React.FC = () => {
             selectedStoreId={selectedStoreId}
             onSelectStoreId={setSelectedStoreId}
             currentUser={currentUser}
+            onNavigateToPlanning={() => setActiveView('planning')}
           />
         )}
 

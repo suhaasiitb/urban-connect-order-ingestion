@@ -1,6 +1,7 @@
 import React from 'react';
 import type { StoreMaster, WorkbookValidationResult } from '../domain/types';
 import type { CommittedBatchResult } from '../services/ingestionService';
+import type { SnopForecastRecord } from '../services/planningService';
 
 // -----------------------------------------------------------------------------
 // 1. Error Modal
@@ -529,6 +530,183 @@ export const DnrSuccessModal: React.FC<DnrSuccessModalProps> = ({
         <div className="modal-footer justify-center">
           <button type="button" className="btn btn-primary btn-wide" onClick={onDone}>
             Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// 8. SNOP Forecast Confirm Modal
+// -----------------------------------------------------------------------------
+interface SnopConfirmModalProps {
+  store: StoreMaster;
+  filename: string;
+  totalRows: number;
+  startDate: string;
+  endDate: string;
+  totalProjectedOrders: number;
+  sampleRecords: SnopForecastRecord[];
+  warnings?: string[];
+  isSaving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+export const SnopConfirmModal: React.FC<SnopConfirmModalProps> = ({
+  store,
+  filename,
+  totalRows,
+  startDate,
+  endDate,
+  totalProjectedOrders,
+  sampleRecords,
+  warnings = [],
+  isSaving,
+  onCancel,
+  onConfirm,
+}) => {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="modal-card modal-confirm">
+        <div className="modal-header">
+          <div className="modal-title-with-icon">
+            <span className="modal-icon-badge badge-primary">📈</span>
+            <div>
+              <h3 className="modal-title">Confirm SNOP Orders Forecast Ingestion</h3>
+              <p className="modal-subtitle">
+                Store: <strong>{store.store_code} — {store.store_name}</strong>
+              </p>
+            </div>
+          </div>
+          <button type="button" className="btn-close" onClick={onCancel} disabled={isSaving}>
+            ×
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="confirm-summary-box">
+            <div className="confirm-row">
+              <span className="confirm-label">File Name:</span>
+              <span className="confirm-value mono">{filename}</span>
+            </div>
+            <div className="confirm-row">
+              <span className="confirm-label">Total Forecast Slots:</span>
+              <span className="confirm-value font-bold text-amber">{totalRows} slots</span>
+            </div>
+            <div className="confirm-row">
+              <span className="confirm-label">Date Coverage:</span>
+              <span className="confirm-value font-semibold">{startDate} → {endDate}</span>
+            </div>
+            <div className="confirm-row">
+              <span className="confirm-label">Total Projected Volume:</span>
+              <span className="confirm-value font-semibold text-primary">
+                {totalProjectedOrders.toLocaleString()} orders
+              </span>
+            </div>
+          </div>
+
+          <div className="alert alert-warning my-sm">
+            <strong>⚠️ Operational Notice:</strong> Ingesting this forecast will{' '}
+            <strong>completely rewrite and replace</strong> all existing SNOP forecast data for{' '}
+            <strong>{store.store_code}</strong>.
+          </div>
+
+          {warnings.length > 0 && (
+            <div className="confirm-warning-box">
+              {warnings.map((w, idx) => (
+                <p key={idx} className="warning-text">⚠️ {w}</p>
+              ))}
+            </div>
+          )}
+
+          <div className="roster-sample-preview">
+            <span className="sample-label">
+              Sample Forecast Slots ({Math.min(5, sampleRecords.length)} of {totalRows}):
+            </span>
+            <div className="dnr-sample-cards">
+              {sampleRecords.slice(0, 5).map((rec, i) => (
+                <div key={i} className="dnr-sample-row">
+                  <div className="dnr-sample-meta">
+                    <span className="dnr-sample-order mono">
+                      {rec.dateStr} • Slot {rec.hour} ({String(rec.hour).padStart(2, '0')}:00)
+                    </span>
+                    <span className="dnr-sample-rider font-medium">
+                      Projected Orders: <strong>{rec.projectedOrders}</strong>
+                    </span>
+                  </div>
+                  <span className="badge badge-primary">{rec.warehouseId}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={isSaving}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={isSaving}>
+            {isSaving ? 'Rewriting Forecast...' : `Confirm & Rewrite ${totalRows} Slots`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// 9. SNOP Success Modal
+// -----------------------------------------------------------------------------
+interface SnopSuccessModalProps {
+  storeCode: string;
+  totalRows: number;
+  startDate: string;
+  endDate: string;
+  totalProjectedOrders: number;
+  onGoToPlanning?: () => void;
+  onDone: () => void;
+}
+
+export const SnopSuccessModal: React.FC<SnopSuccessModalProps> = ({
+  storeCode,
+  totalRows,
+  startDate,
+  endDate,
+  totalProjectedOrders,
+  onGoToPlanning,
+  onDone,
+}) => {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="modal-card modal-success">
+        <div className="modal-body text-center pt-md">
+          <div className="success-icon-circle">✓</div>
+          <h2 className="success-title">SNOP Forecast Ingested Successfully!</h2>
+          <p className="success-subtitle">
+            Updated forecast for <strong>{storeCode}</strong> with{' '}
+            <strong>{totalRows} hourly slots</strong> ({totalProjectedOrders.toLocaleString()} total orders).
+          </p>
+          <p className="batch-id-note">
+            Coverage Period: <strong>{startDate}</strong> to <strong>{endDate}</strong>
+          </p>
+        </div>
+        <div className="modal-footer justify-center gap-sm">
+          {onGoToPlanning && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                onDone();
+                onGoToPlanning();
+              }}
+            >
+              📅 Open Planning Section
+            </button>
+          )}
+          <button type="button" className="btn btn-secondary" onClick={onDone}>
+            Close
           </button>
         </div>
       </div>
