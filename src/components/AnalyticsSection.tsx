@@ -183,10 +183,10 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
       normalizedName: norm,
       shiftType: 'Morning Shift',
       slot1StartHour: 6,
-      slot1EndHour: 14,
+      slot1EndHour: 15,
       slot2StartHour: null,
       slot2EndHour: null,
-      totalPlannedHours: 8,
+      totalPlannedHours: 9,
       joiningDate: newDate,
     };
 

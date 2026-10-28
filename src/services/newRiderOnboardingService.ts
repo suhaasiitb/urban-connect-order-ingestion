@@ -8,7 +8,7 @@
 import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
 import { normalizeRiderName } from './activeRiderService';
-import { type RiderShiftConfig, formatShiftTimings } from './riderShiftService';
+import { type RiderShiftConfig, formatShiftTimings, classifyShiftType } from './riderShiftService';
 
 export interface RiderDayMetric {
   dayNumber: number; // 1 to 7
@@ -391,8 +391,8 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
         norm.toUpperCase();
 
       const phone = phoneByNameMap?.get(norm) ?? null;
-      const shiftType = shiftConfig?.shiftType || 'Morning Shift';
-      const shiftTimings = shiftConfig ? formatShiftTimings(shiftConfig) : '6 AM – 2 PM';
+      const shiftType = shiftConfig ? classifyShiftType(shiftConfig) : 'Morning Shift';
+      const shiftTimings = shiftConfig ? formatShiftTimings(shiftConfig) : '6 AM – 3 PM';
 
       // Build daily metric objects
       const riderDateMap = riderDailyMap.get(norm);

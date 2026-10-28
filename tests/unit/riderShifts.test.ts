@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SHIFT_PRESETS,
   calculatePlannedHours,
+  classifyShiftType,
   formatHour,
   formatShiftTimings,
 } from '../../src/services/riderShiftService';
@@ -12,6 +13,7 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
     expect(formatHour(10)).toBe('10 AM');
     expect(formatHour(12)).toBe('12 PM');
     expect(formatHour(14)).toBe('2 PM');
+    expect(formatHour(15)).toBe('3 PM');
     expect(formatHour(18)).toBe('6 PM');
     expect(formatHour(22)).toBe('10 PM');
     expect(formatHour(24)).toBe('12 AM');
@@ -19,19 +21,19 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
   });
 
   it('formats shift timings correctly for single and split shifts', () => {
-    // Single Morning Shift
+    // Single Morning Shift (6 AM – 3 PM)
     const morning = {
       slot1StartHour: 6,
-      slot1EndHour: 14,
+      slot1EndHour: 15,
     };
-    expect(formatShiftTimings(morning)).toBe('6 AM – 2 PM');
+    expect(formatShiftTimings(morning)).toBe('6 AM – 3 PM');
 
-    // Single 2nd Shift
+    // Single 2nd Shift (3 PM – 12 AM)
     const secondShift = {
-      slot1StartHour: 14,
-      slot1EndHour: 22,
+      slot1StartHour: 15,
+      slot1EndHour: 24,
     };
-    expect(formatShiftTimings(secondShift)).toBe('2 PM – 10 PM');
+    expect(formatShiftTimings(secondShift)).toBe('3 PM – 12 AM');
 
     // Split Shift: 6-10 AM and 6-10 PM
     const splitShift = {
@@ -44,19 +46,27 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
   });
 
   it('accurately calculates planned hours for single and split shifts', () => {
-    // Morning: 6 AM to 2 PM (8h)
+    // Morning: 6 AM to 3 PM (9h)
     expect(
       calculatePlannedHours({
         slot1StartHour: 6,
-        slot1EndHour: 14,
+        slot1EndHour: 15,
       })
-    ).toBe(8);
+    ).toBe(9);
 
-    // 2nd Shift: 2 PM to 10 PM (8h)
+    // 2nd Shift: 3 PM to 12 AM (9h)
     expect(
       calculatePlannedHours({
-        slot1StartHour: 14,
-        slot1EndHour: 22,
+        slot1StartHour: 15,
+        slot1EndHour: 24,
+      })
+    ).toBe(9);
+
+    // 7 AM to 3 PM (8h)
+    expect(
+      calculatePlannedHours({
+        slot1StartHour: 7,
+        slot1EndHour: 15,
       })
     ).toBe(8);
 
@@ -77,14 +87,6 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
         slot1EndHour: 14,
       })
     ).toBe(5);
-
-    // Morning Shift: 6 AM to 2 PM (8h)
-    expect(
-      calculatePlannedHours({
-        slot1StartHour: 6,
-        slot1EndHour: 14,
-      })
-    ).toBe(8);
 
     // Split Shift: 8 AM to 3 PM (7h) & 4 PM to 12 AM (8h) = 15h
     expect(
@@ -116,10 +118,79 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
         slot2EndHour: preset.slot2End,
       });
 
-      expect(hours).toBe(8);
-      expect(preset.hours).toBe(8);
+      expect(hours).toBe(preset.hours);
       expect(hours >= 8).toBe(true);
     }
+  });
+
+  it('correctly classifies shift types adhering strictly to Morning, 2nd, and Split', () => {
+    // 7 AM – 3 PM must be Morning Shift, NOT 2nd Shift
+    expect(
+      classifyShiftType({
+        slot1StartHour: 7,
+        slot1EndHour: 15,
+      })
+    ).toBe('Morning Shift');
+
+    // 6 AM – 3 PM is Morning Shift
+    expect(
+      classifyShiftType({
+        slot1StartHour: 6,
+        slot1EndHour: 15,
+      })
+    ).toBe('Morning Shift');
+
+    // 6 AM – 2 PM is Morning Shift
+    expect(
+      classifyShiftType({
+        slot1StartHour: 6,
+        slot1EndHour: 14,
+      })
+    ).toBe('Morning Shift');
+
+    // 3 PM – 12 AM is 2nd Shift
+    expect(
+      classifyShiftType({
+        slot1StartHour: 15,
+        slot1EndHour: 24,
+      })
+    ).toBe('2nd Shift');
+
+    // 4 PM – 12 AM is 2nd Shift
+    expect(
+      classifyShiftType({
+        slot1StartHour: 16,
+        slot1EndHour: 0,
+      })
+    ).toBe('2nd Shift');
+
+    // 6 AM – 12 PM & 9 PM – 11 PM must be tagged as Split Shift (NOT Custom)
+    expect(
+      classifyShiftType({
+        slot1StartHour: 6,
+        slot1EndHour: 12,
+        slot2StartHour: 21,
+        slot2EndHour: 23,
+      })
+    ).toBe('Split Shift');
+
+    // 6 AM – 3 PM & 3 PM – 12 AM is Split Shift
+    expect(
+      classifyShiftType({
+        slot1StartHour: 6,
+        slot1EndHour: 15,
+        slot2StartHour: 15,
+        slot2EndHour: 24,
+      })
+    ).toBe('Split Shift');
+
+    // Single slot spanning morning and second shift (e.g. 8 AM to 8 PM) is Split Shift
+    expect(
+      classifyShiftType({
+        slot1StartHour: 8,
+        slot1EndHour: 20,
+      })
+    ).toBe('Split Shift');
   });
 
   it('identifies 8-hour compliance thresholds for clocked daily hours', () => {

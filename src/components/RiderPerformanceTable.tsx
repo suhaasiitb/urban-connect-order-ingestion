@@ -9,6 +9,7 @@ import {
   type RiderShiftConfig,
   formatShiftTimings,
   calculatePlannedHours,
+  classifyShiftType,
 } from '../services/riderShiftService';
 
 interface RiderPerformanceTableProps {
@@ -113,6 +114,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
       result = result.filter((r) => {
         const norm = normalizeRiderName(r.riderName);
         const shift = riderShiftsMap?.get(norm);
+        const effectiveType = shift ? classifyShiftType(shift) : null;
         const displayHours = avgMode === 'period' ? r.avgHours : r.activeAvgHours;
         if (activeShiftFilter === 'COMPLIANT_8H') {
           return displayHours >= 8.0;
@@ -126,7 +128,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
         if (activeShiftFilter === 'NOT_SET') {
           return !shift;
         }
-        return shift?.shiftType === activeShiftFilter;
+        return effectiveType === activeShiftFilter;
       });
     }
 
@@ -298,10 +300,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 disabled={loading}
               >
                 <option value="ALL">All Shifts</option>
-                <option value="Morning Shift">Morning (6A–2P)</option>
-                <option value="2nd Shift">2nd Shift (2P–10P)</option>
-                <option value="Split Shift">Split (6–10A & 6–10P)</option>
-                <option value="Custom">Custom Shift</option>
+                <option value="Morning Shift">Morning (6 AM – 3 PM)</option>
+                <option value="2nd Shift">2nd Shift (3 PM – 12 AM)</option>
+                <option value="Split Shift">Split Shift</option>
                 <option value="COMPLIANT_8H">✓ Clocking ≥ 8h</option>
                 <option value="UNDER_8H">⚠ Clocking &lt; 8h</option>
                 <option value="UNDER_6H">⚠ Clocking &lt; 6h</option>
@@ -819,6 +820,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   ? activeNamesSet.has(normName)
                   : false;
                 const riderShift = riderShiftsMap?.get(normName);
+                const effectiveShiftType = riderShift ? classifyShiftType(riderShift) : undefined;
                 const shiftPlannedHours = riderShift
                   ? Math.max(riderShift.totalPlannedHours ?? 0, calculatePlannedHours(riderShift))
                   : 0;
@@ -866,9 +868,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                       {riderShift ? (
                         <div className="shift-cell-badge-wrapper">
                           <span
-                            className={`badge-shift badge-shift-${riderShift.shiftType.toLowerCase().replace(/\s+/g, '-')}`}
+                            className={`badge-shift badge-shift-${(effectiveShiftType || riderShift.shiftType).toLowerCase().replace(/\s+/g, '-')}`}
                           >
-                            {riderShift.shiftType === 'Split Shift' ? 'Split' : riderShift.shiftType.replace(' Shift', '')}
+                            {(effectiveShiftType || riderShift.shiftType) === 'Split Shift'
+                              ? 'Split'
+                              : (effectiveShiftType || riderShift.shiftType).replace(' Shift', '')}
                           </span>
                           <span className="shift-timings-caption">
                             {formatShiftTimings(riderShift)}

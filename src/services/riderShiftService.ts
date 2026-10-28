@@ -30,24 +30,24 @@ export const SHIFT_PRESETS: Record<Exclude<ShiftType, 'Custom'>, {
   hours: number;
 }> = {
   'Morning Shift': {
-    label: 'Morning Shift (6 AM – 2 PM)',
+    label: 'Morning Shift (6 AM – 3 PM)',
     slot1Start: 6,
-    slot1End: 14,
-    hours: 8,
+    slot1End: 15,
+    hours: 9,
   },
   '2nd Shift': {
-    label: '2nd Shift (2 PM – 10 PM)',
-    slot1Start: 14,
-    slot1End: 22,
-    hours: 8,
+    label: '2nd Shift (3 PM – 12 AM)',
+    slot1Start: 15,
+    slot1End: 24,
+    hours: 9,
   },
   'Split Shift': {
-    label: 'Split Shift (6–10 AM & 6–10 PM)',
+    label: 'Split Shift (6 AM – 3 PM & 3 PM – 12 AM)',
     slot1Start: 6,
-    slot1End: 10,
-    slot2Start: 18,
-    slot2End: 22,
-    hours: 8,
+    slot1End: 15,
+    slot2Start: 15,
+    slot2End: 24,
+    hours: 18,
   },
 };
 
@@ -148,6 +148,63 @@ export function calculatePlannedHours(params: {
   return Math.round((h1 + h2) * 10) / 10;
 }
 
+/**
+ * Classifies any shift timing configuration into one of the 3 standard categories:
+ * - 'Morning Shift': reporting window 6 AM – 3 PM
+ * - '2nd Shift': reporting window 3 PM – 12 AM (Midnight)
+ * - 'Split Shift': reporting start times fall in both morning and 2nd shifts, or has a split slot
+ */
+export function classifyShiftType(shift: {
+  slot1StartHour: number;
+  slot1EndHour: number;
+  slot2StartHour?: number | null;
+  slot2EndHour?: number | null;
+}): 'Morning Shift' | '2nd Shift' | 'Split Shift' {
+  const hasSlot2 =
+    shift.slot2StartHour !== undefined &&
+    shift.slot2StartHour !== null &&
+    shift.slot2EndHour !== undefined &&
+    shift.slot2EndHour !== null;
+
+  if (hasSlot2) {
+    return 'Split Shift';
+  }
+
+  const s1Start = Number(shift.slot1StartHour ?? 6);
+  const s1End = Number(shift.slot1EndHour ?? 15);
+
+  // Standard Shift Windows:
+  // Morning: 6 AM to 3 PM (6:00 to 15:00)
+  // 2nd Shift: 3 PM to 12 AM (15:00 to 24:00 / 0:00)
+
+  // Starts in Morning window (6 AM up to before 3 PM)
+  if (s1Start >= 6 && s1Start < 15) {
+    // If ends on or before 3 PM (e.g. 7 AM – 3 PM, 6 AM – 3 PM, 6 AM – 2 PM), it is purely Morning Shift
+    if (s1End <= 15 && (s1End > s1Start || s1End === 15)) {
+      return 'Morning Shift';
+    }
+    // If it extends beyond 3 PM into 2nd Shift (e.g. 7 AM – 8 PM, 6 AM – 11 PM), it spans both shifts
+    return 'Split Shift';
+  }
+
+  // Starts at or after 3 PM (15:00)
+  if (s1Start >= 15) {
+    // If it ends within 2nd shift (by 24 or 0, or early morning < 6)
+    if (s1End <= 24 || s1End === 0 || s1End < 6) {
+      return '2nd Shift';
+    }
+    return 'Split Shift';
+  }
+
+  // Early morning before 6 AM
+  if (s1Start < 6) {
+    if (s1End <= 15) return 'Morning Shift';
+    return 'Split Shift';
+  }
+
+  return 'Morning Shift';
+}
+
 const LOCAL_STORAGE_PREFIX = 'urban_connect_rider_shifts_';
 
 /**
@@ -182,10 +239,17 @@ export async function getRiderShiftsForStore(
           ? Math.max(Number(row.total_planned_hours), calcHours)
           : calcHours;
 
+        const effectiveShift = classifyShiftType({
+          slot1StartHour: s1Start,
+          slot1EndHour: s1End,
+          slot2StartHour: s2Start,
+          slot2EndHour: s2End,
+        });
+
         shiftMap.set(norm, {
           riderName: row.rider_name,
           normalizedName: norm,
-          shiftType: (row.shift_type as ShiftType) || 'Morning Shift',
+          shiftType: effectiveShift,
           slot1StartHour: s1Start,
           slot1EndHour: s1End,
           slot2StartHour: s2Start,
@@ -212,8 +276,10 @@ export async function getRiderShiftsForStore(
           const totalPlanned = item.totalPlannedHours != null && Number(item.totalPlannedHours) > 0
             ? Math.max(Number(item.totalPlannedHours), calcHours)
             : calcHours;
+          const effectiveShift = classifyShiftType(item);
           shiftMap.set(norm, {
             ...item,
+            shiftType: effectiveShift,
             totalPlannedHours: totalPlanned,
           });
         }
@@ -236,11 +302,17 @@ export async function saveRiderShiftsForStore(params: {
   const { storeId, shifts } = params;
   const nowIso = new Date().toISOString();
 
+  // Normalize all shifts with classifyShiftType
+  const normalizedShifts = shifts.map((s) => ({
+    ...s,
+    shiftType: classifyShiftType(s),
+  }));
+
   // 1. Immediately cache in localStorage
   try {
     localStorage.setItem(
       `${LOCAL_STORAGE_PREFIX}${storeId}`,
-      JSON.stringify(shifts)
+      JSON.stringify(normalizedShifts)
     );
   } catch (err) {
     console.warn('Could not cache rider shifts to localStorage:', err);
@@ -248,7 +320,7 @@ export async function saveRiderShiftsForStore(params: {
 
   // 2. Persist to Supabase
   try {
-    const rows = shifts.map((s) => ({
+    const rows = normalizedShifts.map((s) => ({
       store_id: storeId,
       rider_name: s.riderName,
       normalized_name: s.normalizedName || normalizeRiderName(s.riderName),

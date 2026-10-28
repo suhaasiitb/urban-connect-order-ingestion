@@ -5,6 +5,7 @@ import {
   SHIFT_PRESETS,
   TIME_SLOT_OPTIONS,
   calculatePlannedHours,
+  classifyShiftType,
   saveRiderShiftsForStore,
 } from '../services/riderShiftService';
 import { normalizeRiderName } from '../services/activeRiderService';
@@ -42,9 +43,14 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
     for (const r of activeRidersList) {
       const norm = normalizeRiderName(r.name);
       if (existingShiftsMap.has(norm)) {
-        initial[norm] = { ...existingShiftsMap.get(norm)! };
+        const existing = existingShiftsMap.get(norm)!;
+        initial[norm] = {
+          ...existing,
+          shiftType: classifyShiftType(existing),
+          totalPlannedHours: Math.max(existing.totalPlannedHours ?? 0, calculatePlannedHours(existing)),
+        };
       } else {
-        // Default to Morning Shift (8h)
+        // Default to Morning Shift (9h: 6 AM – 3 PM)
         const preset = SHIFT_PRESETS['Morning Shift'];
         initial[norm] = {
           riderName: r.name,
@@ -68,7 +74,12 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
     for (const r of activeRidersList) {
       const norm = normalizeRiderName(r.name);
       if (existingShiftsMap.has(norm)) {
-        updated[norm] = { ...existingShiftsMap.get(norm)! };
+        const existing = existingShiftsMap.get(norm)!;
+        updated[norm] = {
+          ...existing,
+          shiftType: classifyShiftType(existing),
+          totalPlannedHours: Math.max(existing.totalPlannedHours ?? 0, calculatePlannedHours(existing)),
+        };
       } else {
         const preset = SHIFT_PRESETS['Morning Shift'];
         updated[norm] = {
@@ -111,46 +122,37 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
   // Update a single rider's shift type
   const handleShiftTypeChange = (riderName: string, newType: ShiftType) => {
     const norm = normalizeRiderName(riderName);
+    const targetType = (newType === 'Custom' ? 'Morning Shift' : newType) as keyof typeof SHIFT_PRESETS;
+    const preset = SHIFT_PRESETS[targetType] || SHIFT_PRESETS['Morning Shift'];
+
     setShiftsState((prev) => {
       const current = prev[norm] || {
         riderName,
         normalizedName: norm,
-        shiftType: newType,
-        slot1StartHour: 6,
-        slot1EndHour: 14,
-        slot2StartHour: null,
-        slot2EndHour: null,
-        totalPlannedHours: 8,
+        shiftType: targetType,
+        slot1StartHour: preset.slot1Start,
+        slot1EndHour: preset.slot1End,
+        slot2StartHour: preset.slot2Start ?? null,
+        slot2EndHour: preset.slot2End ?? null,
+        totalPlannedHours: preset.hours,
       };
 
-      if (newType in SHIFT_PRESETS) {
-        const preset = SHIFT_PRESETS[newType as keyof typeof SHIFT_PRESETS];
-        return {
-          ...prev,
-          [norm]: {
-            ...current,
-            shiftType: newType,
-            slot1StartHour: preset.slot1Start,
-            slot1EndHour: preset.slot1End,
-            slot2StartHour: preset.slot2Start ?? null,
-            slot2EndHour: preset.slot2End ?? null,
-            totalPlannedHours: preset.hours,
-          },
-        };
-      }
-
-      // Custom
       return {
         ...prev,
         [norm]: {
           ...current,
-          shiftType: 'Custom',
+          shiftType: targetType,
+          slot1StartHour: preset.slot1Start,
+          slot1EndHour: preset.slot1End,
+          slot2StartHour: preset.slot2Start ?? null,
+          slot2EndHour: preset.slot2End ?? null,
+          totalPlannedHours: preset.hours,
         },
       };
     });
   };
 
-  // Update custom or standard slot timing
+  // Update slot timing and automatically re-classify shift type
   const handleTimingChange = (
     riderName: string,
     field: 'slot1StartHour' | 'slot1EndHour' | 'slot2StartHour' | 'slot2EndHour',
@@ -165,16 +167,10 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
         [field]: val,
       };
 
-      // Automatically sync shiftType when slot 2 is added or removed
-      if (updated.slot2StartHour != null && updated.slot2EndHour != null) {
-        if (updated.shiftType === 'Morning Shift' || updated.shiftType === '2nd Shift') {
-          updated.shiftType = 'Split Shift';
-        }
-      } else if (updated.shiftType === 'Split Shift' && (updated.slot2StartHour == null || updated.slot2EndHour == null)) {
-        updated.shiftType = 'Morning Shift';
-      }
-
+      // Automatically classify shiftType based on standard windows (Morning, 2nd, Split)
+      updated.shiftType = classifyShiftType(updated);
       updated.totalPlannedHours = calculatePlannedHours(updated);
+
       return {
         ...prev,
         [norm]: updated,
@@ -316,21 +312,21 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
                 className="btn-shift-preset"
                 onClick={() => handleBulkApply('Morning Shift')}
               >
-                Morning (6A–2P)
+                Morning (6 AM – 3 PM)
               </button>
               <button
                 type="button"
                 className="btn-shift-preset"
                 onClick={() => handleBulkApply('2nd Shift')}
               >
-                2nd Shift (2P–10P)
+                2nd Shift (3 PM – 12 AM)
               </button>
               <button
                 type="button"
                 className="btn-shift-preset"
                 onClick={() => handleBulkApply('Split Shift')}
               >
-                Split (6–10A & 6–10P)
+                Split (6 AM – 3 PM & 3 PM – 12 AM)
               </button>
             </div>
           </div>
@@ -354,7 +350,6 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
               <option value="Morning Shift">Morning Shift</option>
               <option value="2nd Shift">2nd Shift</option>
               <option value="Split Shift">Split Shift</option>
-              <option value="Custom">Custom</option>
             </select>
           </div>
 
@@ -439,10 +434,9 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
                             handleShiftTypeChange(rider.name, e.target.value as ShiftType)
                           }
                         >
-                          <option value="Morning Shift">Morning Shift (8h)</option>
-                          <option value="2nd Shift">2nd Shift (8h)</option>
-                          <option value="Split Shift">Split Shift (4h + 4h)</option>
-                          <option value="Custom">Custom Shift...</option>
+                          <option value="Morning Shift">Morning Shift (6 AM – 3 PM)</option>
+                          <option value="2nd Shift">2nd Shift (3 PM – 12 AM)</option>
+                          <option value="Split Shift">Split Shift</option>
                         </select>
                       </td>
 
@@ -557,11 +551,11 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
                               type="button"
                               className="btn-add-split-slot"
                               onClick={() => {
-                                handleTimingChange(rider.name, 'slot2StartHour', 18);
-                                handleTimingChange(rider.name, 'slot2EndHour', 22);
+                                handleTimingChange(rider.name, 'slot2StartHour', 15);
+                                handleTimingChange(rider.name, 'slot2EndHour', 24);
                               }}
                             >
-                              + Add Split Slot (e.g. 6 PM – 10 PM)
+                              + Add Split Slot (3 PM – 12 AM)
                             </button>
                           )}
                         </div>
