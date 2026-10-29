@@ -4172,10 +4172,158 @@ select {
   border-color: #86efac;
 }
 
+/* DNR Resolved button in table cell */
+.btn-dnr-resolved-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.35rem;
+  border-radius: 5px;
+  background-color: #f0fdf4;
+  border: 1px solid #86efac;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: 100%;
+  max-width: 120px;
+  text-decoration: none;
+  gap: 0.15rem;
+  box-shadow: 0 1px 2px rgba(22, 101, 52, 0.06);
+}
+
+.btn-dnr-resolved-card:hover {
+  background-color: #dcfce7;
+  border-color: #4ade80;
+  box-shadow: 0 2px 4px rgba(22, 101, 52, 0.12);
+  transform: translateY(-1px);
+}
+
+.dnr-resolved-title-green {
+  color: #15803d; /* bold vibrant green font */
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.dnr-resolved-outcome-text {
+  color: #166534;
+  font-size: 0.58rem;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  word-break: normal;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  border: 1px solid #bbf7d0;
+  width: 100%;
+}
+
+.btn-dnr-resolved-card:hover .dnr-resolved-outcome-text {
+  background: #ffffff;
+  border-color: #86efac;
+}
+
 /* Modal DNR Resolution Card & Timeline */
 .modal-dnr-resolution {
   max-width: 580px;
   width: 95%;
+}
+
+/* Modal Active Resolution Banner */
+.dnr-active-resolution-banner {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  box-shadow: 0 1px 3px rgba(22, 101, 52, 0.05);
+}
+
+.dnr-active-resolution-banner .banner-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.badge-resolved-green {
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  border: 1px solid #86efac;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.banner-resolved-date {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.banner-resolution-highlight {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.banner-resolution-highlight .resolution-label {
+  color: #475569;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.banner-resolution-highlight .resolution-value {
+  color: #15803d;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.banner-notes-box {
+  background: #ffffff;
+  border: 1px solid #bbf7d0;
+  border-radius: 4px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.75rem;
+  color: #334155;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.banner-notes-box .notes-label {
+  color: #64748b;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.banner-notes-box .banner-notes-text {
+  margin: 0;
+  color: #1e293b;
+  font-style: italic;
+}
+
+.banner-meta-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  font-size: 0.7rem;
+  color: #64748b;
+  border-top: 1px dashed #bbf7d0;
+  padding-top: 0.35rem;
 }
 
 .dnr-rider-overview-box {

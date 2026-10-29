@@ -11,7 +11,7 @@ import {
   calculatePlannedHours,
   classifyShiftType,
 } from '../services/riderShiftService';
-import type { RiderDnrSummary, StoreDnrSummary } from '../services/dnrService';
+import { formatDnrTimestamp, type RiderDnrSummary, type StoreDnrSummary } from '../services/dnrService';
 import { RiderDnrResolutionModal } from './RiderDnrResolutionModal';
 
 interface RiderPerformanceTableProps {
@@ -1029,17 +1029,19 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                           riderDnr.latestResolution ? (
                             <button
                               type="button"
-                              className={`badge-dnr-resolution ${
-                                riderDnr.latestResolution.resolution === 'Given Warning to Rider'
-                                  ? 'res-warning'
-                                  : riderDnr.latestResolution.resolution === 'Rider ID deactivated'
-                                  ? 'res-deactivated'
-                                  : 'res-no-mistake'
-                              }`}
+                              className="btn-dnr-resolved-card"
                               onClick={() => setSelectedDnrRider(riderDnr)}
-                              title={`Resolution: ${riderDnr.latestResolution.resolution}${riderDnr.latestResolution.notes ? `\n"${riderDnr.latestResolution.notes}"` : ''}\nResolved by ${riderDnr.latestResolution.resolvedBy || 'Admin'} on ${new Date(riderDnr.latestResolution.resolvedAt).toLocaleDateString()}\nClick to edit or view history.`}
+                              title={`✓ DNR Resolved: ${riderDnr.latestResolution.resolution}${
+                                riderDnr.latestResolution.notes ? `\n"${riderDnr.latestResolution.notes}"` : ''
+                              }\nResolved by ${riderDnr.latestResolution.resolvedBy || 'Admin'} on ${
+                                formatDnrTimestamp(riderDnr.latestResolution.resolvedAt) ||
+                                new Date(riderDnr.latestResolution.resolvedAt).toLocaleDateString()
+                              }\nClick to view full resolution details & history.`}
                             >
-                              ✓ {riderDnr.latestResolution.resolution}
+                              <span className="dnr-resolved-title-green">✓ DNR Resolved</span>
+                              <span className="dnr-resolved-outcome-text">
+                                {riderDnr.latestResolution.resolution}
+                              </span>
                             </button>
                           ) : (
                             <button

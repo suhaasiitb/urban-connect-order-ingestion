@@ -59,12 +59,12 @@ export const RiderDnrResolutionModal: React.FC<RiderDnrResolutionModalProps> = (
         return;
       }
 
-      setSuccessMsg('Resolution saved successfully.');
+      setSuccessMsg(`✓ Resolution saved: "${selectedResolution}". Updated in dashboard.`);
       setSaving(false);
       onSaved();
       setTimeout(() => {
         onClose();
-      }, 700);
+      }, 900);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(`Error saving resolution: ${msg}`);
@@ -137,11 +137,41 @@ export const RiderDnrResolutionModal: React.FC<RiderDnrResolutionModalProps> = (
             )}
           </div>
 
+          {/* Active Resolution Banner */}
+          {riderSummary.latestResolution && (
+            <div className="dnr-active-resolution-banner">
+              <div className="banner-top-row">
+                <span className="badge-resolved-green">✓ DNR Resolved</span>
+                <span className="banner-resolved-date">
+                  {formatDnrTimestamp(riderSummary.latestResolution.resolvedAt) || riderSummary.latestResolution.resolvedAt}
+                </span>
+              </div>
+              <div className="banner-resolution-highlight">
+                <span className="resolution-label">Current Resolution:</span>
+                <strong className="resolution-value">
+                  {riderSummary.latestResolution.resolution}
+                </strong>
+              </div>
+              {riderSummary.latestResolution.notes && (
+                <div className="banner-notes-box">
+                  <span className="notes-label">Notes:</span>
+                  <p className="banner-notes-text">
+                    "{riderSummary.latestResolution.notes}"
+                  </p>
+                </div>
+              )}
+              <div className="banner-meta-footer">
+                <span>Resolved by: <strong>{riderSummary.latestResolution.resolvedBy || 'Admin'}</strong></span>
+                <span>Store: <strong>{riderSummary.latestResolution.siteCode || siteCode}</strong></span>
+              </div>
+            </div>
+          )}
+
           {/* Form to submit resolution */}
           <form onSubmit={handleSave} className="dnr-resolution-form">
             <div className="form-group">
               <label htmlFor="dnr-resolution-select" className="form-label">
-                Resolution Action <span className="text-danger">*</span>
+                {riderSummary.latestResolution ? 'Update Resolution Action' : 'Resolution Action'} <span className="text-danger">*</span>
               </label>
               <select
                 id="dnr-resolution-select"
@@ -198,7 +228,11 @@ export const RiderDnrResolutionModal: React.FC<RiderDnrResolutionModalProps> = (
                 className="btn btn-primary"
                 disabled={saving}
               >
-                {saving ? 'Saving Resolution...' : 'Save Resolution'}
+                {saving
+                  ? 'Saving Resolution...'
+                  : riderSummary.latestResolution
+                  ? 'Update Resolution'
+                  : 'Save Resolution'}
               </button>
             </div>
           </form>
