@@ -997,33 +997,6 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                                     ℹ️ Potential_abuse: {riderDnr.potentialAbuseCount}
                                   </span>
                                 )}
-
-                                {/* DNR Resolution Tag or Action Button */}
-                                {riderDnr.latestResolution ? (
-                                  <button
-                                    type="button"
-                                    className={`badge-dnr-resolution ${
-                                      riderDnr.latestResolution.resolution === 'Given Warning to Rider'
-                                        ? 'res-warning'
-                                        : riderDnr.latestResolution.resolution === 'Rider ID deactivated'
-                                        ? 'res-deactivated'
-                                        : 'res-no-mistake'
-                                    }`}
-                                    onClick={() => setSelectedDnrRider(riderDnr)}
-                                    title={`Resolution: ${riderDnr.latestResolution.resolution}${riderDnr.latestResolution.notes ? `\n"${riderDnr.latestResolution.notes}"` : ''}\nResolved by ${riderDnr.latestResolution.resolvedBy || 'Admin'} on ${new Date(riderDnr.latestResolution.resolvedAt).toLocaleDateString()}\nClick to edit or view history.`}
-                                  >
-                                    ✓ {riderDnr.latestResolution.resolution}
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="btn-dnr-resolve-action"
-                                    onClick={() => setSelectedDnrRider(riderDnr)}
-                                    title="Set administrative resolution for this rider"
-                                  >
-                                    ⚖️ Resolve DNR
-                                  </button>
-                                )}
                               </div>
                             )}
                           </div>
@@ -1038,17 +1011,48 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                       </div>
                     </td>
 
-                    {/* Active Status */}
+                    {/* Active Status & DNR Resolution */}
                     <td className="td-active text-center">
-                      {isRiderActive ? (
-                        <span className="badge-active-yes" title="Verified in Active Riders Roster">
-                          Active
-                        </span>
-                      ) : (
-                        <span className="badge-active-no" title="Not found in Active Riders Roster">
-                          Inactive
-                        </span>
-                      )}
+                      <div className="active-cell-stacked flex-col items-center gap-xs">
+                        {isRiderActive ? (
+                          <span className="badge-active-yes" title="Verified in Active Riders Roster">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="badge-active-no" title="Not found in Active Riders Roster">
+                            Inactive
+                          </span>
+                        )}
+
+                        {/* DNR Resolution Tag or Action Button */}
+                        {riderDnr && riderDnr.totalDnrCount > 0 && (
+                          riderDnr.latestResolution ? (
+                            <button
+                              type="button"
+                              className={`badge-dnr-resolution ${
+                                riderDnr.latestResolution.resolution === 'Given Warning to Rider'
+                                  ? 'res-warning'
+                                  : riderDnr.latestResolution.resolution === 'Rider ID deactivated'
+                                  ? 'res-deactivated'
+                                  : 'res-no-mistake'
+                              }`}
+                              onClick={() => setSelectedDnrRider(riderDnr)}
+                              title={`Resolution: ${riderDnr.latestResolution.resolution}${riderDnr.latestResolution.notes ? `\n"${riderDnr.latestResolution.notes}"` : ''}\nResolved by ${riderDnr.latestResolution.resolvedBy || 'Admin'} on ${new Date(riderDnr.latestResolution.resolvedAt).toLocaleDateString()}\nClick to edit or view history.`}
+                            >
+                              ✓ {riderDnr.latestResolution.resolution}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-dnr-resolve-action"
+                              onClick={() => setSelectedDnrRider(riderDnr)}
+                              title="Set administrative resolution for this rider"
+                            >
+                              ⚖️ Resolve DNR
+                            </button>
+                          )
+                        )}
+                      </div>
                     </td>
 
                     {/* Assigned Shift */}

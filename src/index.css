@@ -1837,7 +1837,8 @@ select {
   background-color: #f8fafc !important;
   color: #475569 !important;
   text-align: center !important;
-  width: 75px;
+  min-width: 105px;
+  width: 110px;
   border-right: 1px solid #f1f5f9 !important;
 }
 
@@ -2047,6 +2048,17 @@ select {
   background-color: #ffffff;
   border-right: 1px solid #f1f5f9;
   text-align: center !important;
+  vertical-align: middle;
+  padding: 0.35rem 0.3rem;
+}
+
+.active-cell-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 100%;
 }
 
 .badge-active {
@@ -4098,14 +4110,17 @@ select {
   color: #92400e;
   border: 1px dashed #f59e0b;
   border-radius: 4px;
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  padding: 0.15rem 0.4rem;
+  padding: 0.15rem 0.35rem;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.2rem;
+  white-space: nowrap;
   transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(245, 158, 11, 0.08);
 }
 
 .btn-dnr-resolve-action:hover {
@@ -4118,17 +4133,20 @@ select {
 .badge-dnr-resolution {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.15rem 0.45rem;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.15rem 0.35rem;
   border-radius: 4px;
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.01em;
-  white-space: nowrap;
-  line-height: 1.2;
+  text-align: center;
+  line-height: 1.15;
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.15s ease;
+  word-break: normal;
+  max-width: 105px;
 }
 
 .badge-dnr-resolution:hover {
