@@ -10,6 +10,29 @@ import { normalizeRiderName } from './activeRiderService';
 
 export type DnrAbuseFlag = 'Non_abusive' | 'Potential_abuse';
 
+export type DnrResolutionType =
+  | 'Given Warning to Rider'
+  | 'Rider ID deactivated'
+  | 'RCA resolved No mistake from Rider';
+
+export const DNR_RESOLUTION_OPTIONS: DnrResolutionType[] = [
+  'Given Warning to Rider',
+  'Rider ID deactivated',
+  'RCA resolved No mistake from Rider',
+];
+
+export interface DnrResolutionRecord {
+  id?: string;
+  siteCode: string;
+  riderName: string;
+  normalizedName: string;
+  dpId?: string;
+  resolution: DnrResolutionType | string;
+  notes?: string;
+  resolvedBy?: string;
+  resolvedAt: string; // ISO string
+}
+
 export interface DnrRecord {
   id?: string;
   week?: number | string;
@@ -36,6 +59,8 @@ export interface RiderDnrSummary {
   potentialAbuseCount: number; // Suspected customer abuse / fraudulent claim
   isFrequentExploiter: boolean; // Flagged if rider has 2+ DNRs or 2+ non-abusive failures
   records: DnrRecord[];
+  latestResolution?: DnrResolutionRecord;
+  resolutionHistory?: DnrResolutionRecord[];
 }
 
 export interface StoreDnrSummary {
@@ -50,6 +75,7 @@ export interface StoreDnrSummary {
   filename: string | null;
   riderSummariesMap: Map<string, RiderDnrSummary>;
   records: DnrRecord[];
+  resolutionsMap?: Map<string, DnrResolutionRecord[]>;
 }
 
 export interface DnrParseResult {
@@ -67,6 +93,7 @@ export interface DnrParseResult {
 // Master storage keys for dual-persistence fallback
 export const LOCAL_STORAGE_DNR_MASTER_KEY = 'urban_connect_dnr_records_master';
 export const LOCAL_STORAGE_DNR_LAST_UPLOAD_KEY = 'urban_connect_dnr_last_upload';
+export const LOCAL_STORAGE_DNR_RESOLUTIONS_KEY = 'urban_connect_dnr_resolutions_master';
 
 /**
  * Pre-seeded default DNR cases provided as baseline audit records.
@@ -708,11 +735,130 @@ export async function saveDnrRecords(params: {
 }
 
 /**
+ * Loads all DNR resolution records from localStorage or returns empty array.
+ */
+export function getAllDnrResolutions(): DnrResolutionRecord[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_DNR_RESOLUTIONS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed as DnrResolutionRecord[];
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return [];
+}
+
+/**
+ * Returns a map of rider normalizedName -> array of DnrResolutionRecord (sorted latest first)
+ * for a given store (or across all stores if siteCode is empty).
+ */
+export function getDnrResolutionsMapForStore(
+  siteCode?: string
+): Map<string, DnrResolutionRecord[]> {
+  const allResolutions = getAllDnrResolutions();
+  const normSite = siteCode ? siteCode.trim().toUpperCase() : null;
+
+  const map = new Map<string, DnrResolutionRecord[]>();
+  for (const res of allResolutions) {
+    if (normSite && res.siteCode && res.siteCode.toUpperCase() !== normSite) {
+      continue;
+    }
+    const key = res.normalizedName;
+    let list = map.get(key);
+    if (!list) {
+      list = [];
+      map.set(key, list);
+    }
+    list.push(res);
+  }
+
+  // Sort each rider's resolution history latest first
+  for (const list of map.values()) {
+    list.sort((a, b) => new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime());
+  }
+
+  return map;
+}
+
+/**
+ * Saves or updates a rider's DNR resolution.
+ * Supports dual-persistence: saves to Supabase store_dnr_resolutions table
+ * and updates localStorage cache immediately.
+ */
+export async function saveDnrResolution(params: {
+  siteCode: string;
+  riderName: string;
+  normalizedName?: string;
+  dpId?: string;
+  resolution: DnrResolutionType | string;
+  notes?: string;
+  resolvedBy?: string;
+}): Promise<{ ok: boolean; record: DnrResolutionRecord; error?: string }> {
+  const { siteCode, riderName, dpId, resolution, notes, resolvedBy } = params;
+  const normName = params.normalizedName || normalizeRiderName(riderName);
+  const nowIso = new Date().toISOString();
+
+  const newResolution: DnrResolutionRecord = {
+    id: `res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    siteCode: siteCode.toUpperCase().trim(),
+    riderName: riderName.trim(),
+    normalizedName: normName,
+    dpId: dpId || undefined,
+    resolution,
+    notes: notes?.trim() || undefined,
+    resolvedBy: resolvedBy || 'Admin',
+    resolvedAt: nowIso,
+  };
+
+  // 1. Immediately persist to localStorage
+  try {
+    const existing = getAllDnrResolutions();
+    existing.unshift(newResolution);
+    localStorage.setItem(LOCAL_STORAGE_DNR_RESOLUTIONS_KEY, JSON.stringify(existing));
+  } catch (err) {
+    console.warn('Could not save DNR resolution to localStorage:', err);
+  }
+
+  // 2. Persist to Supabase
+  try {
+    const { data: inserted, error: dbErr } = await supabase
+      .from('store_dnr_resolutions')
+      .insert({
+        site_code: newResolution.siteCode,
+        rider_name: newResolution.riderName,
+        normalized_name: newResolution.normalizedName,
+        dp_id: newResolution.dpId || null,
+        resolution: newResolution.resolution,
+        notes: newResolution.notes || null,
+        resolved_by: newResolution.resolvedBy,
+        resolved_at: nowIso,
+      })
+      .select('id')
+      .maybeSingle();
+
+    if (dbErr) {
+      console.warn('Supabase store_dnr_resolutions insert warning (using local cache):', dbErr.message);
+    } else if (inserted?.id) {
+      newResolution.id = inserted.id;
+    }
+  } catch (err) {
+    console.warn('Supabase DNR resolution persistence note:', err);
+  }
+
+  return { ok: true, record: newResolution };
+}
+
+/**
  * Returns the aggregated DNR summary for a given store.
  */
 export function getDnrSummaryForStore(siteCode: string): StoreDnrSummary {
   const normSite = siteCode.trim().toUpperCase();
   const allRecords = getAllMasterDnrRecords();
+  const resolutionsMap = getDnrResolutionsMapForStore(normSite);
 
   const storeRecords = allRecords.filter((r) => {
     return r.siteCode.trim().toUpperCase() === normSite;
@@ -733,6 +879,7 @@ export function getDnrSummaryForStore(siteCode: string): StoreDnrSummary {
     const key = rec.normalizedRiderName || (rec.dpId ? `dp:${rec.dpId}` : rec.orderId);
     let summary = riderSummariesMap.get(key);
     if (!summary) {
+      const history = resolutionsMap.get(key) || [];
       summary = {
         riderName: rec.riderName,
         normalizedRiderName: key,
@@ -743,6 +890,8 @@ export function getDnrSummaryForStore(siteCode: string): StoreDnrSummary {
         potentialAbuseCount: 0,
         isFrequentExploiter: false,
         records: [],
+        latestResolution: history[0],
+        resolutionHistory: history,
       };
       riderSummariesMap.set(key, summary);
     }
@@ -793,6 +942,7 @@ export function getDnrSummaryForStore(siteCode: string): StoreDnrSummary {
     filename,
     riderSummariesMap,
     records: storeRecords,
+    resolutionsMap,
   };
 }
 
@@ -860,6 +1010,46 @@ export async function fetchDnrSummaryForStore(siteCode: string): Promise<StoreDn
     }
   } catch (err) {
     console.warn('Supabase store_dnr_records sync note (using local cache):', err);
+  }
+
+  // Synchronize remote resolutions
+  try {
+    const { data: dbResolutions, error: resErr } = await supabase
+      .from('store_dnr_resolutions')
+      .select('*')
+      .order('resolved_at', { ascending: false });
+
+    if (!resErr && dbResolutions && dbResolutions.length > 0) {
+      const mappedResolutions: DnrResolutionRecord[] = dbResolutions.map(
+        (r: Record<string, unknown>) => ({
+          id: String(r.id ?? ''),
+          siteCode: String(r.site_code || '').toUpperCase(),
+          riderName: String(r.rider_name || ''),
+          normalizedName: String(r.normalized_name || ''),
+          dpId: r.dp_id != null ? String(r.dp_id) : undefined,
+          resolution: String(r.resolution || ''),
+          notes: r.notes != null ? String(r.notes) : undefined,
+          resolvedBy: r.resolved_by != null ? String(r.resolved_by) : undefined,
+          resolvedAt: String(r.resolved_at || new Date().toISOString()),
+        })
+      );
+
+      // Merge into local resolutions master cache
+      const localResolutions = getAllDnrResolutions();
+      const resIdMap = new Map<string, DnrResolutionRecord>();
+      for (const lr of localResolutions) {
+        if (lr.id) resIdMap.set(lr.id, lr);
+      }
+      for (const mr of mappedResolutions) {
+        if (mr.id) resIdMap.set(mr.id, mr);
+      }
+      localStorage.setItem(
+        LOCAL_STORAGE_DNR_RESOLUTIONS_KEY,
+        JSON.stringify(Array.from(resIdMap.values()))
+      );
+    }
+  } catch (err) {
+    console.warn('Supabase store_dnr_resolutions sync note (using local cache):', err);
   }
 
   return getDnrSummaryForStore(normSite);

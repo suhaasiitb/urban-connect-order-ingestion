@@ -4091,6 +4091,261 @@ select {
 }
 
 /* ==============================================================================
+   DNR Resolution Badges & Action Buttons
+   ============================================================================== */
+.btn-dnr-resolve-action {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px dashed #f59e0b;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  transition: all 0.15s ease;
+}
+
+.btn-dnr-resolve-action:hover {
+  background: #fde68a;
+  color: #78350f;
+  border-style: solid;
+  transform: translateY(-1px);
+}
+
+.badge-dnr-resolution {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.badge-dnr-resolution:hover {
+  filter: brightness(0.95);
+  transform: translateY(-1px);
+}
+
+.badge-dnr-resolution.res-warning {
+  background-color: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.badge-dnr-resolution.res-deactivated {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+.badge-dnr-resolution.res-no-mistake {
+  background-color: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+
+/* Modal DNR Resolution Card & Timeline */
+.modal-dnr-resolution {
+  max-width: 580px;
+  width: 95%;
+}
+
+.dnr-rider-overview-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.dnr-overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dnr-rider-name {
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.dnr-dpid-tag {
+  font-size: 0.75rem;
+  background: #e2e8f0;
+  color: #475569;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.dnr-kpi-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.dnr-orders-mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 0.5rem;
+}
+
+.mini-list-title {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.dnr-orders-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.dnr-order-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+}
+
+.chip-abuse-tag {
+  font-weight: 600;
+  font-size: 0.68rem;
+}
+
+.dnr-resolution-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.modal-actions-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.dnr-resolution-history-section {
+  margin-top: 1.25rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 1rem;
+}
+
+.history-section-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.75rem;
+}
+
+.no-history-text {
+  font-size: 0.82rem;
+  color: #64748b;
+  font-style: italic;
+  margin: 0;
+}
+
+.dnr-history-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-left: 0.5rem;
+}
+
+.history-timeline-item {
+  display: flex;
+  gap: 0.75rem;
+  position: relative;
+}
+
+.timeline-marker {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3b82f6;
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px #dbeafe;
+}
+
+.timeline-content {
+  flex: 1;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.timeline-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.timeline-resolution-text {
+  font-size: 0.82rem;
+  color: #0f172a;
+}
+
+.timeline-date-text {
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+.timeline-meta-row {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.72rem;
+  color: #475569;
+}
+
+.timeline-notes-text {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.78rem;
+  color: #334155;
+  background: #ffffff;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  border-left: 2px solid #3b82f6;
+  font-style: italic;
+}
+
+/* ==============================================================================
    Planning & Capacity Section Styles
    ============================================================================== */
 

@@ -25,11 +25,14 @@ if (typeof globalThis.localStorage === 'undefined') {
 import {
   INITIAL_SEED_DNR_RECORDS,
   LOCAL_STORAGE_DNR_LAST_UPLOAD_KEY,
+  DNR_RESOLUTION_OPTIONS,
   classifyAbuseFlag,
   getAllMasterDnrRecords,
+  getAllDnrResolutions,
   getDnrSummaryForStore,
   parseDnrFile,
   saveDnrRecords,
+  saveDnrResolution,
 } from '../../src/services/dnrService';
 import { normalizeRiderName } from '../../src/services/activeRiderService';
 
@@ -339,6 +342,73 @@ describe('DNR (Delivery Not Received) Service Suite', () => {
         'Aaron Zebra',
         'Zachary Apple',
       ]);
+    });
+  });
+
+  describe('7. Rider-Level DNR Resolution Workflow', () => {
+    it('provides standard resolution options', () => {
+      expect(DNR_RESOLUTION_OPTIONS).toContain('Given Warning to Rider');
+      expect(DNR_RESOLUTION_OPTIONS).toContain('Rider ID deactivated');
+      expect(DNR_RESOLUTION_OPTIONS).toContain('RCA resolved No mistake from Rider');
+    });
+
+    it('saves resolution for a rider and retrieves it in store summary', async () => {
+      const res = await saveDnrResolution({
+        siteCode: 'TPH1',
+        riderName: 'Sehbudi Shekh',
+        normalizedName: 'sehbudi shekh',
+        dpId: '1083794',
+        resolution: 'Given Warning to Rider',
+        notes: 'First formal warning issued regarding delivery verification protocol.',
+        resolvedBy: 'StoreManager',
+      });
+
+      expect(res.ok).toBe(true);
+      expect(res.record.resolution).toBe('Given Warning to Rider');
+      expect(res.record.resolvedBy).toBe('StoreManager');
+
+      const allRes = getAllDnrResolutions();
+      expect(allRes.some((r) => r.normalizedName === 'sehbudi shekh')).toBe(true);
+
+      // Verify that getDnrSummaryForStore populates latestResolution and resolutionHistory
+      const summary = getDnrSummaryForStore('TPH1');
+      const sehbudi = summary.riderSummariesMap.get('sehbudi shekh');
+      expect(sehbudi).toBeDefined();
+      expect(sehbudi?.latestResolution?.resolution).toBe('Given Warning to Rider');
+      expect(sehbudi?.latestResolution?.notes).toContain('First formal warning');
+      expect(sehbudi?.resolutionHistory).toHaveLength(1);
+    });
+
+    it('stores resolution history so future DNR flags preserve past actions', async () => {
+      // First action
+      await saveDnrResolution({
+        siteCode: 'TPH1',
+        riderName: 'Sehbudi Shekh',
+        normalizedName: 'sehbudi shekh',
+        resolution: 'Given Warning to Rider',
+        notes: 'Warning #1',
+        resolvedBy: 'Manager A',
+      });
+
+      // Subsequent action when flagged again in future
+      await saveDnrResolution({
+        siteCode: 'TPH1',
+        riderName: 'Sehbudi Shekh',
+        normalizedName: 'sehbudi shekh',
+        resolution: 'Rider ID deactivated',
+        notes: 'Repeated breach, deactivated ID.',
+        resolvedBy: 'Manager B',
+      });
+
+      const summary = getDnrSummaryForStore('TPH1');
+      const sehbudi = summary.riderSummariesMap.get('sehbudi shekh');
+      expect(sehbudi).toBeDefined();
+      // Latest resolution is the most recent
+      expect(sehbudi?.latestResolution?.resolution).toBe('Rider ID deactivated');
+      expect(sehbudi?.latestResolution?.notes).toBe('Repeated breach, deactivated ID.');
+      // History retains both records
+      expect(sehbudi?.resolutionHistory?.length).toBeGreaterThanOrEqual(2);
+      expect(sehbudi?.resolutionHistory?.some((h) => h.resolution === 'Given Warning to Rider')).toBe(true);
     });
   });
 });

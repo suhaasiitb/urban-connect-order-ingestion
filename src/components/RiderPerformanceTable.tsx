@@ -11,7 +11,8 @@ import {
   calculatePlannedHours,
   classifyShiftType,
 } from '../services/riderShiftService';
-import type { StoreDnrSummary } from '../services/dnrService';
+import type { RiderDnrSummary, StoreDnrSummary } from '../services/dnrService';
+import { RiderDnrResolutionModal } from './RiderDnrResolutionModal';
 
 interface RiderPerformanceTableProps {
   data: RiderPerformancePivotResult;
@@ -64,6 +65,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     onSelectShiftFilter?.(newVal);
   };
   const [highlightDnr, setHighlightDnr] = useState<boolean>(false);
+  const [selectedDnrRider, setSelectedDnrRider] = useState<RiderDnrSummary | null>(null);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<
     'name' | 'phone' | 'shift' | 'compliance' | 'activeDays' | 'avgOrders' | 'avgHours' | 'totalOrders'
@@ -969,8 +971,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                               <div className="dnr-badges-wrapper flex-row items-center gap-xs">
                                 {isFrequentExploiter && (
                                   <span
-                                    className="badge-dnr badge-dnr-frequent"
-                                    title={`🚨 Frequent DNR Exploit (${riderDnr.totalDnrCount} total cases)`}
+                                    className="badge-dnr badge-dnr-frequent cursor-pointer"
+                                    onClick={() => setSelectedDnrRider(riderDnr)}
+                                    title={`🚨 Frequent DNR Exploit (${riderDnr.totalDnrCount} total cases). Click to view & resolve.`}
                                   >
                                     <span className="dnr-flame">🚨</span>
                                     <span>Frequent DNR</span>
@@ -978,19 +981,48 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                                 )}
                                 {riderDnr.nonAbusiveCount > 0 && (
                                   <span
-                                    className="badge-dnr badge-dnr-non-abusive"
-                                    title={`Non_abusive: ${riderDnr.nonAbusiveCount} cases\nOrders:\n${riderDnr.records.filter((r) => r.abuseFlag === 'Non_abusive').map((r) => `• ${r.orderId} (${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
+                                    className="badge-dnr badge-dnr-non-abusive cursor-pointer"
+                                    onClick={() => setSelectedDnrRider(riderDnr)}
+                                    title={`Non_abusive: ${riderDnr.nonAbusiveCount} cases\nOrders:\n${riderDnr.records.filter((r) => r.abuseFlag === 'Non_abusive').map((r) => `• ${r.orderId} (${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}\nClick to view & resolve.`}
                                   >
                                     ⚠️ Non_abusive: {riderDnr.nonAbusiveCount}
                                   </span>
                                 )}
                                 {riderDnr.potentialAbuseCount > 0 && (
                                   <span
-                                    className="badge-dnr badge-dnr-potential-abuse"
-                                    title={`Potential_abuse: ${riderDnr.potentialAbuseCount} cases\nOrders:\n${riderDnr.records.filter((r) => r.abuseFlag === 'Potential_abuse').map((r) => `• ${r.orderId} (${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}`}
+                                    className="badge-dnr badge-dnr-potential-abuse cursor-pointer"
+                                    onClick={() => setSelectedDnrRider(riderDnr)}
+                                    title={`Potential_abuse: ${riderDnr.potentialAbuseCount} cases\nOrders:\n${riderDnr.records.filter((r) => r.abuseFlag === 'Potential_abuse').map((r) => `• ${r.orderId} (${r.scanDataDelivered || 'N/A'}, ${r.orderDate || ''})`).join('\n')}\nClick to view & resolve.`}
                                   >
                                     ℹ️ Potential_abuse: {riderDnr.potentialAbuseCount}
                                   </span>
+                                )}
+
+                                {/* DNR Resolution Tag or Action Button */}
+                                {riderDnr.latestResolution ? (
+                                  <button
+                                    type="button"
+                                    className={`badge-dnr-resolution ${
+                                      riderDnr.latestResolution.resolution === 'Given Warning to Rider'
+                                        ? 'res-warning'
+                                        : riderDnr.latestResolution.resolution === 'Rider ID deactivated'
+                                        ? 'res-deactivated'
+                                        : 'res-no-mistake'
+                                    }`}
+                                    onClick={() => setSelectedDnrRider(riderDnr)}
+                                    title={`Resolution: ${riderDnr.latestResolution.resolution}${riderDnr.latestResolution.notes ? `\n"${riderDnr.latestResolution.notes}"` : ''}\nResolved by ${riderDnr.latestResolution.resolvedBy || 'Admin'} on ${new Date(riderDnr.latestResolution.resolvedAt).toLocaleDateString()}\nClick to edit or view history.`}
+                                  >
+                                    ✓ {riderDnr.latestResolution.resolution}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="btn-dnr-resolve-action"
+                                    onClick={() => setSelectedDnrRider(riderDnr)}
+                                    title="Set administrative resolution for this rider"
+                                  >
+                                    ⚖️ Resolve DNR
+                                  </button>
                                 )}
                               </div>
                             )}
@@ -1244,6 +1276,20 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           <span className="formula-tag"><strong>Avg Mode:</strong> {avgMode === 'period' ? `Divided by ${periodDays} days` : 'Divided by active working days'}</span>
         </div>
       </div>
+
+      {/* Rider DNR Resolution Modal */}
+      {selectedDnrRider && (
+        <RiderDnrResolutionModal
+          isOpen={Boolean(selectedDnrRider)}
+          onClose={() => setSelectedDnrRider(null)}
+          siteCode={storeCode}
+          storeName={storeName}
+          riderSummary={selectedDnrRider}
+          onSaved={() => {
+            onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 };
