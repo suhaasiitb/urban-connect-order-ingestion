@@ -364,10 +364,10 @@ export function parseDnrFile(params: {
     };
 
     const weekKey = findKey([/^week$/i]);
-    const orderDateKey = findKey([/order[_\s]*date/i, /date/i]);
+    const orderDateKey = findKey([/order[_\s]*date/i, /^date$/i]);
     const siteKey = findKey([/site[_\s]*code/i, /^store/i, /^site/i]);
     const dpIdKey = findKey([/dp[_\s]*id/i, /rider[_\s]*id/i]);
-    const orderIdKey = findKey([/order[_\s]*id/i, /tracking/i, /^order/i]);
+    const orderIdKey = findKey([/^order[_\s]*id$/i, /order[_\s]*id/i, /tracking/i]);
     const riderNameKey = findKey([/ride[_\s]*name/i, /rider[_\s]*name/i, /^name$/i]);
     const markedDelKey = findKey([/marked[_\s]*del/i, /marked[_\s]*from/i, /source/i]);
     const abuseKey = findKey([/abuse[_\s]*flag/i, /^abuse$/i, /^flag$/i]);
@@ -390,10 +390,8 @@ export function parseDnrFile(params: {
       };
     }
 
-    const validRecords: DnrRecord[] = [];
+    const dedupedByOrderId = new Map<string, DnrRecord>();
     const siteCodesSet = new Set<string>();
-    let nonAbusiveCount = 0;
-    let potentialAbuseCount = 0;
 
     for (let i = 0; i < rawRows.length; i++) {
       const row = rawRows[i];
@@ -412,13 +410,8 @@ export function parseDnrFile(params: {
       const normalizedRiderName = normalizeRiderName(rawName) || (rawDpId ? `dp:${rawDpId}` : '');
 
       const abuseFlag = classifyAbuseFlag(abuseKey ? row[abuseKey] : 'Non_abusive');
-      if (abuseFlag === 'Non_abusive') {
-        nonAbusiveCount++;
-      } else {
-        potentialAbuseCount++;
-      }
 
-      validRecords.push({
+      dedupedByOrderId.set(orderId, {
         week: weekKey ? String(row[weekKey] ?? '').trim() : undefined,
         orderDate: orderDateKey ? formatRawDate(row[orderDateKey]) : undefined,
         siteCode,
@@ -431,6 +424,17 @@ export function parseDnrFile(params: {
         deliveryTime: delivTimeKey ? formatRawDate(row[delivTimeKey]) : undefined,
         scanDataDelivered: scanDataKey ? String(row[scanDataKey] ?? '').trim() : undefined,
       });
+    }
+
+    const validRecords: DnrRecord[] = Array.from(dedupedByOrderId.values());
+    let nonAbusiveCount = 0;
+    let potentialAbuseCount = 0;
+    for (const rec of validRecords) {
+      if (rec.abuseFlag === 'Non_abusive') {
+        nonAbusiveCount++;
+      } else {
+        potentialAbuseCount++;
+      }
     }
 
     if (validRecords.length === 0) {
@@ -447,10 +451,14 @@ export function parseDnrFile(params: {
       };
     }
 
-    const siteCodesFound = Array.from(siteCodesSet);
+    const siteCodesFound = Array.from(siteCodesSet).sort();
     if (targetSiteCode && siteCodesFound.length > 1 && !siteCodesSet.has(targetSiteCode)) {
       warnings.push(
-        `File contains records for stores [${siteCodesFound.join(', ')}]. Records matching ${targetSiteCode} will be ingested for this store.`
+        `File contains records for stores [${siteCodesFound.join(', ')}]. Records will be mapped and saved for their respective stores.`
+      );
+    } else if (siteCodesFound.length > 1) {
+      warnings.push(
+        `Bulk multi-store DNR upload detected: contains records for ${siteCodesFound.length} stores (${siteCodesFound.join(', ')}). Each store's DNR metrics will be updated.`
       );
     }
 
@@ -533,10 +541,23 @@ export async function saveDnrRecords(params: {
   ok: boolean;
   totalSaved: number;
   lastUpdated: string;
+  storesUpdated?: string[];
   error?: string;
 }> {
   const { filename, records, uploadedBy, targetSiteCode } = params;
   const nowIso = new Date().toISOString();
+
+  // Deduplicate incoming records by orderId so batch upserts never conflict with themselves
+  const uniqueBatchMap = new Map<string, DnrRecord>();
+  const storesSet = new Set<string>();
+  for (const r of records) {
+    if (r.orderId) {
+      uniqueBatchMap.set(r.orderId, r);
+      if (r.siteCode) storesSet.add(r.siteCode.toUpperCase());
+    }
+  }
+  const uniqueRecords = Array.from(uniqueBatchMap.values());
+  const storesUpdated = Array.from(storesSet).sort();
 
   // 1. Merge into existing master records in localStorage
   try {
@@ -545,7 +566,7 @@ export async function saveDnrRecords(params: {
     for (const r of existing) {
       orderIdMap.set(r.orderId, r);
     }
-    for (const r of records) {
+    for (const r of uniqueRecords) {
       orderIdMap.set(r.orderId, {
         ...r,
         uploadedAt: nowIso,
@@ -555,21 +576,47 @@ export async function saveDnrRecords(params: {
     const merged = Array.from(orderIdMap.values());
     localStorage.setItem(LOCAL_STORAGE_DNR_MASTER_KEY, JSON.stringify(merged));
 
-    const nonAbusive = records.filter((r) => r.abuseFlag === 'Non_abusive').length;
-    const potAbuse = records.filter((r) => r.abuseFlag === 'Potential_abuse').length;
+    const nonAbusive = uniqueRecords.filter((r) => r.abuseFlag === 'Non_abusive').length;
+    const potAbuse = uniqueRecords.filter((r) => r.abuseFlag === 'Potential_abuse').length;
 
+    const auditSiteCode =
+      storesUpdated.length === 1
+        ? storesUpdated[0]
+        : storesUpdated.length > 1
+        ? 'ALL'
+        : targetSiteCode || 'ALL';
+
+    const lastUploadPayload = {
+      filename,
+      uploadedAt: nowIso,
+      totalRecords: uniqueRecords.length,
+      nonAbusiveCount: nonAbusive,
+      potentialAbuseCount: potAbuse,
+      uploadedBy: uploadedBy || 'Admin',
+      siteCode: auditSiteCode,
+      storesUpdated,
+    };
+
+    // Store global upload metadata
     localStorage.setItem(
       LOCAL_STORAGE_DNR_LAST_UPLOAD_KEY,
-      JSON.stringify({
-        filename,
-        uploadedAt: nowIso,
-        totalRecords: records.length,
-        nonAbusiveCount: nonAbusive,
-        potentialAbuseCount: potAbuse,
-        uploadedBy: uploadedBy || 'Admin',
-        siteCode: targetSiteCode,
-      })
+      JSON.stringify(lastUploadPayload)
     );
+
+    // Also store per-store upload metadata so each store shows the upload timestamp & filename
+    for (const store of storesUpdated) {
+      const storeRecs = uniqueRecords.filter((r) => r.siteCode.toUpperCase() === store);
+      localStorage.setItem(
+        `${LOCAL_STORAGE_DNR_LAST_UPLOAD_KEY}_${store}`,
+        JSON.stringify({
+          ...lastUploadPayload,
+          siteCode: store,
+          totalRecords: storeRecs.length,
+          nonAbusiveCount: storeRecs.filter((r) => r.abuseFlag === 'Non_abusive').length,
+          potentialAbuseCount: storeRecs.filter((r) => r.abuseFlag === 'Potential_abuse').length,
+        })
+      );
+    }
   } catch (err) {
     console.warn('Could not save DNR records to localStorage:', err);
   }
@@ -578,14 +625,14 @@ export async function saveDnrRecords(params: {
   try {
     const chunks = [];
     const CHUNK_SIZE = 500;
-    for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-      chunks.push(records.slice(i, i + CHUNK_SIZE));
+    for (let i = 0; i < uniqueRecords.length; i += CHUNK_SIZE) {
+      chunks.push(uniqueRecords.slice(i, i + CHUNK_SIZE));
     }
 
     for (const chunk of chunks) {
       const payload = chunk.map((r) => ({
         site_code: r.siteCode,
-        week: r.week ? Number(r.week) || null : null,
+        week: r.week != null && String(r.week).trim() !== '' && Number.isFinite(Number(r.week)) ? Math.trunc(Number(r.week)) : null,
         order_date: r.orderDate || null,
         dp_id: r.dpId || null,
         order_id: r.orderId,
@@ -598,38 +645,64 @@ export async function saveDnrRecords(params: {
         uploaded_at: nowIso,
       }));
 
-      const { error: insErr } = await supabase
+      const { error: upsertErr } = await supabase
         .from('store_dnr_records')
         .upsert(payload, { onConflict: 'order_id' });
 
-      if (insErr) {
-        console.warn('Supabase store_dnr_records upsert note (using localStorage cache):', insErr.message);
-        break;
+      if (upsertErr) {
+        // Fallback: if the remote table does not have a UNIQUE(order_id) constraint yet,
+        // delete existing matching order_ids and perform a standard insert.
+        const orderIds = payload.map((p) => p.order_id);
+        await supabase
+          .from('store_dnr_records')
+          .delete()
+          .in('order_id', orderIds);
+
+        const { error: insertErr } = await supabase
+          .from('store_dnr_records')
+          .insert(payload);
+
+        if (insertErr) {
+          console.warn(
+            'Supabase store_dnr_records persistence error (using localStorage cache):',
+            insertErr.message
+          );
+          break;
+        }
       }
     }
 
     // Insert upload audit record
+    const auditSiteCode =
+      storesUpdated.length === 1
+        ? storesUpdated[0]
+        : storesUpdated.length > 1
+        ? 'ALL'
+        : targetSiteCode || 'ALL';
+
     await supabase.from('store_dnr_uploads').insert({
-      site_code: targetSiteCode || records[0]?.siteCode || null,
+      site_code: auditSiteCode,
       filename,
-      total_records: records.length,
-      non_abusive_count: records.filter((r) => r.abuseFlag === 'Non_abusive').length,
-      potential_abuse_count: records.filter((r) => r.abuseFlag === 'Potential_abuse').length,
+      total_records: uniqueRecords.length,
+      non_abusive_count: uniqueRecords.filter((r) => r.abuseFlag === 'Non_abusive').length,
+      potential_abuse_count: uniqueRecords.filter((r) => r.abuseFlag === 'Potential_abuse').length,
       uploaded_at: nowIso,
       uploaded_by: uploadedBy || 'Admin',
     });
 
     return {
       ok: true,
-      totalSaved: records.length,
+      totalSaved: uniqueRecords.length,
       lastUpdated: nowIso,
+      storesUpdated,
     };
   } catch (err) {
     console.warn('Supabase DNR persistence note (cached safely in localStorage):', err);
     return {
       ok: true,
-      totalSaved: records.length,
+      totalSaved: uniqueRecords.length,
       lastUpdated: nowIso,
+      storesUpdated,
     };
   }
 }
@@ -692,11 +765,13 @@ export function getDnrSummaryForStore(siteCode: string): StoreDnrSummary {
     }
   }
 
-  // Load last upload metadata
+  // Load last upload metadata (check store-specific metadata first, fallback to global)
   let lastUpdated: string | null = null;
   let filename: string | null = null;
   try {
-    const rawMeta = localStorage.getItem(LOCAL_STORAGE_DNR_LAST_UPLOAD_KEY);
+    const rawMeta =
+      localStorage.getItem(`${LOCAL_STORAGE_DNR_LAST_UPLOAD_KEY}_${normSite}`) ||
+      localStorage.getItem(LOCAL_STORAGE_DNR_LAST_UPLOAD_KEY);
     if (rawMeta) {
       const meta = JSON.parse(rawMeta);
       lastUpdated = meta.uploadedAt || null;
@@ -759,10 +834,11 @@ export async function fetchDnrSummaryForStore(siteCode: string): Promise<StoreDn
       const merged = Array.from(map.values());
       localStorage.setItem(LOCAL_STORAGE_DNR_MASTER_KEY, JSON.stringify(merged));
 
-      // Fetch latest upload metadata
+      // Fetch latest upload metadata for this site or global 'ALL'
       const { data: uploadLog } = await supabase
         .from('store_dnr_uploads')
         .select('*')
+        .or(`site_code.eq.${normSite},site_code.eq.ALL`)
         .order('uploaded_at', { ascending: false })
         .limit(1)
         .maybeSingle();

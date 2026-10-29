@@ -88,6 +88,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [dnrSummary, setDnrSummary] = useState<StoreDnrSummary | null>(null);
   const [loadingDnr, setLoadingDnr] = useState(false);
   const [dnrParseResult, setDnrParseResult] = useState<DnrParseResult | null>(null);
+  const [dnrStoresUpdated, setDnrStoresUpdated] = useState<string[]>([]);
   const [showDnrConfirm, setShowDnrConfirm] = useState(false);
   const [showDnrSuccess, setShowDnrSuccess] = useState(false);
   const [isSavingDnr, setIsSavingDnr] = useState(false);
@@ -96,6 +97,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [snopMeta, setSnopMeta] = useState<SnopUploadMeta | null>(null);
   const [loadingSnop, setLoadingSnop] = useState(false);
   const [snopParseResult, setSnopParseResult] = useState<SnopParseResult | null>(null);
+  const [snopWarehousesUpdated, setSnopWarehousesUpdated] = useState<string[]>([]);
   const [showSnopConfirm, setShowSnopConfirm] = useState(false);
   const [showSnopSuccess, setShowSnopSuccess] = useState(false);
   const [isSavingSnop, setIsSavingSnop] = useState(false);
@@ -503,6 +505,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
         return;
       }
 
+      setDnrStoresUpdated(result.storesUpdated || [selectedStore.store_code]);
       await loadDnr();
       setShowDnrSuccess(true);
       resetFileInput();
@@ -545,6 +548,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
         return;
       }
 
+      setSnopWarehousesUpdated(result.warehousesUpdated || [selectedStore.store_code]);
       await loadSnop();
       setShowSnopSuccess(true);
       resetFileInput();
@@ -943,13 +947,15 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                   </>
                 ) : uploadType === 'dnr' ? (
                   <>
-                    Target Store: <strong>{selectedStore?.store_code}</strong> • Expected Columns:{' '}
-                    <code>week, order_date, site_code, dp_id, order_id, Ride Name, abuse_flag, delivery_time, scan_data_delivered</code>
+                    Target Store: <strong>{selectedStore?.store_code}</strong>{' '}
+                    <span className="badge badge-secondary ml-xs">Supports All-Store Bulk Upload</span> •
+                    Expected Columns: <code>week, order_date, site_code, dp_id, order_id, Ride Name, abuse_flag, delivery_time, scan_data_delivered</code>
                   </>
                 ) : uploadType === 'snop' ? (
                   <>
-                    Target Store: <strong>{selectedStore?.store_code}</strong> • Expected Columns:{' '}
-                    <code>City, Warehouse Id, Date, Hour, Order</code> (Rewrites existing forecast)
+                    Target Store: <strong>{selectedStore?.store_code}</strong>{' '}
+                    <span className="badge badge-secondary ml-xs">Supports All-Store Bulk Upload</span> •
+                    Expected Columns: <code>City, Warehouse Id, Date, Hour, Order</code> (Rewrites existing forecast)
                   </>
                 ) : selectedStore ? (
                   <>
@@ -1047,6 +1053,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           totalRecords={dnrParseResult.valid_records.length}
           nonAbusiveCount={dnrParseResult.nonAbusiveCount}
           potentialAbuseCount={dnrParseResult.potentialAbuseCount}
+          siteCodesFound={dnrParseResult.siteCodesFound}
           sampleRecords={dnrParseResult.valid_records.slice(0, 5).map((r) => ({
             orderId: r.orderId,
             riderName: r.riderName,
@@ -1067,6 +1074,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
       {showDnrSuccess && dnrSummary && selectedStore && (
         <DnrSuccessModal
           storeCode={selectedStore.store_code}
+          storesUpdated={dnrStoresUpdated}
           totalRecords={dnrSummary.totalRecords}
           nonAbusiveCount={dnrSummary.totalNonAbusive}
           potentialAbuseCount={dnrSummary.totalPotentialAbuse}
@@ -1086,6 +1094,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           startDate={snopParseResult.start_date}
           endDate={snopParseResult.end_date}
           totalProjectedOrders={snopParseResult.total_projected_orders}
+          warehouseCodesFound={snopParseResult.warehouseCodesFound}
           sampleRecords={snopParseResult.records.slice(0, 5)}
           warnings={snopParseResult.warnings}
           isSaving={isSavingSnop}
@@ -1101,6 +1110,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
       {showSnopSuccess && snopMeta && selectedStore && (
         <SnopSuccessModal
           storeCode={selectedStore.store_code}
+          warehousesUpdated={snopWarehousesUpdated}
           totalRows={snopMeta.totalRows}
           startDate={snopMeta.startDate}
           endDate={snopMeta.endDate}

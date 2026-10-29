@@ -385,6 +385,7 @@ interface DnrConfirmModalProps {
   potentialAbuseCount: number;
   sampleRecords: Array<{ orderId: string; riderName: string; abuseFlag: string; scanDataDelivered?: string }>;
   warnings: string[];
+  siteCodesFound?: string[];
   isSaving: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -398,10 +399,13 @@ export const DnrConfirmModal: React.FC<DnrConfirmModalProps> = ({
   potentialAbuseCount,
   sampleRecords,
   warnings,
+  siteCodesFound = [],
   isSaving,
   onCancel,
   onConfirm,
 }) => {
+  const isMultiStore = siteCodesFound.length > 1;
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal-card modal-confirm">
@@ -409,9 +413,21 @@ export const DnrConfirmModal: React.FC<DnrConfirmModalProps> = ({
           <div className="modal-title-with-icon">
             <span className="modal-icon-badge badge-warning">⚠️</span>
             <div>
-              <h3 className="modal-title">Confirm DNR (Delivery Not Received) Ingestion</h3>
+              <h3 className="modal-title">
+                {isMultiStore
+                  ? 'Confirm Multi-Store DNR Bulk Ingestion'
+                  : 'Confirm DNR (Delivery Not Received) Ingestion'}
+              </h3>
               <p className="modal-subtitle">
-                Store: <strong>{store.store_code} — {store.store_name}</strong>
+                {isMultiStore ? (
+                  <>
+                    Scope: <strong>Bulk Upload ({siteCodesFound.join(', ')})</strong>
+                  </>
+                ) : (
+                  <>
+                    Store: <strong>{store.store_code} — {store.store_name}</strong>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -426,6 +442,14 @@ export const DnrConfirmModal: React.FC<DnrConfirmModalProps> = ({
               <span className="confirm-label">File:</span>
               <span className="confirm-value mono">{filename}</span>
             </div>
+            {isMultiStore && (
+              <div className="confirm-row">
+                <span className="confirm-label">Stores Included:</span>
+                <span className="confirm-value font-bold text-primary">
+                  {siteCodesFound.join(', ')} ({siteCodesFound.length} stores)
+                </span>
+              </div>
+            )}
             <div className="confirm-row">
               <span className="confirm-label">Total DNR Cases:</span>
               <span className="confirm-value font-bold text-amber">{totalRecords} cases</span>
@@ -499,6 +523,7 @@ export const DnrConfirmModal: React.FC<DnrConfirmModalProps> = ({
 // -----------------------------------------------------------------------------
 interface DnrSuccessModalProps {
   storeCode: string;
+  storesUpdated?: string[];
   totalRecords: number;
   nonAbusiveCount: number;
   potentialAbuseCount: number;
@@ -508,23 +533,36 @@ interface DnrSuccessModalProps {
 
 export const DnrSuccessModal: React.FC<DnrSuccessModalProps> = ({
   storeCode,
+  storesUpdated = [],
   totalRecords,
   nonAbusiveCount,
   potentialAbuseCount,
   lastUpdatedFormatted,
   onDone,
 }) => {
+  const isMultiStore = storesUpdated.length > 1;
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal-card modal-success">
         <div className="modal-body text-center pt-md">
           <div className="success-icon-circle">✓</div>
-          <h2 className="success-title">DNR Report Ingested Successfully!</h2>
+          <h2 className="success-title">
+            {isMultiStore ? 'Multi-Store DNR Report Ingested!' : 'DNR Report Ingested Successfully!'}
+          </h2>
           <p className="success-subtitle">
             Recorded <strong>{totalRecords} DNR cases</strong> (Non_abusive: {nonAbusiveCount}, Potential_abuse: {potentialAbuseCount}).
           </p>
           <p className="batch-id-note">
-            Target Store: <strong>{storeCode}</strong> • Last Updated: <strong>{lastUpdatedFormatted}</strong>
+            {isMultiStore ? (
+              <>
+                Updated Stores: <strong>{storesUpdated.join(', ')}</strong> • Last Updated: <strong>{lastUpdatedFormatted}</strong>
+              </>
+            ) : (
+              <>
+                Target Store: <strong>{storeCode}</strong> • Last Updated: <strong>{lastUpdatedFormatted}</strong>
+              </>
+            )}
           </p>
         </div>
         <div className="modal-footer justify-center">
@@ -549,6 +587,7 @@ interface SnopConfirmModalProps {
   totalProjectedOrders: number;
   sampleRecords: SnopForecastRecord[];
   warnings?: string[];
+  warehouseCodesFound?: string[];
   isSaving: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -563,10 +602,13 @@ export const SnopConfirmModal: React.FC<SnopConfirmModalProps> = ({
   totalProjectedOrders,
   sampleRecords,
   warnings = [],
+  warehouseCodesFound = [],
   isSaving,
   onCancel,
   onConfirm,
 }) => {
+  const isMultiStore = warehouseCodesFound.length > 1;
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal-card modal-confirm">
@@ -574,9 +616,21 @@ export const SnopConfirmModal: React.FC<SnopConfirmModalProps> = ({
           <div className="modal-title-with-icon">
             <span className="modal-icon-badge badge-primary">📈</span>
             <div>
-              <h3 className="modal-title">Confirm SNOP Orders Forecast Ingestion</h3>
+              <h3 className="modal-title">
+                {isMultiStore
+                  ? 'Confirm Multi-Store SNOP Forecast Ingestion'
+                  : 'Confirm SNOP Orders Forecast Ingestion'}
+              </h3>
               <p className="modal-subtitle">
-                Store: <strong>{store.store_code} — {store.store_name}</strong>
+                {isMultiStore ? (
+                  <>
+                    Scope: <strong>Bulk Upload ({warehouseCodesFound.join(', ')})</strong>
+                  </>
+                ) : (
+                  <>
+                    Store: <strong>{store.store_code} — {store.store_name}</strong>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -591,6 +645,14 @@ export const SnopConfirmModal: React.FC<SnopConfirmModalProps> = ({
               <span className="confirm-label">File Name:</span>
               <span className="confirm-value mono">{filename}</span>
             </div>
+            {isMultiStore && (
+              <div className="confirm-row">
+                <span className="confirm-label">Stores Included:</span>
+                <span className="confirm-value font-bold text-primary">
+                  {warehouseCodesFound.join(', ')} ({warehouseCodesFound.length} stores)
+                </span>
+              </div>
+            )}
             <div className="confirm-row">
               <span className="confirm-label">Total Forecast Slots:</span>
               <span className="confirm-value font-bold text-amber">{totalRows} slots</span>
@@ -610,7 +672,7 @@ export const SnopConfirmModal: React.FC<SnopConfirmModalProps> = ({
           <div className="alert alert-warning my-sm">
             <strong>⚠️ Operational Notice:</strong> Ingesting this forecast will{' '}
             <strong>completely rewrite and replace</strong> all existing SNOP forecast data for{' '}
-            <strong>{store.store_code}</strong>.
+            <strong>{isMultiStore ? `each respective store (${warehouseCodesFound.join(', ')})` : store.store_code}</strong>.
           </div>
 
           {warnings.length > 0 && (
@@ -661,6 +723,7 @@ export const SnopConfirmModal: React.FC<SnopConfirmModalProps> = ({
 // -----------------------------------------------------------------------------
 interface SnopSuccessModalProps {
   storeCode: string;
+  warehousesUpdated?: string[];
   totalRows: number;
   startDate: string;
   endDate: string;
@@ -671,6 +734,7 @@ interface SnopSuccessModalProps {
 
 export const SnopSuccessModal: React.FC<SnopSuccessModalProps> = ({
   storeCode,
+  warehousesUpdated = [],
   totalRows,
   startDate,
   endDate,
@@ -678,15 +742,28 @@ export const SnopSuccessModal: React.FC<SnopSuccessModalProps> = ({
   onGoToPlanning,
   onDone,
 }) => {
+  const isMultiStore = warehousesUpdated.length > 1;
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal-card modal-success">
         <div className="modal-body text-center pt-md">
           <div className="success-icon-circle">✓</div>
-          <h2 className="success-title">SNOP Forecast Ingested Successfully!</h2>
+          <h2 className="success-title">
+            {isMultiStore ? 'Multi-Store SNOP Forecast Ingested!' : 'SNOP Forecast Ingested Successfully!'}
+          </h2>
           <p className="success-subtitle">
-            Updated forecast for <strong>{storeCode}</strong> with{' '}
-            <strong>{totalRows} hourly slots</strong> ({totalProjectedOrders.toLocaleString()} total orders).
+            {isMultiStore ? (
+              <>
+                Updated forecasts across <strong>{warehousesUpdated.join(', ')}</strong> with{' '}
+                <strong>{totalRows} hourly slots</strong> ({totalProjectedOrders.toLocaleString()} total orders).
+              </>
+            ) : (
+              <>
+                Updated forecast for <strong>{storeCode}</strong> with{' '}
+                <strong>{totalRows} hourly slots</strong> ({totalProjectedOrders.toLocaleString()} total orders).
+              </>
+            )}
           </p>
           <p className="batch-id-note">
             Coverage Period: <strong>{startDate}</strong> to <strong>{endDate}</strong>

@@ -278,6 +278,55 @@ describe('Store Planning & SNOP Forecast Suite', () => {
       expect(updatedMeta?.endDate).toBe('2026-11-01');
       expect(updatedMeta?.totalProjectedOrders).toBe(219);
     });
+
+    it('supports bulk multi-store forecast upload and reflects each store independently', async () => {
+      const multiStoreUpload = [
+        {
+          city: 'Pune',
+          warehouseId: 'TMK7',
+          dateStr: '2026-11-02',
+          hour: 6,
+          projectedOrders: 50,
+        },
+        {
+          city: 'Pune',
+          warehouseId: 'TPH1',
+          dateStr: '2026-11-02',
+          hour: 6,
+          projectedOrders: 75,
+        },
+        {
+          city: 'Pune',
+          warehouseId: 'TPE2',
+          dateStr: '2026-11-02',
+          hour: 6,
+          projectedOrders: 90,
+        },
+      ];
+
+      const res = await saveSnopRecords({
+        records: multiStoreUpload,
+        filename: 'Bulk_All_Stores_SNOP.xlsx',
+        uploadedBy: 'AdminUser',
+      });
+
+      expect(res.ok).toBe(true);
+      expect(res.count).toBe(3);
+      expect(res.warehousesUpdated).toEqual(['TMK7', 'TPH1', 'TPE2']);
+
+      // Verify each store received its respective data
+      const tmk7 = getStoredSnopRecords('TMK7');
+      expect(tmk7).toHaveLength(1);
+      expect(tmk7[0].projectedOrders).toBe(50);
+
+      const tph1 = getStoredSnopRecords('TPH1');
+      expect(tph1).toHaveLength(1);
+      expect(tph1[0].projectedOrders).toBe(75);
+
+      const tpe2 = getStoredSnopRecords('TPE2');
+      expect(tpe2).toHaveLength(1);
+      expect(tpe2[0].projectedOrders).toBe(90);
+    });
   });
 
   describe('6. Store Target DPH Configuration & Editing', () => {

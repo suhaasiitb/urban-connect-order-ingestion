@@ -197,6 +197,81 @@ describe('DNR (Delivery Not Received) Service Suite', () => {
       expect(lastUpload.filename).toBe('custom_dnr_batch.xlsx');
       expect(lastUpload.uploadedBy).toBe('Manager');
     });
+
+    it('deduplicates records with identical orderId in saveDnrRecords so batch upserts never conflict', async () => {
+      const res = await saveDnrRecords({
+        filename: 'duplicate_order_batch.xlsx',
+        records: [
+          {
+            siteCode: 'TPH1',
+            orderId: 'DUP-ORDER-101',
+            riderName: 'Test Rider',
+            normalizedRiderName: 'test rider',
+            abuseFlag: 'Potential_abuse',
+          },
+          {
+            siteCode: 'TPH1',
+            orderId: 'DUP-ORDER-101',
+            riderName: 'Test Rider',
+            normalizedRiderName: 'test rider',
+            abuseFlag: 'Non_abusive',
+          },
+        ],
+        uploadedBy: 'Manager',
+        targetSiteCode: 'TPH1',
+      });
+
+      expect(res.ok).toBe(true);
+      expect(res.totalSaved).toBe(1);
+
+      const master = getAllMasterDnrRecords();
+      const matched = master.filter((r) => r.orderId === 'DUP-ORDER-101');
+      expect(matched).toHaveLength(1);
+      expect(matched[0].abuseFlag).toBe('Non_abusive');
+    });
+
+    it('supports bulk multi-store DNR upload and reflects records to their respective stores', async () => {
+      const res = await saveDnrRecords({
+        filename: 'bulk_multi_store_dnr.xlsx',
+        records: [
+          {
+            siteCode: 'TPH1',
+            orderId: 'MULTI-TPH1-01',
+            riderName: 'Rider Alpha',
+            normalizedRiderName: 'rider alpha',
+            abuseFlag: 'Non_abusive',
+          },
+          {
+            siteCode: 'TMK7',
+            orderId: 'MULTI-TMK7-01',
+            riderName: 'Rider Beta',
+            normalizedRiderName: 'rider beta',
+            abuseFlag: 'Potential_abuse',
+          },
+          {
+            siteCode: 'TPE2',
+            orderId: 'MULTI-TPE2-01',
+            riderName: 'Rider Gamma',
+            normalizedRiderName: 'rider gamma',
+            abuseFlag: 'Non_abusive',
+          },
+        ],
+        uploadedBy: 'Admin',
+      });
+
+      expect(res.ok).toBe(true);
+      expect(res.totalSaved).toBe(3);
+      expect(res.storesUpdated).toEqual(['TMK7', 'TPE2', 'TPH1']);
+
+      const summaryTph1 = getDnrSummaryForStore('TPH1');
+      expect(summaryTph1.records.some((r) => r.orderId === 'MULTI-TPH1-01')).toBe(true);
+
+      const summaryTmk7 = getDnrSummaryForStore('TMK7');
+      expect(summaryTmk7.records.some((r) => r.orderId === 'MULTI-TMK7-01')).toBe(true);
+
+      const summaryTpe2 = getDnrSummaryForStore('TPE2');
+      expect(summaryTpe2.records.some((r) => r.orderId === 'MULTI-TPE2-01')).toBe(true);
+    });
   });
 
   describe('6. Highlight DNR Priority Sorting', () => {

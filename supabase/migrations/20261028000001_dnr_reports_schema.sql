@@ -50,34 +50,55 @@ CREATE INDEX IF NOT EXISTS idx_store_dnr_uploads_uploaded_at
 ALTER TABLE public.store_dnr_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.store_dnr_uploads ENABLE ROW LEVEL SECURITY;
 
--- Grants to authenticated and service_role
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.store_dnr_records TO authenticated, service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.store_dnr_uploads TO authenticated, service_role;
+-- Ensure unique constraint on order_id exists even if table was created earlier without it
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'public.store_dnr_records'::regclass
+      AND contype = 'u'
+      AND conname = 'uq_store_dnr_order'
+  ) THEN
+    -- Remove any duplicate order_ids before adding unique constraint
+    DELETE FROM public.store_dnr_records a
+    USING public.store_dnr_records b
+    WHERE a.ctid < b.ctid
+      AND a.order_id = b.order_id;
+
+    ALTER TABLE public.store_dnr_records
+      ADD CONSTRAINT uq_store_dnr_order UNIQUE (order_id);
+  END IF;
+END $$;
+
+-- Grants to authenticated, anon, and service_role
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.store_dnr_records TO authenticated, anon, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.store_dnr_uploads TO authenticated, anon, service_role;
 
 -- RLS Policies
 DROP POLICY IF EXISTS "Allow authenticated select store_dnr_records" ON public.store_dnr_records;
 CREATE POLICY "Allow authenticated select store_dnr_records"
   ON public.store_dnr_records FOR SELECT
-  TO authenticated
+  TO authenticated, anon
   USING (true);
 
 DROP POLICY IF EXISTS "Allow authenticated modify store_dnr_records" ON public.store_dnr_records;
 CREATE POLICY "Allow authenticated modify store_dnr_records"
   ON public.store_dnr_records FOR ALL
-  TO authenticated
+  TO authenticated, anon
   USING (true)
   WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow authenticated select store_dnr_uploads" ON public.store_dnr_uploads;
 CREATE POLICY "Allow authenticated select store_dnr_uploads"
   ON public.store_dnr_uploads FOR SELECT
-  TO authenticated
+  TO authenticated, anon
   USING (true);
 
 DROP POLICY IF EXISTS "Allow authenticated modify store_dnr_uploads" ON public.store_dnr_uploads;
 CREATE POLICY "Allow authenticated modify store_dnr_uploads"
   ON public.store_dnr_uploads FOR ALL
-  TO authenticated
+  TO authenticated, anon
   USING (true)
   WITH CHECK (true);
 
