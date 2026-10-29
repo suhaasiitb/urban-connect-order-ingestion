@@ -4514,6 +4514,96 @@ select {
   font-size: 0.68rem !important;
 }
 
+.planning-table-wrapper .th-rider-name,
+.planning-table-wrapper .td-rider-name {
+  text-align: center !important;
+  min-width: 85px !important;
+  max-width: 110px !important;
+  width: 95px !important;
+}
+
+/* ==============================================================================
+   Planning Status Column Coloured Gradient Font Styles
+   ============================================================================== */
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  line-height: 1.25;
+  font-weight: 800;
+  transition: all 0.15s ease;
+}
+
+.status-pill-short {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  box-shadow: 0 1px 2px rgba(225, 29, 72, 0.06);
+}
+
+.status-pill-short .status-symbol {
+  color: #e11d48;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.status-gradient-short {
+  background: linear-gradient(135deg, #f43f5e 0%, #e11d48 35%, #be123c 70%, #9f1239 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: #e11d48;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.status-pill-surplus {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.06);
+}
+
+.status-pill-surplus .status-symbol {
+  color: #059669;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.status-gradient-surplus {
+  background: linear-gradient(135deg, #10b981 0%, #059669 40%, #047857 75%, #065f46 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: #059669;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.status-pill-balanced {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.status-pill-balanced .status-symbol {
+  color: #64748b;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.status-gradient-balanced {
+  background: linear-gradient(135deg, #475569 0%, #64748b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: #475569;
+  font-weight: 700;
+}
+
+
 
 
 

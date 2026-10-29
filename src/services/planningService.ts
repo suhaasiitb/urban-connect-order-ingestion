@@ -54,6 +54,13 @@ export interface SlotPlanningRow {
   status: 'surplus' | 'balanced' | 'deficit';
 }
 
+export interface ShiftPeakMetrics {
+  hour: number;
+  slotLabel: string;
+  projectedOrders: number;
+  requiredRiders: number;
+}
+
 export interface DayPlanningSummary {
   dateStr: string;
   warehouseId: string;
@@ -61,6 +68,8 @@ export interface DayPlanningSummary {
   totalProjectedOrders: number;
   peakRequiredRiders: number;
   peakHour: number;
+  peakMorning: ShiftPeakMetrics;
+  peakSecond: ShiftPeakMetrics;
   avgRequiredRiders: number;
   peakTurnUp: number;
   avgTurnUp: number;
@@ -607,6 +616,47 @@ export function getAvailableForecastDates(warehouseId: string): string[] {
 }
 
 /**
+ * Resolves the default planning date for a store.
+ * By default, planning displays the next date (tomorrow or the closest upcoming future date)
+ * from the current date.
+ */
+export function getDefaultPlanningDate(
+  availableDates: string[],
+  timeZone: string = 'Asia/Kolkata',
+  baseDate: Date = new Date()
+): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  if (availableDates.length === 0) {
+    const tmrw = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000);
+    return formatter.format(tmrw);
+  }
+
+  const todayStr = formatter.format(baseDate);
+  const tomorrow = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000);
+  const tomorrowStr = formatter.format(tomorrow);
+
+  // 1. If tomorrow exists in available dates, default to tomorrow
+  if (availableDates.includes(tomorrowStr)) {
+    return tomorrowStr;
+  }
+
+  // 2. Otherwise pick the next upcoming future date strictly after today
+  const futureDates = availableDates.filter((d) => d > todayStr).sort();
+  if (futureDates.length > 0) {
+    return futureDates[0];
+  }
+
+  // 3. If all forecast dates are in the past, fallback to the most recent available date
+  return availableDates[availableDates.length - 1];
+}
+
+/**
  * Wraps an async promise with a fast timeout so network hangs never block UI or tests.
  */
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -775,6 +825,60 @@ export async function fetchPlanningForDate(params: {
   const avgTurnUp = Math.floor(sumTurnUp / denominator);
   const netTurnUpDelta = sumTurnUp - sumRequired;
 
+  // Peak for Morning Shift (6 AM to 3 PM: hours 6 to 14)
+  const morningSlots = slotRows.filter((s) => s.hour >= 6 && s.hour < 15);
+  let peakMorning: ShiftPeakMetrics = morningSlots[0]
+    ? {
+        hour: morningSlots[0].hour,
+        slotLabel: morningSlots[0].slotLabel,
+        projectedOrders: morningSlots[0].projectedOrders,
+        requiredRiders: morningSlots[0].requiredRiders,
+      }
+    : {
+        hour: 6,
+        slotLabel: '6 AM',
+        projectedOrders: 0,
+        requiredRiders: 0,
+      };
+
+  for (const s of morningSlots) {
+    if (s.projectedOrders > peakMorning.projectedOrders) {
+      peakMorning = {
+        hour: s.hour,
+        slotLabel: s.slotLabel,
+        projectedOrders: s.projectedOrders,
+        requiredRiders: s.requiredRiders,
+      };
+    }
+  }
+
+  // Peak for 2nd Shift (3 PM to 12 AM: hours 15 to 23)
+  const secondSlots = slotRows.filter((s) => s.hour >= 15 && s.hour < 24);
+  let peakSecond: ShiftPeakMetrics = secondSlots[0]
+    ? {
+        hour: secondSlots[0].hour,
+        slotLabel: secondSlots[0].slotLabel,
+        projectedOrders: secondSlots[0].projectedOrders,
+        requiredRiders: secondSlots[0].requiredRiders,
+      }
+    : {
+        hour: 15,
+        slotLabel: '3 PM',
+        projectedOrders: 0,
+        requiredRiders: 0,
+      };
+
+  for (const s of secondSlots) {
+    if (s.projectedOrders > peakSecond.projectedOrders) {
+      peakSecond = {
+        hour: s.hour,
+        slotLabel: s.slotLabel,
+        projectedOrders: s.projectedOrders,
+        requiredRiders: s.requiredRiders,
+      };
+    }
+  }
+
   return {
     dateStr,
     warehouseId: normWh,
@@ -782,12 +886,146 @@ export async function fetchPlanningForDate(params: {
     totalProjectedOrders: Math.round(totalOrders * 10) / 10,
     peakRequiredRiders: peakRequired,
     peakHour,
+    peakMorning,
+    peakSecond,
     avgRequiredRiders,
     peakTurnUp: Math.round(peakTurnUp * 10) / 10,
     avgTurnUp,
     netTurnUpDelta,
     slots: slotRows,
     hasSnopData,
+  };
+}
+
+/**
+ * Synchronously recalculates an existing DayPlanningSummary in-memory with a new Target DPH.
+ * Updates Required Riders [CEIL(Orders / DPH)], Turn-Up Deltas, Shift Peaks, and Status
+ * with zero network latency.
+ */
+export function recalculatePlanningWithDph(
+  summary: DayPlanningSummary,
+  newDph: number
+): DayPlanningSummary {
+  if (!summary || isNaN(newDph) || newDph <= 0) return summary;
+
+  let totalOrders = 0;
+  let peakRequired = 0;
+  let peakHour = 6;
+  let sumRequired = 0;
+  let sumTurnUp = 0;
+  let peakTurnUp = 0;
+  let activeSlotCount = 0;
+
+  const updatedSlots: SlotPlanningRow[] = summary.slots.map((s) => {
+    const requiredRiders = calculateRequiredRiders(s.projectedOrders, newDph);
+    const avgTurnUpLastWeek = s.avgTurnUpLastWeek;
+    const delta = avgTurnUpLastWeek - requiredRiders;
+    const turnUpCoveragePct =
+      requiredRiders > 0 ? Math.round((avgTurnUpLastWeek / requiredRiders) * 100) : 100;
+
+    let status: 'surplus' | 'balanced' | 'deficit' = 'balanced';
+    if (avgTurnUpLastWeek < requiredRiders) {
+      status = 'deficit';
+    } else if (avgTurnUpLastWeek > requiredRiders) {
+      status = 'surplus';
+    }
+
+    totalOrders += s.projectedOrders;
+    sumRequired += requiredRiders;
+    sumTurnUp += avgTurnUpLastWeek;
+    if (avgTurnUpLastWeek > peakTurnUp) {
+      peakTurnUp = avgTurnUpLastWeek;
+    }
+    if (requiredRiders > peakRequired) {
+      peakRequired = requiredRiders;
+      peakHour = s.hour;
+    }
+    if (s.projectedOrders > 0 || requiredRiders > 0 || avgTurnUpLastWeek > 0) {
+      activeSlotCount += 1;
+    }
+
+    return {
+      ...s,
+      targetDph: newDph,
+      requiredRiders,
+      deltaTurnUpVsRequired: delta,
+      turnUpCoveragePct,
+      status,
+    };
+  });
+
+  const denominator = activeSlotCount > 0 ? activeSlotCount : 18;
+  const avgRequiredRiders = Math.round((sumRequired / denominator) * 10) / 10;
+  const avgTurnUp = Math.floor(sumTurnUp / denominator);
+  const netTurnUpDelta = sumTurnUp - sumRequired;
+
+  // Peak for Morning Shift (6 AM to 3 PM: hours 6 to 14)
+  const morningSlots = updatedSlots.filter((s) => s.hour >= 6 && s.hour < 15);
+  let peakMorning: ShiftPeakMetrics = morningSlots[0]
+    ? {
+        hour: morningSlots[0].hour,
+        slotLabel: morningSlots[0].slotLabel,
+        projectedOrders: morningSlots[0].projectedOrders,
+        requiredRiders: morningSlots[0].requiredRiders,
+      }
+    : {
+        hour: 6,
+        slotLabel: '6 AM',
+        projectedOrders: 0,
+        requiredRiders: 0,
+      };
+
+  for (const s of morningSlots) {
+    if (s.projectedOrders > peakMorning.projectedOrders) {
+      peakMorning = {
+        hour: s.hour,
+        slotLabel: s.slotLabel,
+        projectedOrders: s.projectedOrders,
+        requiredRiders: s.requiredRiders,
+      };
+    }
+  }
+
+  // Peak for 2nd Shift (3 PM to 12 AM: hours 15 to 23)
+  const secondSlots = updatedSlots.filter((s) => s.hour >= 15 && s.hour < 24);
+  let peakSecond: ShiftPeakMetrics = secondSlots[0]
+    ? {
+        hour: secondSlots[0].hour,
+        slotLabel: secondSlots[0].slotLabel,
+        projectedOrders: secondSlots[0].projectedOrders,
+        requiredRiders: secondSlots[0].requiredRiders,
+      }
+    : {
+        hour: 15,
+        slotLabel: '3 PM',
+        projectedOrders: 0,
+        requiredRiders: 0,
+      };
+
+  for (const s of secondSlots) {
+    if (s.projectedOrders > peakSecond.projectedOrders) {
+      peakSecond = {
+        hour: s.hour,
+        slotLabel: s.slotLabel,
+        projectedOrders: s.projectedOrders,
+        requiredRiders: s.requiredRiders,
+      };
+    }
+  }
+
+  return {
+    ...summary,
+    targetDph: newDph,
+    totalProjectedOrders: Math.round(totalOrders * 10) / 10,
+    peakRequiredRiders: peakRequired,
+    peakHour,
+    peakMorning,
+    peakSecond,
+    avgRequiredRiders,
+    peakTurnUp: Math.round(peakTurnUp * 10) / 10,
+    avgTurnUp,
+    netTurnUpDelta,
+    slots: updatedSlots,
   };
 }
 
@@ -804,7 +1042,7 @@ export function exportPlanningToExcel(summary: DayPlanningSummary, storeName: st
     ['Peak Required Riders', summary.peakRequiredRiders],
     ['Average Required Riders', summary.avgRequiredRiders],
     ['Average Last Week Turn-Up', summary.avgTurnUp],
-    ['Net Capacity Variance', summary.netTurnUpDelta],
+    ['Net Status', summary.netTurnUpDelta < 0 ? `${summary.netTurnUpDelta} Short` : summary.netTurnUpDelta > 0 ? `+${summary.netTurnUpDelta} Surplus` : 'Balanced'],
     [''],
     [
       'Slot Hour',
@@ -812,22 +1050,27 @@ export function exportPlanningToExcel(summary: DayPlanningSummary, storeName: st
       'Projected Orders',
       'Required Riders [CEIL(Orders/DPH)]',
       'Last 1-Wk Avg Turn-Up',
-      'Rider Delta (Turn-Up - Required)',
-      'Coverage %',
       'Status',
     ],
   ];
 
   for (const s of summary.slots) {
+    const statusText =
+      s.requiredRiders === 0 && s.avgTurnUpLastWeek === 0
+        ? '—'
+        : s.deltaTurnUpVsRequired < 0
+        ? `${s.deltaTurnUpVsRequired} Short`
+        : s.deltaTurnUpVsRequired > 0
+        ? `+${s.deltaTurnUpVsRequired} Surplus`
+        : 'Balanced';
+
     rows.push([
       s.hour,
       s.slotLabel,
       s.projectedOrders,
       s.requiredRiders,
       s.avgTurnUpLastWeek,
-      s.deltaTurnUpVsRequired,
-      `${s.turnUpCoveragePct}%`,
-      s.status.toUpperCase(),
+      statusText,
     ]);
   }
 

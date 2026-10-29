@@ -14,7 +14,9 @@ import {
   fetchPlanningForDate,
   fetchStoreTargetDph,
   getAvailableForecastDates,
+  getDefaultPlanningDate,
   getStoreTargetDphSync,
+  recalculatePlanningWithDph,
   saveStoreTargetDph,
 } from '../services/planningService';
 
@@ -64,10 +66,10 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
     const dates = getAvailableForecastDates(storeCode);
     setAvailableDates(dates);
 
-    // Pick first available date, or keep current if valid
+    // Display next dates data from current date by default (e.g. tomorrow or nearest upcoming forecast date)
     setSelectedDate((prev) => {
       if (prev && dates.includes(prev)) return prev;
-      return dates.length > 0 ? dates[0] : '2026-10-25';
+      return getDefaultPlanningDate(dates, selectedStore.timezone || 'Asia/Kolkata');
     });
 
     // Sync DPH for store
@@ -104,13 +106,40 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
     void loadPlanningData();
   }, [loadPlanningData]);
 
-  // Save updated DPH to Supabase and recalculate immediately
+  // Handle changing DPH input with live recalculation of Required Riders, Turn-Up & Status
+  const handleDphInputChange = (valStr: string) => {
+    setDphInput(valStr);
+    const parsed = parseFloat(valStr);
+    if (!isNaN(parsed) && parsed > 0) {
+      setTargetDph(parsed);
+      setSummary((prev) => (prev ? recalculatePlanningWithDph(prev, parsed) : null));
+    }
+  };
+
+  // Quick increment/decrement stepper for Target DPH (+0.1 / -0.1)
+  const handleStepDph = (delta: number) => {
+    const nextVal = Math.max(0.5, Math.min(10, Math.round((targetDph + delta) * 10) / 10));
+    setDphInput(nextVal.toFixed(1));
+    setTargetDph(nextVal);
+    setSummary((prev) => (prev ? recalculatePlanningWithDph(prev, nextVal) : null));
+    void saveStoreTargetDph(
+      selectedStore?.store_code || 'TMK7',
+      nextVal,
+      currentUser?.email || 'User'
+    );
+  };
+
+  // Save updated DPH to Supabase and persist
   const handleSaveDph = async () => {
     const parsed = parseFloat(dphInput);
     if (isNaN(parsed) || parsed <= 0) {
       setDphSaveNotice('Invalid DPH: Must be a positive number greater than 0.');
       return;
     }
+
+    // Immediately recalculate summary
+    setTargetDph(parsed);
+    setSummary((prev) => (prev ? recalculatePlanningWithDph(prev, parsed) : null));
 
     setIsSavingDph(true);
     setDphSaveNotice(null);
@@ -124,9 +153,8 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
 
     setIsSavingDph(false);
     if (res.ok) {
-      setTargetDph(parsed);
       setIsEditingDph(false);
-      setDphSaveNotice('Target DPH saved to database & recalculating slots...');
+      setDphSaveNotice(`✓ Target DPH saved (${parsed.toFixed(2)})`);
       setTimeout(() => setDphSaveNotice(null), 3000);
     } else {
       setDphSaveNotice(res.error || 'Failed to save DPH.');
@@ -239,96 +267,47 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
           </span>
         </div>
 
-        {/* Card 2: Store Operational Target DPH */}
+        {/* Card 2: Peak Required Riders - Morning (6 AM – 3 PM) */}
         <div className="kpi-card">
           <div className="kpi-header-row">
-            <span className="kpi-label">Store Target DPH</span>
-            <span className="kpi-target-badge">Target: {targetDph.toFixed(2)} DPH</span>
-          </div>
-          <strong className="kpi-value text-green">
-            {loading ? '...' : targetDph.toFixed(2)}
-          </strong>
-          <span className="kpi-sub">Deliveries Per Hour / Slot</span>
-        </div>
-
-        {/* Card 3: Peak Required Riders */}
-        <div className="kpi-card">
-          <div className="kpi-header-row">
-            <span className="kpi-label">Peak Required Riders</span>
+            <span className="kpi-label">PEAK REQUIRED RIDERS - Morning</span>
             {summary && (
               <span
                 className="badge badge-secondary"
                 style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                title={`Morning Shift Peak Slot: Hour ${summary.peakMorning?.hour ?? 6} (${summary.peakMorning?.slotLabel ?? '6 AM'})`}
               >
-                {summary.peakHour % 12 === 0 ? 12 : summary.peakHour % 12}{' '}
-                {summary.peakHour >= 12 ? 'PM' : 'AM'}
+                Slot {summary.peakMorning?.hour ?? 6} ({summary.peakMorning?.slotLabel ?? '6 AM'})
               </span>
             )}
           </div>
           <strong className="kpi-value text-amber">
-            {loading ? '...' : summary?.peakRequiredRiders ?? 0}
-          </strong>
-          <span className="kpi-sub">Max riders required at peak slot</span>
-        </div>
-
-        {/* Card 4: Store Avg Required Riders */}
-        <div className="kpi-card">
-          <div className="kpi-header-row">
-            <span className="kpi-label">Store Avg Required Riders</span>
-          </div>
-          <strong className="kpi-value text-slate">
-            {loading ? '...' : `${summary?.avgRequiredRiders.toFixed(1) ?? '0.0'} riders`}
-          </strong>
-          <span className="kpi-sub">Per active slot hour</span>
-        </div>
-
-        {/* Card 5: Last 1-Wk Avg Turn-Up */}
-        <div className="kpi-card">
-          <div className="kpi-header-row">
-            <span className="kpi-label">Last 1-Wk Avg Turn-Up</span>
-            <span
-              className="badge badge-secondary"
-              style={{ fontSize: '0.68rem', padding: '1px 6px' }}
-            >
-              S2P &amp; OTP
-            </span>
-          </div>
-          <strong className="kpi-value text-blue">
-            {loading ? '...' : `${summary?.avgTurnUp ?? 0} riders`}
+            {loading ? '...' : summary?.peakMorning?.requiredRiders ?? 0}
           </strong>
           <span className="kpi-sub">
-            Peak Turn-Up: {summary?.peakTurnUp ?? 0} riders
+            Peak Demand: <strong>{summary?.peakMorning?.projectedOrders.toLocaleString() ?? 0} orders</strong> (6 AM – 3 PM)
           </span>
         </div>
 
-        {/* Card 6: Net Capacity Variance */}
+        {/* Card 3: Peak Required Riders - 2nd (3 PM – 12 AM) */}
         <div className="kpi-card">
           <div className="kpi-header-row">
-            <span className="kpi-label">Net Capacity Variance</span>
-            <span
-              className={`badge ${
-                (summary?.netTurnUpDelta ?? 0) < 0 ? 'badge-danger' : 'badge-success'
-              }`}
-              style={{ fontSize: '0.68rem', padding: '1px 6px' }}
-            >
-              {(summary?.netTurnUpDelta ?? 0) < 0 ? '⚠ Deficit' : '✓ Capacity Met'}
-            </span>
+            <span className="kpi-label">PEAK REQUIRED RIDERS - 2nd</span>
+            {summary && (
+              <span
+                className="badge badge-secondary"
+                style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                title={`2nd Shift Peak Slot: Hour ${summary.peakSecond?.hour ?? 15} (${summary.peakSecond?.slotLabel ?? '3 PM'})`}
+              >
+                Slot {summary.peakSecond?.hour ?? 15} ({summary.peakSecond?.slotLabel ?? '3 PM'})
+              </span>
+            )}
           </div>
-          <strong
-            className={`kpi-value ${
-              !loading && (summary?.netTurnUpDelta ?? 0) < 0 ? 'text-red' : 'text-green'
-            }`}
-          >
-            {loading
-              ? '...'
-              : (summary?.netTurnUpDelta ?? 0) > 0
-              ? `+${summary?.netTurnUpDelta.toFixed(1)}`
-              : summary?.netTurnUpDelta.toFixed(1) ?? '0.0'}
+          <strong className="kpi-value text-amber">
+            {loading ? '...' : summary?.peakSecond?.requiredRiders ?? 0}
           </strong>
           <span className="kpi-sub">
-            {(summary?.netTurnUpDelta ?? 0) < 0
-              ? 'Turn-up trails projected demand'
-              : 'Expected turn-up meets or exceeds demand'}
+            Peak Demand: <strong>{summary?.peakSecond?.projectedOrders.toLocaleString() ?? 0} orders</strong> (3 PM – 12 AM)
           </span>
         </div>
       </div>
@@ -461,33 +440,41 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
               </button>
             </div>
 
-            {/* Calendar Date Input */}
-            <div className="perf-filter-group">
-              <input
-                type="date"
-                className="custom-range-date-input"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-
             {/* Target DPH Segmented Control & Inline Editor */}
             <div className="perf-filter-group">
               <span className="perf-control-label">Target DPH:</span>
               {!isEditingDph ? (
                 <div className="segmented-control">
+                  <button
+                    type="button"
+                    className="segmented-btn"
+                    onClick={() => handleStepDph(-0.1)}
+                    title="Decrease DPH by 0.1 (recalculates immediately)"
+                  >
+                    −
+                  </button>
                   <span
                     className="segmented-btn segmented-btn-active font-mono font-bold"
-                    style={{ color: '#166534' }}
+                    style={{ color: '#166534', minWidth: '70px', textAlign: 'center' }}
                   >
                     {targetDph.toFixed(2)} DPH
                   </span>
                   <button
                     type="button"
                     className="segmented-btn"
-                    onClick={() => setIsEditingDph(true)}
-                    title="Edit Target DPH"
+                    onClick={() => handleStepDph(0.1)}
+                    title="Increase DPH by 0.1 (recalculates immediately)"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    className="segmented-btn"
+                    onClick={() => {
+                      setDphInput(String(targetDph));
+                      setIsEditingDph(true);
+                    }}
+                    title="Edit Target DPH value"
                   >
                     ✏️ Edit
                   </button>
@@ -500,9 +487,13 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                     min="0.5"
                     max="10"
                     className="custom-range-date-input"
-                    style={{ width: '70px', fontWeight: 'bold' }}
+                    style={{ width: '75px', fontWeight: 'bold', textAlign: 'center' }}
                     value={dphInput}
-                    onChange={(e) => setDphInput(e.target.value)}
+                    onChange={(e) => handleDphInputChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void handleSaveDph();
+                      if (e.key === 'Escape') handleCancelDphEdit();
+                    }}
                     disabled={isSavingDph}
                     autoFocus
                   />
@@ -630,9 +621,9 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
               <tr className="tier1-header-row modern-summary-header">
                 <th
                   className="th-rider-name sticky-col text-center"
-                  style={{ minWidth: '75px', width: '75px' }}
+                  style={{ minWidth: '85px', width: '95px', textAlign: 'center' }}
                 >
-                  <div className="th-content th-content-center">
+                  <div className="th-content th-content-center" style={{ justifyContent: 'center', textAlign: 'center' }}>
                     <span>Slot Window</span>
                   </div>
                 </th>
@@ -660,12 +651,6 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
 
                 <th className="th-avg-group text-center">
                   <div className="th-content th-content-center">
-                    <span>Capacity Variance</span>
-                  </div>
-                </th>
-
-                <th className="th-active-status text-center">
-                  <div className="th-content th-content-center">
                     <span>Status</span>
                   </div>
                 </th>
@@ -679,7 +664,10 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                 return (
                   <tr key={s.hour} className="perf-data-row">
                     {/* Slot Window (strictly hour number, e.g. 6) */}
-                    <td className="td-rider-name sticky-col text-center font-bold">
+                    <td
+                      className="td-rider-name sticky-col text-center font-bold"
+                      style={{ textAlign: 'center' }}
+                    >
                       {s.hour}
                     </td>
 
@@ -705,34 +693,30 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                       </span>
                     </td>
 
-                    {/* Capacity Variance */}
+                    {/* Status Column with Coloured Gradient Font for Short vs Surplus */}
                     <td className="td-active text-center">
                       {s.requiredRiders === 0 && s.avgTurnUpLastWeek === 0 ? (
                         <span className="text-muted">—</span>
                       ) : isDeficit ? (
-                        <span className="badge badge-danger">
-                          ⚠ {s.deltaTurnUpVsRequired > 0 ? `+${s.deltaTurnUpVsRequired}` : s.deltaTurnUpVsRequired} Short
-                        </span>
-                      ) : (
-                        <span className="badge badge-success">
-                          ✓ {s.deltaTurnUpVsRequired > 0 ? `+${s.deltaTurnUpVsRequired}` : s.deltaTurnUpVsRequired} Surplus
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Capacity Status Badge */}
-                    <td className="td-active text-center">
-                      {isDeficit ? (
-                        <span className="badge badge-danger font-bold">
-                          ⚠ Deficit ({s.turnUpCoveragePct}%)
+                        <span className="status-pill status-pill-short">
+                          <span className="status-symbol">⚠</span>
+                          <span className="status-gradient-short">
+                            {s.deltaTurnUpVsRequired} Short
+                          </span>
                         </span>
                       ) : isSurplus ? (
-                        <span className="badge badge-active-yes">
-                          ✓ Surplus
+                        <span className="status-pill status-pill-surplus">
+                          <span className="status-symbol">✓</span>
+                          <span className="status-gradient-surplus">
+                            +{s.deltaTurnUpVsRequired} Surplus
+                          </span>
                         </span>
                       ) : (
-                        <span className="badge badge-secondary">
-                          Balanced
+                        <span className="status-pill status-pill-balanced">
+                          <span className="status-symbol">✓</span>
+                          <span className="status-gradient-balanced">
+                            Balanced
+                          </span>
                         </span>
                       )}
                     </td>
@@ -745,7 +729,10 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
             {summary && summary.slots.length > 0 && (
               <tfoot>
                 <tr className="tier1-header-row modern-summary-header font-bold">
-                  <td className="th-rider-name sticky-col text-center font-bold">
+                  <td
+                    className="th-rider-name sticky-col text-center font-bold"
+                    style={{ textAlign: 'center' }}
+                  >
                     TOTALS
                   </td>
 
@@ -766,21 +753,28 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
 
                   <td className="th-avg-group text-center font-bold">
                     <span
-                      className={`badge ${
-                        summary.netTurnUpDelta < 0 ? 'badge-danger' : 'badge-success'
+                      className={`status-pill ${
+                        summary.netTurnUpDelta < 0
+                          ? 'status-pill-short'
+                          : summary.netTurnUpDelta > 0
+                          ? 'status-pill-surplus'
+                          : 'status-pill-balanced'
                       }`}
                     >
-                      Net: {summary.netTurnUpDelta > 0 ? `+${summary.netTurnUpDelta}` : summary.netTurnUpDelta}
-                    </span>
-                  </td>
-
-                  <td className="th-active-status text-center font-bold">
-                    <span
-                      className={`badge ${
-                        summary.netTurnUpDelta < 0 ? 'badge-danger' : 'badge-success'
-                      }`}
-                    >
-                      {summary.netTurnUpDelta < 0 ? 'Net Deficit' : 'Capacity Met'}
+                      <span className="status-symbol">
+                        {summary.netTurnUpDelta < 0 ? '⚠' : '✓'}
+                      </span>
+                      <span
+                        className={
+                          summary.netTurnUpDelta < 0
+                            ? 'status-gradient-short'
+                            : summary.netTurnUpDelta > 0
+                            ? 'status-gradient-surplus'
+                            : 'status-gradient-balanced'
+                        }
+                      >
+                        Net: {summary.netTurnUpDelta > 0 ? `+${summary.netTurnUpDelta} Surplus` : summary.netTurnUpDelta < 0 ? `${summary.netTurnUpDelta} Short` : 'Balanced'}
+                      </span>
                     </span>
                   </td>
                 </tr>

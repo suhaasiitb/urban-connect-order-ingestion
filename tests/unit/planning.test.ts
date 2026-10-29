@@ -6,11 +6,13 @@ import {
   fetchPlanningForDate,
   formatPlanningSlotLabel,
   getAvailableForecastDates,
+  getDefaultPlanningDate,
   getSnopUploadMeta,
   getStoreTargetDphSync,
   getStoredSnopRecords,
   parseSnopDateField,
   parseSnopFile,
+  recalculatePlanningWithDph,
   saveSnopRecords,
   saveStoreTargetDph,
 } from '../../src/services/planningService';
@@ -211,6 +213,23 @@ describe('Store Planning & SNOP Forecast Suite', () => {
       expect(dates).toContain('2026-10-25');
       expect(dates).toContain('2026-11-21');
     });
+
+    it('defaults planning date to the next date (tomorrow) from current date', () => {
+      const dates = getAvailableForecastDates('TMK7'); // 2026-10-25 to 2026-11-21
+
+      // When current date is 2026-10-28, tomorrow is 2026-10-29
+      const baseOct28 = new Date('2026-10-28T12:00:00+05:30');
+      const defaultDate = getDefaultPlanningDate(dates, 'Asia/Kolkata', baseOct28);
+      expect(defaultDate).toBe('2026-10-29');
+
+      // When current date is before available dates (e.g. 2026-10-20), next upcoming is 2026-10-25
+      const baseOct20 = new Date('2026-10-20T12:00:00+05:30');
+      expect(getDefaultPlanningDate(dates, 'Asia/Kolkata', baseOct20)).toBe('2026-10-25');
+
+      // When all dates are in the past (e.g. 2026-12-01), fallback to latest available date
+      const baseDec01 = new Date('2026-12-01T12:00:00+05:30');
+      expect(getDefaultPlanningDate(dates, 'Asia/Kolkata', baseDec01)).toBe('2026-11-21');
+    });
   });
 
   describe('5. Rewrite / Overwrite Persistence Semantics', () => {
@@ -315,6 +334,20 @@ describe('Store Planning & SNOP Forecast Suite', () => {
       const maxRequired = Math.max(...summary.slots.map((s) => s.requiredRiders));
       expect(summary.peakRequiredRiders).toBe(maxRequired);
       expect(summary.peakHour).toBe(10);
+
+      // Morning shift peak (6 AM – 3 PM: hours 6 to 14): highest order is hour 10 with 88 orders & 42 riders
+      expect(summary.peakMorning).toBeDefined();
+      expect(summary.peakMorning.hour).toBe(10);
+      expect(summary.peakMorning.slotLabel).toBe('10 AM');
+      expect(summary.peakMorning.projectedOrders).toBe(88);
+      expect(summary.peakMorning.requiredRiders).toBe(42);
+
+      // 2nd shift peak (3 PM – 12 AM: hours 15 to 23): highest order is hour 19 with 66 orders & 32 riders
+      expect(summary.peakSecond).toBeDefined();
+      expect(summary.peakSecond.hour).toBe(19);
+      expect(summary.peakSecond.slotLabel).toBe('7 PM');
+      expect(summary.peakSecond.projectedOrders).toBe(66);
+      expect(summary.peakSecond.requiredRiders).toBe(32);
     });
 
     it('rounds down last 1-week average turn-up to the nearest whole number (integer)', async () => {
@@ -361,6 +394,59 @@ describe('Store Planning & SNOP Forecast Suite', () => {
       expect(Number.isInteger(summary.avgTurnUp)).toBe(true);
       expect(Number.isInteger(summary.peakTurnUp)).toBe(true);
       expect(Number.isInteger(summary.netTurnUpDelta)).toBe(true);
+    });
+
+    it('immediately recalculates REQUIRED RIDERS, LAST 1-WK AVG TURN-UP, and STATUS when Target DPH changes', async () => {
+      // 1. Load baseline summary with DPH 2.1
+      const initial = await fetchPlanningForDate({
+        storeId: 'test-store-id',
+        warehouseId: 'TMK7',
+        dateStr: '2026-10-25',
+        targetDph: 2.1,
+      });
+
+      // Hour 10 has 88 orders -> CEIL(88 / 2.1) = 42 riders
+      const initialSlot10 = initial.slots.find((s) => s.hour === 10);
+      expect(initialSlot10?.requiredRiders).toBe(42);
+
+      // 2. Change Target DPH to 2.5 (e.g. higher efficiency)
+      const updated25 = recalculatePlanningWithDph(initial, 2.5);
+      expect(updated25.targetDph).toBe(2.5);
+
+      // Hour 10: CEIL(88 / 2.5) = 36 riders
+      const slot10at25 = updated25.slots.find((s) => s.hour === 10);
+      expect(slot10at25?.requiredRiders).toBe(36);
+      expect(slot10at25?.deltaTurnUpVsRequired).toBe(
+        (slot10at25?.avgTurnUpLastWeek ?? 0) - 36
+      );
+
+      // Morning peak is recalculated according to new DPH
+      expect(updated25.peakMorning.requiredRiders).toBe(36);
+      expect(updated25.peakMorning.hour).toBe(10);
+      expect(updated25.peakMorning.projectedOrders).toBe(88);
+
+      // 3. Change Target DPH to 1.5 (e.g. lower throughput, more riders needed)
+      const updated15 = recalculatePlanningWithDph(initial, 1.5);
+      expect(updated15.targetDph).toBe(1.5);
+
+      // Hour 10: CEIL(88 / 1.5) = 59 riders
+      const slot10at15 = updated15.slots.find((s) => s.hour === 10);
+      expect(slot10at15?.requiredRiders).toBe(59);
+      expect(slot10at15?.deltaTurnUpVsRequired).toBe(
+        (slot10at15?.avgTurnUpLastWeek ?? 0) - 59
+      );
+      expect(updated15.peakMorning.requiredRiders).toBe(59);
+
+      // Status shifts to deficit or surplus based on new required rider threshold
+      for (const s of updated15.slots) {
+        if (s.avgTurnUpLastWeek < s.requiredRiders) {
+          expect(s.status).toBe('deficit');
+        } else if (s.avgTurnUpLastWeek > s.requiredRiders) {
+          expect(s.status).toBe('surplus');
+        } else {
+          expect(s.status).toBe('balanced');
+        }
+      }
     });
   });
 });
