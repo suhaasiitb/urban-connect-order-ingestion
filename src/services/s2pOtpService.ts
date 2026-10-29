@@ -747,30 +747,14 @@ export async function fetchS2POtpAnalytics(params: {
       );
 
       if (!rpcErr && Array.isArray(rpcData)) {
-        const summary = buildSummaryFromRpcRows(rpcData, { storeId, startDate, endDate });
-
-        // If the database RPC does not yet return completed_orders_count, populate overall via count query
+        // If the database RPC is still the legacy version without completed_orders_count,
+        // bypass RPC and fallback to direct parallel order queries so that DSR is accurately computed
+        // per day and slot rather than showing 0.0%
         if (rpcData.length > 0 && rpcData[0].completed_orders_count === undefined) {
-          try {
-            const { count: completedCount } = await supabase
-              .from('orders')
-              .select('order_id', { count: 'exact', head: true })
-              .eq('store_id', storeId)
-              .gte('order_date', startDate)
-              .lte('order_date', endDate)
-              .ilike('status', 'completed');
-
-            if (completedCount != null) {
-              summary.overallCompletedOrders = completedCount;
-              summary.overallDsrPct =
-                summary.overallTotalOrders > 0
-                  ? Math.round((completedCount / summary.overallTotalOrders) * 10000) / 100
-                  : 0.0;
-            }
-          } catch {
-            // Ignore non-fatal count query note
-          }
+          throw new Error('RPC lacks completed_orders_count column; falling back to direct query');
         }
+
+        const summary = buildSummaryFromRpcRows(rpcData, { storeId, startDate, endDate });
 
         analyticsCache.set(cacheKey, {
           timestamp: Date.now(),

@@ -309,10 +309,10 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               (summary?.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'
             }`}
           >
-            {loading ? '...' : `${summary?.overallDsrPct.toFixed(2) ?? '0.00'}%`}
+            {loading ? '...' : `${(summary?.overallDsrPct ?? 0).toFixed(2)}%`}
           </strong>
           <span className="kpi-sub">
-            Completed: {summary?.overallCompletedOrders.toLocaleString() ?? '0'} of {summary?.overallTotalOrders.toLocaleString() ?? '0'} orders
+            Completed: {(summary?.overallCompletedOrders ?? 0).toLocaleString()} of {(summary?.overallTotalOrders ?? 0).toLocaleString()} orders
           </span>
         </div>
 
@@ -386,7 +386,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         <div className="perf-section-header">
           <div className="flex-row items-center justify-between">
             <div>
-              <h3 className="section-title">Daily S2P, OTP & DPH Summary</h3>
+              <h3 className="section-title">Daily S2P, OTP, DPH &amp; DSR Summary</h3>
               <p className="section-subtitle">
                 Click on any calendar day row to expand its hourly/slot breakdown matching Excel pivots.
               </p>
@@ -484,10 +484,10 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                         <td className="text-right font-bold">{day.totalOrders.toLocaleString()}</td>
                         <td className="text-right font-bold">
                           <span
-                            className={day.dsrPct > 99.0 ? 'text-green' : 'text-red'}
-                            title={`Completed: ${day.completedOrdersCount.toLocaleString()} / ${day.totalOrders.toLocaleString()} orders`}
+                            className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
+                            title={`Completed: ${(day.completedOrdersCount ?? 0).toLocaleString()} / ${(day.totalOrders ?? 0).toLocaleString()} orders`}
                           >
-                            {day.dsrPct.toFixed(1)}%
+                            {(day.dsrPct ?? 0).toFixed(1)}%
                           </span>
                         </td>
                         <td className="text-right">{day.distinctRidersCount} riders</td>
@@ -589,6 +589,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                         <th style={{ width: '80px' }}>Slot</th>
                                         <th>Slot Window</th>
                                         <th className="text-right">Orders</th>
+                                        <th className="text-right">DSR %</th>
                                         <th className="text-right">Actual Riders Turn-up</th>
                                         <th className="text-right">DPH</th>
                                         <th className="text-right">AVERAGE of S2P (min)</th>
@@ -602,6 +603,14 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                           <td className="text-center font-bold text-slate">{s.slotHour}</td>
                                           <td className="text-muted text-xs">{s.slotLabel}</td>
                                           <td className="text-right font-semibold">{s.ordersCount}</td>
+                                          <td className="text-right font-semibold">
+                                            <span
+                                              className={(s.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
+                                              title={`Completed: ${(s.completedOrdersCount ?? 0).toLocaleString()} / ${s.ordersCount.toLocaleString()}`}
+                                            >
+                                              {(s.dsrPct ?? 0).toFixed(1)}%
+                                            </span>
+                                          </td>
                                           <td className="text-right">{s.ridersCount}</td>
                                           <td className="text-right">
                                             <span className="dph-pill" style={getDphHeatmapStyle(s.dph)}>
@@ -624,6 +633,11 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                       <tr className="excel-pivot-grand-total">
                                         <td colSpan={2}>Grand Total</td>
                                         <td className="text-right font-bold">{day.totalOrders}</td>
+                                        <td className="text-right font-bold">
+                                          <span className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
+                                            {(day.dsrPct ?? 0).toFixed(1)}%
+                                          </span>
+                                        </td>
                                         <td className="text-right font-bold">{day.distinctRidersCount}</td>
                                         <td className="text-right font-bold">
                                           <span className="dph-pill" style={getDphHeatmapStyle(day.avgDph)}>
