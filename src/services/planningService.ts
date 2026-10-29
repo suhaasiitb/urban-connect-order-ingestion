@@ -264,7 +264,7 @@ export function parseSnopDateField(raw: unknown): string {
  * Normalizes column keys to standard naming.
  */
 function normalizeColumnKey(raw: string): string {
-  return raw.toLowerCase().replace(/[\s_\-]/g, '');
+  return raw.toLowerCase().replace(/[\s_-]/g, '');
 }
 
 /**

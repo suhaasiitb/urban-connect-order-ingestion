@@ -18,7 +18,8 @@ class LocalStorageMock {
 }
 
 if (typeof globalThis.localStorage === 'undefined') {
-  (globalThis as any).localStorage = new LocalStorageMock();
+  (globalThis as unknown as { localStorage: LocalStorageMock }).localStorage =
+    new LocalStorageMock();
 }
 
 import {
