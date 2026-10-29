@@ -22,6 +22,8 @@ export interface SlotPerformanceMetrics {
   otpApplicableCount: number;
   otpAchievedPct: number; // % of row
   otpBreachedPct: number; // % of row
+  completedOrdersCount: number;
+  dsrPct: number; // Delivery Success Rate (% Completed)
 }
 
 export interface DailyPerformanceSummary {
@@ -38,6 +40,8 @@ export interface DailyPerformanceSummary {
   otpApplicableCount: number;
   avgOtpAchievedPct: number; // Day OTP Achieved %
   avgOtpBreachedPct: number; // Day OTP Breached %
+  completedOrdersCount: number;
+  dsrPct: number; // Delivery Success Rate (% Completed)
   slots: SlotPerformanceMetrics[];
 }
 
@@ -54,6 +58,8 @@ export interface S2POtpSummaryResult {
   overallAvgS2p: number;
   overallOtpAchievedPct: number;
   overallOtpBreachedPct: number;
+  overallCompletedOrders: number;
+  overallDsrPct: number; // Delivery Success Rate (% Completed)
 }
 
 export interface FetchS2POtpAnalyticsResult {
@@ -93,7 +99,10 @@ export function invalidateS2POtpCache(storeId?: string): void {
  * Extracts slot hours for which DPH exceeded a given threshold (default > 2.1).
  * Returns empty array if no slots exceed the threshold.
  */
-export function getDphImpactedSlots(slots: SlotPerformanceMetrics[], threshold = 2.1): number[] {
+export function getDphImpactedSlots(
+  slots: Array<Pick<SlotPerformanceMetrics, 'slotHour' | 'ordersCount' | 'dph'>>,
+  threshold = 2.1
+): number[] {
   return slots
     .filter((s) => s.ordersCount > 0 && s.dph > threshold)
     .map((s) => s.slotHour);
@@ -141,6 +150,7 @@ interface RawOrderRecord {
   order_date: string;
   s2p_minutes: number | null;
   otp_plus_3_performance: string | null;
+  status?: string | null;
 }
 
 interface RpcSlotMetricRow {
@@ -152,6 +162,7 @@ interface RpcSlotMetricRow {
   s2p_count: number | string;
   otp_achieved_count: number | string;
   otp_breached_count: number | string;
+  completed_orders_count?: number | string;
   day_distinct_riders?: number | string;
   period_distinct_riders?: number | string;
 }
@@ -185,6 +196,7 @@ export function buildSummaryFromRpcRows(
   let overallS2pCount = 0;
   let overallOtpAchieved = 0;
   let overallOtpBreached = 0;
+  let overallCompletedOrders = 0;
   let maxDayDistinctRiders = 0;
 
   for (const dateStr of sortedDates) {
@@ -197,6 +209,7 @@ export function buildSummaryFromRpcRows(
     let dayS2pCount = 0;
     let dayOtpAchieved = 0;
     let dayOtpBreached = 0;
+    let dayCompletedOrders = 0;
     let dayDistinctRiders = Number(slotRows[0]?.day_distinct_riders || 0);
 
     const slotMetrics: SlotPerformanceMetrics[] = [];
@@ -216,6 +229,10 @@ export function buildSummaryFromRpcRows(
       const otpAchievedPct = otpTotal > 0 ? Math.round((otpAch / otpTotal) * 10000) / 100 : 100.0;
       const otpBreachedPct = otpTotal > 0 ? Math.round((otpBr / otpTotal) * 10000) / 100 : 0.0;
 
+      const completedOrdersCount = Number(r.completed_orders_count || 0);
+      const dsrPct =
+        ordersCount > 0 ? Math.round((completedOrdersCount / ordersCount) * 10000) / 100 : 0.0;
+
       slotMetrics.push({
         slotHour,
         slotLabel: formatSlotHourLabel(slotHour),
@@ -228,6 +245,8 @@ export function buildSummaryFromRpcRows(
         otpApplicableCount: otpTotal,
         otpAchievedPct,
         otpBreachedPct,
+        completedOrdersCount,
+        dsrPct,
       });
 
       dayOrders += ordersCount;
@@ -236,6 +255,7 @@ export function buildSummaryFromRpcRows(
       dayS2pCount += s2pCount;
       dayOtpAchieved += otpAch;
       dayOtpBreached += otpBr;
+      dayCompletedOrders += completedOrdersCount;
     }
 
     if (dayDistinctRiders === 0) {
@@ -252,6 +272,8 @@ export function buildSummaryFromRpcRows(
       dayOtpTotal > 0 ? Math.round((dayOtpAchieved / dayOtpTotal) * 10000) / 100 : 100.0;
     const dayAvgOtpBreachedPct =
       dayOtpTotal > 0 ? Math.round((dayOtpBreached / dayOtpTotal) * 10000) / 100 : 0.0;
+    const dayDsrPct =
+      dayOrders > 0 ? Math.round((dayCompletedOrders / dayOrders) * 10000) / 100 : 0.0;
 
     days.push({
       dateStr,
@@ -267,6 +289,8 @@ export function buildSummaryFromRpcRows(
       otpApplicableCount: dayOtpTotal,
       avgOtpAchievedPct: dayAvgOtpAchievedPct,
       avgOtpBreachedPct: dayAvgOtpBreachedPct,
+      completedOrdersCount: dayCompletedOrders,
+      dsrPct: dayDsrPct,
       slots: slotMetrics,
     });
 
@@ -276,6 +300,7 @@ export function buildSummaryFromRpcRows(
     overallS2pCount += dayS2pCount;
     overallOtpAchieved += dayOtpAchieved;
     overallOtpBreached += dayOtpBreached;
+    overallCompletedOrders += dayCompletedOrders;
   }
 
   const overallAvgDph =
@@ -291,6 +316,11 @@ export function buildSummaryFromRpcRows(
     overallOtpTotal > 0 ? Math.round((overallOtpAchieved / overallOtpTotal) * 10000) / 100 : 100.0;
   const overallOtpBreachedPct =
     overallOtpTotal > 0 ? Math.round((overallOtpBreached / overallOtpTotal) * 10000) / 100 : 0.0;
+
+  const overallDsrPct =
+    overallTotalOrders > 0
+      ? Math.round((overallCompletedOrders / overallTotalOrders) * 10000) / 100
+      : 0.0;
 
   const [sY, sM, sD] = startDate.split('-').map(Number);
   const [eY, eM, eD] = endDate.split('-').map(Number);
@@ -314,6 +344,8 @@ export function buildSummaryFromRpcRows(
     overallAvgS2p,
     overallOtpAchievedPct,
     overallOtpBreachedPct,
+    overallCompletedOrders,
+    overallDsrPct,
   };
 }
 
@@ -337,6 +369,7 @@ export function buildSummaryFromRawOrders(
         s2pCount: number;
         otpAchieved: number;
         otpBreached: number;
+        completedOrders: number;
       }
     >
   >();
@@ -373,6 +406,7 @@ export function buildSummaryFromRawOrders(
         s2pCount: 0,
         otpAchieved: 0,
         otpBreached: 0,
+        completedOrders: 0,
       };
       slotsMap.set(slot, slotData);
     }
@@ -393,6 +427,10 @@ export function buildSummaryFromRawOrders(
     } else if (otp === 'OTP Breached') {
       slotData.otpBreached += 1;
     }
+
+    if (ord.status && ord.status.trim().toLowerCase() === 'completed') {
+      slotData.completedOrders += 1;
+    }
   }
 
   const sortedDates = Array.from(dateMap.keys()).sort((a, b) => b.localeCompare(a));
@@ -404,6 +442,7 @@ export function buildSummaryFromRawOrders(
   let overallS2pCount = 0;
   let overallOtpAchieved = 0;
   let overallOtpBreached = 0;
+  let overallCompletedOrders = 0;
   const globalDistinctRidersSet = new Set<string>();
 
   for (const dateStr of sortedDates) {
@@ -416,6 +455,7 @@ export function buildSummaryFromRawOrders(
     let dayS2pCount = 0;
     let dayOtpAchieved = 0;
     let dayOtpBreached = 0;
+    let dayCompletedOrders = 0;
 
     const slotMetrics: SlotPerformanceMetrics[] = [];
 
@@ -432,6 +472,10 @@ export function buildSummaryFromRawOrders(
       const otpAchievedPct = otpTotal > 0 ? Math.round((otpAch / otpTotal) * 10000) / 100 : 100.0;
       const otpBreachedPct = otpTotal > 0 ? Math.round((otpBr / otpTotal) * 10000) / 100 : 0.0;
 
+      const completedOrdersCount = item.completedOrders;
+      const dsrPct =
+        ordersCount > 0 ? Math.round((completedOrdersCount / ordersCount) * 10000) / 100 : 0.0;
+
       slotMetrics.push({
         slotHour,
         slotLabel: formatSlotHourLabel(slotHour),
@@ -444,6 +488,8 @@ export function buildSummaryFromRawOrders(
         otpApplicableCount: otpTotal,
         otpAchievedPct,
         otpBreachedPct,
+        completedOrdersCount,
+        dsrPct,
       });
 
       dayOrders += ordersCount;
@@ -452,6 +498,7 @@ export function buildSummaryFromRawOrders(
       dayS2pCount += item.s2pCount;
       dayOtpAchieved += otpAch;
       dayOtpBreached += otpBr;
+      dayCompletedOrders += completedOrdersCount;
 
       for (const r of item.ridersSet) {
         globalDistinctRidersSet.add(r);
@@ -466,6 +513,8 @@ export function buildSummaryFromRawOrders(
       dayOtpTotal > 0 ? Math.round((dayOtpAchieved / dayOtpTotal) * 10000) / 100 : 100.0;
     const dayAvgOtpBreachedPct =
       dayOtpTotal > 0 ? Math.round((dayOtpBreached / dayOtpTotal) * 10000) / 100 : 0.0;
+    const dayDsrPct =
+      dayOrders > 0 ? Math.round((dayCompletedOrders / dayOrders) * 10000) / 100 : 0.0;
 
     days.push({
       dateStr,
@@ -481,6 +530,8 @@ export function buildSummaryFromRawOrders(
       otpApplicableCount: dayOtpTotal,
       avgOtpAchievedPct: dayAvgOtpAchievedPct,
       avgOtpBreachedPct: dayAvgOtpBreachedPct,
+      completedOrdersCount: dayCompletedOrders,
+      dsrPct: dayDsrPct,
       slots: slotMetrics,
     });
 
@@ -490,6 +541,7 @@ export function buildSummaryFromRawOrders(
     overallS2pCount += dayS2pCount;
     overallOtpAchieved += dayOtpAchieved;
     overallOtpBreached += dayOtpBreached;
+    overallCompletedOrders += dayCompletedOrders;
   }
 
   const overallAvgDph =
@@ -505,6 +557,11 @@ export function buildSummaryFromRawOrders(
     overallOtpTotal > 0 ? Math.round((overallOtpAchieved / overallOtpTotal) * 10000) / 100 : 100.0;
   const overallOtpBreachedPct =
     overallOtpTotal > 0 ? Math.round((overallOtpBreached / overallOtpTotal) * 10000) / 100 : 0.0;
+
+  const overallDsrPct =
+    overallTotalOrders > 0
+      ? Math.round((overallCompletedOrders / overallTotalOrders) * 10000) / 100
+      : 0.0;
 
   const [sY, sM, sD] = startDate.split('-').map(Number);
   const [eY, eM, eD] = endDate.split('-').map(Number);
@@ -526,6 +583,8 @@ export function buildSummaryFromRawOrders(
     overallAvgS2p,
     overallOtpAchievedPct,
     overallOtpBreachedPct,
+    overallCompletedOrders,
+    overallDsrPct,
   };
 }
 
@@ -568,7 +627,7 @@ async function fetchOrdersInParallelChunks(
       batchPromises.push(
         supabase
           .from('orders')
-          .select('rider_number, slot_hour, order_date, s2p_minutes, otp_plus_3_performance')
+          .select('rider_number, slot_hour, order_date, s2p_minutes, otp_plus_3_performance, status')
           .eq('store_id', storeId)
           .gte('order_date', startDate)
           .lte('order_date', endDate)
@@ -589,6 +648,7 @@ async function fetchOrdersInParallelChunks(
             otp_plus_3_performance: row.otp_plus_3_performance
               ? String(row.otp_plus_3_performance).trim()
               : null,
+            status: row.status ? String(row.status).trim() : null,
           });
         }
       }
@@ -614,7 +674,7 @@ async function fetchOrdersSequentially(
   while (hasMore) {
     const { data: pageRows, error: fetchErr } = await supabase
       .from('orders')
-      .select('rider_number, slot_hour, order_date, s2p_minutes, otp_plus_3_performance')
+      .select('rider_number, slot_hour, order_date, s2p_minutes, otp_plus_3_performance, status')
       .eq('store_id', storeId)
       .gte('order_date', startDate)
       .lte('order_date', endDate)
@@ -632,6 +692,7 @@ async function fetchOrdersSequentially(
           otp_plus_3_performance: row.otp_plus_3_performance
             ? String(row.otp_plus_3_performance).trim()
             : null,
+          status: row.status ? String(row.status).trim() : null,
         });
       }
       if (pageRows.length < PAGE_SIZE) {
@@ -687,6 +748,30 @@ export async function fetchS2POtpAnalytics(params: {
 
       if (!rpcErr && Array.isArray(rpcData)) {
         const summary = buildSummaryFromRpcRows(rpcData, { storeId, startDate, endDate });
+
+        // If the database RPC does not yet return completed_orders_count, populate overall via count query
+        if (rpcData.length > 0 && rpcData[0].completed_orders_count === undefined) {
+          try {
+            const { count: completedCount } = await supabase
+              .from('orders')
+              .select('order_id', { count: 'exact', head: true })
+              .eq('store_id', storeId)
+              .gte('order_date', startDate)
+              .lte('order_date', endDate)
+              .ilike('status', 'completed');
+
+            if (completedCount != null) {
+              summary.overallCompletedOrders = completedCount;
+              summary.overallDsrPct =
+                summary.overallTotalOrders > 0
+                  ? Math.round((completedCount / summary.overallTotalOrders) * 10000) / 100
+                  : 0.0;
+            }
+          } catch {
+            // Ignore non-fatal count query note
+          }
+        }
+
         analyticsCache.set(cacheKey, {
           timestamp: Date.now(),
           data: summary,
@@ -735,6 +820,8 @@ export function exportS2POtpToExcel(summary: S2POtpSummaryResult, storeCode: str
     'Date',
     'Day of Week',
     'Total Orders',
+    'Completed Orders',
+    'DSR %',
     'Actual Riders Turn-up',
     'Total Rider Slot Hours',
     'DPH (Deliveries/Hour)',
@@ -750,6 +837,8 @@ export function exportS2POtpToExcel(summary: S2POtpSummaryResult, storeCode: str
       day.dateStr,
       day.dayOfWeek,
       day.totalOrders,
+      day.completedOrdersCount,
+      `${day.dsrPct.toFixed(2)}%`,
       day.distinctRidersCount,
       day.totalRiderSlotHours,
       day.avgDph,
@@ -763,6 +852,8 @@ export function exportS2POtpToExcel(summary: S2POtpSummaryResult, storeCode: str
     'Grand Total',
     '',
     summary.overallTotalOrders,
+    summary.overallCompletedOrders,
+    `${summary.overallDsrPct.toFixed(2)}%`,
     summary.overallDistinctRiders,
     summary.overallTotalRiderSlotHours,
     summary.overallAvgDph,

@@ -299,4 +299,86 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
     const noImpact = getDphImpactedSlots(lowDphSlots, 2.1);
     expect(noImpact).toEqual([]);
   });
+
+  it('accurately computes DSR (Delivery Success Rate) for Completed orders vs Total Orders', () => {
+    // 1. Test buildSummaryFromRpcRows with completed_orders_count
+    const rpcRows = [
+      {
+        order_date: '2026-10-19',
+        slot_hour: 7,
+        orders_count: 100,
+        riders_count: 20,
+        s2p_sum: 50,
+        s2p_count: 100,
+        otp_achieved_count: 99,
+        otp_breached_count: 1,
+        completed_orders_count: 99, // 99/100 = 99.00%
+      },
+      {
+        order_date: '2026-10-19',
+        slot_hour: 8,
+        orders_count: 100,
+        riders_count: 20,
+        s2p_sum: 50,
+        s2p_count: 100,
+        otp_achieved_count: 100,
+        otp_breached_count: 0,
+        completed_orders_count: 100, // 100/100 = 100.00%
+      },
+    ];
+
+    const rpcSummary = buildSummaryFromRpcRows(rpcRows, {
+      storeId: 'test-store',
+      startDate: '2026-10-19',
+      endDate: '2026-10-19',
+    });
+
+    expect(rpcSummary.overallTotalOrders).toBe(200);
+    expect(rpcSummary.overallCompletedOrders).toBe(199);
+    // (199 / 200) * 100 = 99.5% (> 99 target)
+    expect(rpcSummary.overallDsrPct).toBe(99.5);
+    expect(rpcSummary.days[0].slots[0].dsrPct).toBe(99.0);
+    expect(rpcSummary.days[0].slots[1].dsrPct).toBe(100.0);
+
+    // 2. Test buildSummaryFromRawOrders with order status field
+    const rawOrders = [
+      {
+        rider_number: 'R1',
+        slot_hour: 9,
+        order_date: '2026-10-20',
+        s2p_minutes: 0.5,
+        otp_plus_3_performance: 'OTP Achieved',
+        status: 'Completed',
+      },
+      {
+        rider_number: 'R2',
+        slot_hour: 9,
+        order_date: '2026-10-20',
+        s2p_minutes: 0.4,
+        otp_plus_3_performance: 'OTP Achieved',
+        status: 'completed ', // Case & whitespace tolerance
+      },
+      {
+        rider_number: 'R3',
+        slot_hour: 9,
+        order_date: '2026-10-20',
+        s2p_minutes: 0.6,
+        otp_plus_3_performance: 'Not Applicable',
+        status: 'Cancelled',
+      },
+    ];
+
+    const rawSummary = buildSummaryFromRawOrders(rawOrders, {
+      storeId: 'test-store',
+      startDate: '2026-10-20',
+      endDate: '2026-10-20',
+    });
+
+    expect(rawSummary.overallTotalOrders).toBe(3);
+    expect(rawSummary.overallCompletedOrders).toBe(2);
+    // 2/3 = 66.67%
+    expect(rawSummary.overallDsrPct).toBe(66.67);
+    expect(rawSummary.days[0].completedOrdersCount).toBe(2);
+    expect(rawSummary.days[0].dsrPct).toBe(66.67);
+  });
 });

@@ -301,6 +301,23 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       <div className="kpi-grid mt-md">
         <div className="kpi-card">
           <div className="kpi-header-row">
+            <span className="kpi-label">DSR (Delivery Success Rate)</span>
+            <span className="kpi-target-badge">Target: &gt; 99%</span>
+          </div>
+          <strong
+            className={`kpi-value ${
+              (summary?.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'
+            }`}
+          >
+            {loading ? '...' : `${summary?.overallDsrPct.toFixed(2) ?? '0.00'}%`}
+          </strong>
+          <span className="kpi-sub">
+            Completed: {summary?.overallCompletedOrders.toLocaleString() ?? '0'} of {summary?.overallTotalOrders.toLocaleString() ?? '0'} orders
+          </span>
+        </div>
+
+        <div className="kpi-card">
+          <div className="kpi-header-row">
             <span className="kpi-label">Average S2P Time</span>
             <span className="kpi-target-badge">Target: ≤ 0.60 min</span>
           </div>
@@ -413,6 +430,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                   <th>Date</th>
                   <th>Day</th>
                   <th className="text-right">Orders</th>
+                  <th className="text-right">DSR %</th>
                   <th className="text-right">Actual Riders Turn-up</th>
                   <th className="text-right">DPH</th>
                   <th className="text-center">DPH Impacted Slots</th>
@@ -464,6 +482,14 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                           <span className="badge badge-secondary">{day.dayOfWeek}</span>
                         </td>
                         <td className="text-right font-bold">{day.totalOrders.toLocaleString()}</td>
+                        <td className="text-right font-bold">
+                          <span
+                            className={day.dsrPct > 99.0 ? 'text-green' : 'text-red'}
+                            title={`Completed: ${day.completedOrdersCount.toLocaleString()} / ${day.totalOrders.toLocaleString()} orders`}
+                          >
+                            {day.dsrPct.toFixed(1)}%
+                          </span>
+                        </td>
                         <td className="text-right">{day.distinctRidersCount} riders</td>
                         <td className="text-right">
                           <span className="dph-pill" style={getDphHeatmapStyle(day.avgDph)}>
@@ -505,7 +531,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                       {/* Expanded Child Accordion Row */}
                       {isExpanded && (
                         <tr className="s2p-expanded-row">
-                          <td colSpan={10} className="s2p-expanded-cell">
+                          <td colSpan={11} className="s2p-expanded-cell">
                             <div className="s2p-slot-breakdown-card">
                               {/* Sub-Header & Pivot View Switcher */}
                               <div className="s2p-slot-header">
