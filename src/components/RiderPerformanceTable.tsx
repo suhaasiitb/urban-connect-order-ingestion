@@ -511,41 +511,6 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
             </div>
           )}
 
-          {/* View Mode Toggle: Summary vs Daily Breakdown */}
-          <div className="perf-filter-group">
-            <span className="perf-control-label">View:</span>
-            <div className="segmented-control view-segmented-control">
-              <button
-                type="button"
-                className={`segmented-btn ${!showDailyBreakdown ? 'segmented-btn-active' : ''}`}
-                onClick={() => setShowDailyBreakdown(false)}
-                title="Compact summary view (Avg Hours, Avg Orders, Shifts & Compliance)"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginRight: '4px', verticalAlign: '-1px' }}>
-                  <rect x="3" y="3" width="7" height="7" rx="1" />
-                  <rect x="14" y="3" width="7" height="7" rx="1" />
-                  <rect x="14" y="14" width="7" height="7" rx="1" />
-                  <rect x="3" y="14" width="7" height="7" rx="1" />
-                </svg>
-                Summary
-              </button>
-              <button
-                type="button"
-                className={`segmented-btn ${showDailyBreakdown ? 'segmented-btn-active' : ''}`}
-                onClick={() => setShowDailyBreakdown(true)}
-                title="Expand day-by-day hours and orders columns"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginRight: '4px', verticalAlign: '-1px' }}>
-                  <polyline points="15 3 21 3 21 9" />
-                  <polyline points="9 21 3 21 3 15" />
-                  <line x1="21" y1="3" x2="14" y2="10" />
-                  <line x1="3" y1="21" x2="10" y2="14" />
-                </svg>
-                Daily Breakdown ({displayedDateColumns.length}d)
-              </button>
-            </div>
-          </div>
-
           {/* Average Divisor Segmented Control */}
           <div className="perf-filter-group">
             <span className="perf-control-label">Avg Divisor:</span>
