@@ -748,10 +748,32 @@ export async function fetchS2POtpAnalytics(params: {
 
       if (!rpcErr && Array.isArray(rpcData)) {
         // If the database RPC is still the legacy version without completed_orders_count,
-        // bypass RPC and fallback to direct parallel order queries so that DSR is accurately computed
-        // per day and slot rather than showing 0.0%
+        // populate completed_orders_count via quick targeted count query so that DSR is accurate,
+        // without throwing away the lightning-fast server aggregated RPC rows!
         if (rpcData.length > 0 && rpcData[0].completed_orders_count === undefined) {
-          throw new Error('RPC lacks completed_orders_count column; falling back to direct query');
+          try {
+            const { data: completedRows } = await supabase
+              .from('orders')
+              .select('order_date, slot_hour')
+              .eq('store_id', storeId)
+              .gte('order_date', startDate)
+              .lte('order_date', endDate)
+              .ilike('status', 'completed');
+
+            if (completedRows) {
+              const compMap = new Map<string, number>();
+              for (const cr of completedRows) {
+                const k = `${String(cr.order_date).slice(0, 10)}_${cr.slot_hour}`;
+                compMap.set(k, (compMap.get(k) || 0) + 1);
+              }
+              for (const r of rpcData) {
+                const k = `${String(r.order_date).slice(0, 10)}_${r.slot_hour}`;
+                r.completed_orders_count = compMap.get(k) || 0;
+              }
+            }
+          } catch {
+            // Ignore non-fatal completion count note
+          }
         }
 
         const summary = buildSummaryFromRpcRows(rpcData, { storeId, startDate, endDate });
