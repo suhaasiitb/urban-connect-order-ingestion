@@ -587,7 +587,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                     <thead>
                                       <tr>
                                         <th style={{ width: '80px' }}>Slot</th>
-                                        <th>Slot Window</th>
                                         <th className="text-right">Orders</th>
                                         <th className="text-right">DSR %</th>
                                         <th className="text-right">Actual Riders Turn-up</th>
@@ -600,8 +599,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                     <tbody>
                                       {day.slots.map((s) => (
                                         <tr key={s.slotHour}>
-                                          <td className="text-center font-bold text-slate">{s.slotHour}</td>
-                                          <td className="text-muted text-xs">{s.slotLabel}</td>
+                                          <td className="text-center font-bold text-slate" title={s.slotLabel}>{s.slotHour}</td>
                                           <td className="text-right font-semibold">{s.ordersCount}</td>
                                           <td className="text-right font-semibold">
                                             <span
@@ -631,7 +629,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                     </tbody>
                                     <tfoot>
                                       <tr className="excel-pivot-grand-total">
-                                        <td colSpan={2}>Grand Total</td>
+                                        <td>Grand Total</td>
                                         <td className="text-right font-bold">{day.totalOrders}</td>
                                         <td className="text-right font-bold">
                                           <span className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
