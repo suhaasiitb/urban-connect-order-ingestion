@@ -58,6 +58,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   onSelectShiftFilter,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeStatusFilter, setActiveStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [internalShiftFilter, setInternalShiftFilter] = useState<string>('ALL');
   const activeShiftFilter = shiftFilterProp !== undefined ? shiftFilterProp : internalShiftFilter;
   const setShiftFilter = (newVal: string) => {
@@ -112,6 +113,15 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
         const phone = phoneByNameMap?.get(norm);
         if (phone && phone.toLowerCase().includes(q)) return true;
         return false;
+      });
+    }
+
+    // Active / Inactive Status filter
+    if (activeStatusFilter !== 'ALL') {
+      result = result.filter((r) => {
+        const norm = normalizeRiderName(r.riderName);
+        const isActive = activeNamesSet ? activeNamesSet.has(norm) : false;
+        return activeStatusFilter === 'ACTIVE' ? isActive : !isActive;
       });
     }
 
@@ -244,7 +254,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, activeShiftFilter, sortBy, sortAsc, avgMode, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr]);
+  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr]);
 
   const compliantShiftCount = useMemo(() => {
     return filteredRows.filter((r) => {
@@ -273,6 +283,15 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     }
     return count;
   }, [dnrSummary]);
+
+  const activeRidersCount = useMemo(() => {
+    if (!activeNamesSet) return 0;
+    return data.rows.filter((r) => activeNamesSet.has(normalizeRiderName(r.riderName))).length;
+  }, [data.rows, activeNamesSet]);
+
+  const inactiveRidersCount = useMemo(() => {
+    return data.rows.length - activeRidersCount;
+  }, [data.rows.length, activeRidersCount]);
 
   const totalOrdersSum = useMemo(() => {
     return filteredRows.reduce((sum, r) => sum + r.totalOrders, 0);
@@ -358,6 +377,37 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </span>
+            </div>
+          </div>
+
+          {/* Active / Inactive Status Segmented Toggle */}
+          <div className="perf-filter-group">
+            <span className="perf-control-label">Roster:</span>
+            <div className="segmented-control" role="group" aria-label="Filter by active roster status">
+              <button
+                type="button"
+                className={`segmented-btn ${activeStatusFilter === 'ALL' ? 'segmented-btn-active' : ''}`}
+                onClick={() => setActiveStatusFilter('ALL')}
+                title="Show all riders (active and inactive)"
+              >
+                All ({data.rows.length})
+              </button>
+              <button
+                type="button"
+                className={`segmented-btn ${activeStatusFilter === 'ACTIVE' ? 'segmented-btn-active' : ''}`}
+                onClick={() => setActiveStatusFilter('ACTIVE')}
+                title="Show only active riders verified in roster"
+              >
+                Active ({activeRidersCount})
+              </button>
+              <button
+                type="button"
+                className={`segmented-btn ${activeStatusFilter === 'INACTIVE' ? 'segmented-btn-active' : ''}`}
+                onClick={() => setActiveStatusFilter('INACTIVE')}
+                title="Show only inactive riders not found in roster"
+              >
+                Inactive ({inactiveRidersCount})
+              </button>
             </div>
           </div>
 
