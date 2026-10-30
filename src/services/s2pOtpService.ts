@@ -748,31 +748,50 @@ export async function fetchS2POtpAnalytics(params: {
 
       if (!rpcErr && Array.isArray(rpcData)) {
         // If the database RPC is still the legacy version without completed_orders_count,
-        // populate completed_orders_count via quick targeted count query so that DSR is accurate,
-        // without throwing away the lightning-fast server aggregated RPC rows!
+        // compute completed_orders_count by querying only non-completed orders (typically <1% of rows)
+        // with full pagination so PostgREST's 1,000-row limit never truncates multi-day DSR results.
         if (rpcData.length > 0 && rpcData[0].completed_orders_count === undefined) {
-          try {
-            const { data: completedRows } = await supabase
+          const nonCompMap = new Map<string, number>();
+          const PAGE_SIZE = 1000;
+          let from = 0;
+          let hasMore = true;
+
+          while (hasMore) {
+            const { data: nonCompletedRows, error: nonCompErr } = await supabase
               .from('orders')
-              .select('order_date, slot_hour')
+              .select('order_date, slot_hour, status')
               .eq('store_id', storeId)
               .gte('order_date', startDate)
               .lte('order_date', endDate)
-              .ilike('status', 'completed');
+              .not('status', 'ilike', 'completed')
+              .range(from, from + PAGE_SIZE - 1);
 
-            if (completedRows) {
-              const compMap = new Map<string, number>();
-              for (const cr of completedRows) {
-                const k = `${String(cr.order_date).slice(0, 10)}_${cr.slot_hour}`;
-                compMap.set(k, (compMap.get(k) || 0) + 1);
-              }
-              for (const r of rpcData) {
-                const k = `${String(r.order_date).slice(0, 10)}_${r.slot_hour}`;
-                r.completed_orders_count = compMap.get(k) || 0;
-              }
+            if (nonCompErr) {
+              throw nonCompErr;
             }
-          } catch {
-            // Ignore non-fatal completion count note
+
+            if (nonCompletedRows && nonCompletedRows.length > 0) {
+              for (const ncr of nonCompletedRows) {
+                if (String(ncr.status || '').trim().toLowerCase() !== 'completed') {
+                  const k = `${String(ncr.order_date).slice(0, 10)}_${Number(ncr.slot_hour)}`;
+                  nonCompMap.set(k, (nonCompMap.get(k) || 0) + 1);
+                }
+              }
+              if (nonCompletedRows.length < PAGE_SIZE) {
+                hasMore = false;
+              } else {
+                from += PAGE_SIZE;
+              }
+            } else {
+              hasMore = false;
+            }
+          }
+
+          for (const r of rpcData) {
+            const k = `${String(r.order_date).slice(0, 10)}_${Number(r.slot_hour)}`;
+            const totalSlotOrders = Number(r.orders_count || 0);
+            const nonCompletedCount = nonCompMap.get(k) || 0;
+            r.completed_orders_count = Math.max(0, totalSlotOrders - nonCompletedCount);
           }
         }
 
