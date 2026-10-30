@@ -586,22 +586,22 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                   <table className="excel-pivot-table">
                                     <thead>
                                       <tr>
-                                        <th style={{ width: '80px' }}>Slot</th>
-                                        <th className="text-right">Orders</th>
-                                        <th className="text-right">DSR %</th>
-                                        <th className="text-right">Actual Riders Turn-up</th>
-                                        <th className="text-right">DPH</th>
-                                        <th className="text-right">AVERAGE of S2P (min)</th>
-                                        <th className="text-right">OTP Achieved %</th>
-                                        <th className="text-right">OTP Breached %</th>
+                                        <th className="text-center" style={{ width: '80px' }}>Slot</th>
+                                        <th className="text-center">Orders</th>
+                                        <th className="text-center">DSR %</th>
+                                        <th className="text-center">Actual Riders Turn-up</th>
+                                        <th className="text-center">DPH</th>
+                                        <th className="text-center">AVERAGE of S2P (min)</th>
+                                        <th className="text-center">OTP Achieved %</th>
+                                        <th className="text-center">OTP Breached %</th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {day.slots.map((s) => (
                                         <tr key={s.slotHour}>
                                           <td className="text-center font-bold text-slate" title={s.slotLabel}>{s.slotHour}</td>
-                                          <td className="text-right font-semibold">{s.ordersCount}</td>
-                                          <td className="text-right font-semibold">
+                                          <td className="text-center font-semibold">{s.ordersCount}</td>
+                                          <td className="text-center font-semibold">
                                             <span
                                               className={(s.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
                                               title={`Completed: ${(s.completedOrdersCount ?? 0).toLocaleString()} / ${s.ordersCount.toLocaleString()}`}
@@ -609,19 +609,19 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                               {(s.dsrPct ?? 0).toFixed(1)}%
                                             </span>
                                           </td>
-                                          <td className="text-right">{s.ridersCount}</td>
-                                          <td className="text-right">
+                                          <td className="text-center">{s.ridersCount}</td>
+                                          <td className="text-center">
                                             <span className="dph-pill" style={getDphHeatmapStyle(s.dph)}>
                                               {s.dph.toFixed(1)}
                                             </span>
                                           </td>
-                                          <td className={`text-right ${getS2pBadgeClass(s.avgS2p)}`}>
+                                          <td className={`text-center ${getS2pBadgeClass(s.avgS2p)}`}>
                                             {s.avgS2p.toFixed(2)}
                                           </td>
-                                          <td className="text-right font-semibold text-green">
+                                          <td className="text-center font-semibold text-green">
                                             {s.otpAchievedPct.toFixed(2)}%
                                           </td>
-                                          <td className="text-right text-red">
+                                          <td className="text-center text-red">
                                             {s.otpBreachedPct > 0 ? `${s.otpBreachedPct.toFixed(2)}%` : '0.00%'}
                                           </td>
                                         </tr>
@@ -629,26 +629,26 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                     </tbody>
                                     <tfoot>
                                       <tr className="excel-pivot-grand-total">
-                                        <td>Grand Total</td>
-                                        <td className="text-right font-bold">{day.totalOrders}</td>
-                                        <td className="text-right font-bold">
+                                        <td className="text-center font-bold">Grand Total</td>
+                                        <td className="text-center font-bold">{day.totalOrders}</td>
+                                        <td className="text-center font-bold">
                                           <span className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
                                             {(day.dsrPct ?? 0).toFixed(1)}%
                                           </span>
                                         </td>
-                                        <td className="text-right font-bold">{day.distinctRidersCount}</td>
-                                        <td className="text-right font-bold">
+                                        <td className="text-center font-bold">{day.distinctRidersCount}</td>
+                                        <td className="text-center font-bold">
                                           <span className="dph-pill" style={getDphHeatmapStyle(day.avgDph)}>
                                             {day.avgDph.toFixed(1)}
                                           </span>
                                         </td>
-                                        <td className={`text-right font-bold ${getS2pBadgeClass(day.avgS2p)}`}>
+                                        <td className={`text-center font-bold ${getS2pBadgeClass(day.avgS2p)}`}>
                                           {day.avgS2p.toFixed(2)}
                                         </td>
-                                        <td className="text-right font-bold text-green">
+                                        <td className="text-center font-bold text-green">
                                           {day.avgOtpAchievedPct.toFixed(2)}%
                                         </td>
-                                        <td className="text-right font-bold text-red">
+                                        <td className="text-center font-bold text-red">
                                           {day.avgOtpBreachedPct.toFixed(2)}%
                                         </td>
                                       </tr>
@@ -664,22 +664,22 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                     <table className="excel-pivot-table">
                                       <thead>
                                         <tr>
-                                          <th style={{ width: '120px' }}><em>Slot</em></th>
-                                          <th className="text-right">AVERAGE of S2P</th>
+                                          <th className="text-center" style={{ width: '120px' }}><em>Slot</em></th>
+                                          <th className="text-center">AVERAGE of S2P</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {day.slots.map((s) => (
                                           <tr key={s.slotHour}>
                                             <td className="text-center">{s.slotHour}</td>
-                                            <td className="text-right font-semibold">{s.avgS2p.toFixed(2)}</td>
+                                            <td className="text-center font-semibold">{s.avgS2p.toFixed(2)}</td>
                                           </tr>
                                         ))}
                                       </tbody>
                                       <tfoot>
                                         <tr className="excel-pivot-grand-total">
-                                          <td>Grand Total</td>
-                                          <td className="text-right font-bold">{day.avgS2p.toFixed(2)}</td>
+                                          <td className="text-center font-bold">Grand Total</td>
+                                          <td className="text-center font-bold">{day.avgS2p.toFixed(2)}</td>
                                         </tr>
                                       </tfoot>
                                     </table>
@@ -699,7 +699,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                     <table className="excel-pivot-table">
                                       <thead>
                                         <tr>
-                                          <th rowSpan={2} style={{ width: '100px', verticalAlign: 'bottom' }}>
+                                          <th rowSpan={2} className="text-center" style={{ width: '100px', verticalAlign: 'bottom' }}>
                                             <em>Slot</em>
                                           </th>
                                           <th colSpan={2} className="text-center border-b">
@@ -707,18 +707,18 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                           </th>
                                         </tr>
                                         <tr>
-                                          <th className="text-right">OTP Achieved</th>
-                                          <th className="text-right">OTP Breached</th>
+                                          <th className="text-center">OTP Achieved</th>
+                                          <th className="text-center">OTP Breached</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {day.slots.map((s) => (
                                           <tr key={s.slotHour}>
                                             <td className="text-center">{s.slotHour}</td>
-                                            <td className="text-right font-semibold text-green">
+                                            <td className="text-center font-semibold text-green">
                                               {s.otpAchievedPct.toFixed(2)}%
                                             </td>
-                                            <td className="text-right text-red">
+                                            <td className="text-center text-red">
                                               {s.otpBreachedPct > 0 ? `${s.otpBreachedPct.toFixed(2)}%` : ''}
                                             </td>
                                           </tr>
@@ -726,11 +726,11 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                       </tbody>
                                       <tfoot>
                                         <tr className="excel-pivot-grand-total">
-                                          <td>Grand Total</td>
-                                          <td className="text-right font-bold text-green">
+                                          <td className="text-center font-bold">Grand Total</td>
+                                          <td className="text-center font-bold text-green">
                                             {day.avgOtpAchievedPct.toFixed(2)}%
                                           </td>
-                                          <td className="text-right font-bold text-red">
+                                          <td className="text-center font-bold text-red">
                                             {day.avgOtpBreachedPct.toFixed(2)}%
                                           </td>
                                         </tr>
@@ -752,19 +752,19 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                     <table className="excel-pivot-table">
                                       <thead>
                                         <tr>
-                                          <th style={{ width: '80px' }}><em>Slot</em></th>
-                                          <th className="text-right">Orders</th>
-                                          <th className="text-right">Actual Riders Turn-up</th>
-                                          <th className="text-right">DPH</th>
+                                          <th className="text-center" style={{ width: '80px' }}><em>Slot</em></th>
+                                          <th className="text-center">Orders</th>
+                                          <th className="text-center">Actual Riders Turn-up</th>
+                                          <th className="text-center">DPH</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {day.slots.map((s) => (
                                           <tr key={s.slotHour}>
                                             <td className="text-center">{s.slotHour}</td>
-                                            <td className="text-right">{s.ordersCount}</td>
-                                            <td className="text-right">{s.ridersCount}</td>
-                                            <td className="text-right" style={getDphHeatmapStyle(s.dph)}>
+                                            <td className="text-center">{s.ordersCount}</td>
+                                            <td className="text-center">{s.ridersCount}</td>
+                                            <td className="text-center" style={getDphHeatmapStyle(s.dph)}>
                                               {s.dph.toFixed(1)}
                                             </td>
                                           </tr>
@@ -772,10 +772,10 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                       </tbody>
                                       <tfoot>
                                         <tr className="excel-pivot-grand-total">
-                                          <td>Grand Total</td>
-                                          <td className="text-right font-bold">{day.totalOrders}</td>
-                                          <td className="text-right font-bold">{day.distinctRidersCount}</td>
-                                          <td className="text-right font-bold" style={getDphHeatmapStyle(day.avgDph)}>
+                                          <td className="text-center font-bold">Grand Total</td>
+                                          <td className="text-center font-bold">{day.totalOrders}</td>
+                                          <td className="text-center font-bold">{day.distinctRidersCount}</td>
+                                          <td className="text-center font-bold" style={getDphHeatmapStyle(day.avgDph)}>
                                             {day.avgDph.toFixed(1)}
                                           </td>
                                         </tr>
