@@ -182,24 +182,25 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
       <div
-        className="modal-container rider-attendance-modal"
+        className="modal-card rider-attendance-modal"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '920px', width: '95vw', maxHeight: '92vh' }}
       >
         {/* Header */}
-        <div className="modal-header">
-          <div className="modal-title-group">
-            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>📋</span>
-              <span>Rider Attendance & Turn-Up Planning</span>
-            </h2>
-            <p className="modal-subtitle">
-              Store <strong>{warehouseId}</strong> {storeName ? `(${storeName})` : ''} • Date: <strong>{formattedDate}</strong>
-            </p>
+        <div className="attendance-modal-header">
+          <div className="attendance-modal-title-group">
+            <div className="attendance-modal-icon-badge">📋</div>
+            <div>
+              <h2 className="attendance-modal-title">
+                Rider Attendance &amp; Turn-Up Planning
+              </h2>
+              <p className="attendance-modal-subtitle">
+                Store <strong>{warehouseId}</strong> {storeName ? `(${storeName})` : ''} • Date: <strong>{formattedDate}</strong>
+              </p>
+            </div>
           </div>
           <button
             type="button"
-            className="modal-close-btn"
+            className="attendance-modal-close-btn"
             onClick={onClose}
             aria-label="Close modal"
           >
@@ -231,105 +232,112 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
 
           <div className="attendance-kpi-pill kpi-peak">
             <span className="kpi-label">Peak Slot Turn-Up</span>
-            <span className="kpi-value font-bold text-blue">{peakSlotTurnUp} riders</span>
+            <span className="kpi-value">{peakSlotTurnUp} riders</span>
           </div>
         </div>
 
         {/* Controls & Quick Bulk Actions */}
         <div className="attendance-controls-bar">
-          <div className="attendance-search-filters">
-            <input
-              type="text"
-              className="shift-search-input"
-              style={{ minWidth: '220px' }}
-              placeholder="Search rider name or phone..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="attendance-controls-row">
+            <div className="attendance-search-filters">
+              <input
+                type="text"
+                className="attendance-search-input"
+                placeholder="Search rider name or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
 
-            <select
-              className="shift-type-filter"
-              value={filterShift}
-              onChange={(e) => setFilterShift(e.target.value)}
-            >
-              <option value="ALL">All Shifts</option>
-              <option value="Morning Shift">Morning Shift</option>
-              <option value="2nd Shift">2nd Shift</option>
-              <option value="Split Shift">Split Shift</option>
-            </select>
+              <select
+                className="attendance-shift-select"
+                value={filterShift}
+                onChange={(e) => setFilterShift(e.target.value)}
+              >
+                <option value="ALL">All Shifts</option>
+                <option value="Morning Shift">Morning Shift</option>
+                <option value="2nd Shift">2nd Shift</option>
+                <option value="Split Shift">Split Shift</option>
+              </select>
 
-            {/* Status Quick Filter Buttons */}
-            <div className="attendance-status-segmented">
-              <button
-                type="button"
-                className={`segmented-btn ${filterStatus === 'ALL' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('ALL')}
-              >
-                All ({records.length})
-              </button>
-              <button
-                type="button"
-                className={`segmented-btn ${filterStatus === 'present' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('present')}
-              >
-                Present ({presentCount})
-              </button>
-              <button
-                type="button"
-                className={`segmented-btn ${filterStatus === 'absent' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('absent')}
-              >
-                Absent ({absentCount})
-              </button>
-              <button
-                type="button"
-                className={`segmented-btn ${filterStatus === 'unmarked' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('unmarked')}
-              >
-                Unmarked ({unmarkedCount})
-              </button>
+              {/* Status Filter Buttons */}
+              <div className="attendance-status-segmented">
+                <button
+                  type="button"
+                  className={`segmented-btn ${filterStatus === 'ALL' ? 'active' : ''}`}
+                  onClick={() => setFilterStatus('ALL')}
+                >
+                  All ({records.length})
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${filterStatus === 'present' ? 'active' : ''}`}
+                  onClick={() => setFilterStatus('present')}
+                >
+                  Present ({presentCount})
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${filterStatus === 'absent' ? 'active' : ''}`}
+                  onClick={() => setFilterStatus('absent')}
+                >
+                  Absent ({absentCount})
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${filterStatus === 'unmarked' ? 'active' : ''}`}
+                  onClick={() => setFilterStatus('unmarked')}
+                >
+                  Unmarked ({unmarkedCount})
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Quick Bulk Action Buttons */}
-          <div className="attendance-bulk-btns">
-            <span className="bulk-label text-xs text-secondary font-medium">Quick Mark:</span>
-            <button
-              type="button"
-              className="btn-attendance-bulk btn-bulk-present"
-              onClick={() => handleBulkSetStatus('present')}
-              title="Mark all visible riders as Present"
-            >
-              ✓ Mark All Present
-            </button>
-            <button
-              type="button"
-              className="btn-attendance-bulk btn-bulk-absent"
-              onClick={() => handleBulkSetStatus('absent')}
-              title="Mark all visible riders as Absent"
-            >
-              ✗ Mark All Absent
-            </button>
-            <button
-              type="button"
-              className="btn-attendance-bulk btn-bulk-unmark"
-              onClick={() => handleBulkSetStatus('unmarked')}
-              title="Reset visible riders to Unmarked"
-            >
-              ↺ Reset Unmarked
-            </button>
+          {/* Quick Bulk Action Buttons Row */}
+          <div className="attendance-bulk-bar">
+            <div className="attendance-bulk-btns">
+              <span className="bulk-label">Quick Mark:</span>
+              <button
+                type="button"
+                className="btn-attendance-bulk btn-bulk-present"
+                onClick={() => handleBulkSetStatus('present')}
+                title="Mark all visible riders as Present"
+              >
+                ✓ Mark All Present
+              </button>
+              <button
+                type="button"
+                className="btn-attendance-bulk btn-bulk-absent"
+                onClick={() => handleBulkSetStatus('absent')}
+                title="Mark all visible riders as Absent"
+              >
+                ✗ Mark All Absent
+              </button>
+              <button
+                type="button"
+                className="btn-attendance-bulk btn-bulk-unmark"
+                onClick={() => handleBulkSetStatus('unmarked')}
+                title="Reset visible riders to Unmarked"
+              >
+                ↺ Reset Unmarked
+              </button>
+            </div>
+
+            <span className="text-xs text-muted">
+              Showing {displayedRecords.length} of {records.length} riders
+            </span>
           </div>
         </div>
 
         {/* Roster Table */}
         <div className="attendance-table-container">
-          <table className="perf-pivot-table attendance-roster-table">
+          <table className="attendance-roster-table">
             <thead>
-              <tr className="tier1-header-row">
-                <th style={{ width: '45px', textAlign: 'center' }}>#</th>
-                <th style={{ width: '38%', textAlign: 'left' }}>Rider Name & Phone</th>
-                <th style={{ width: '30%', textAlign: 'left' }}>Shift Timing</th>
-                <th style={{ width: '28%', textAlign: 'center' }}>Attendance Status</th>
+              <tr>
+                <th style={{ width: '50px', textAlign: 'center' }}>#</th>
+                <th style={{ textAlign: 'left' }}>Rider Name &amp; Phone</th>
+                <th style={{ width: '220px', textAlign: 'left' }}>Shift Timing</th>
+                <th style={{ width: '260px', textAlign: 'center' }}>Attendance Status</th>
               </tr>
             </thead>
             <tbody>
@@ -365,11 +373,11 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
                       {/* Rider Name and Phone */}
                       <td>
                         <div className="rider-cell-content">
-                          <span className="rider-name font-semibold text-slate">
+                          <span className="rider-name">
                             {rider.riderName}
                           </span>
                           {rider.phone && (
-                            <span className="rider-phone font-mono text-xs text-muted">
+                            <span className="rider-phone">
                               📞 {rider.phone}
                             </span>
                           )}
@@ -390,7 +398,7 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
                           >
                             {rider.shiftType}
                           </span>
-                          <span className="shift-hours-text text-xs text-secondary">
+                          <span className="shift-hours-text">
                             {timingsLabel}
                           </span>
                         </div>
@@ -439,17 +447,23 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="attendance-footer-summary text-xs text-secondary">
+        <div className="attendance-modal-footer">
+          <div className="attendance-footer-summary">
             {records.length > 0 ? (
-              <span>
-                <strong>{presentCount}</strong> of <strong>{records.length}</strong> riders marked Present
-                {unmarkedCount > 0 && (
-                  <span className="text-amber font-medium ml-xs">
-                    ({unmarkedCount} still unmarked)
+              <div className="flex-row items-center gap-xs">
+                <span>
+                  <strong>{presentCount}</strong> of <strong>{records.length}</strong> riders marked Present
+                </span>
+                {unmarkedCount > 0 ? (
+                  <span className="badge badge-warning" style={{ fontSize: '11px', padding: '2px 8px' }}>
+                    {unmarkedCount} still unmarked
+                  </span>
+                ) : (
+                  <span className="badge badge-success" style={{ fontSize: '11px', padding: '2px 8px' }}>
+                    ✓ All riders marked
                   </span>
                 )}
-              </span>
+              </div>
             ) : (
               <span>No active riders configured for this store.</span>
             )}
@@ -458,10 +472,10 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
             )}
           </div>
 
-          <div className="modal-footer-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+          <div className="attendance-footer-actions">
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-secondary btn-sm"
               onClick={onClose}
               disabled={saving}
             >
@@ -470,7 +484,7 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
 
             <button
               type="button"
-              className="btn btn-primary btn-save-attendance"
+              className="btn btn-primary btn-sm btn-save-attendance"
               onClick={() => void handleSave()}
               disabled={saving}
             >
