@@ -18,6 +18,7 @@ import {
   getStoreTargetDphSync,
   recalculatePlanningWithDph,
   saveStoreTargetDph,
+  subscribeStoreTargetDph,
 } from '../services/planningService';
 
 interface PlanningSectionProps {
@@ -77,6 +78,17 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       setTargetDph(val);
       setDphInput(String(val));
     });
+
+    // Realtime subscription for cross-session / multi-tab DPH updates
+    const unsubscribe = subscribeStoreTargetDph(storeCode, (newDph) => {
+      setTargetDph(newDph);
+      setDphInput(String(newDph));
+      setSummary((prev) => (prev ? recalculatePlanningWithDph(prev, newDph) : null));
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [selectedStore]);
 
   // Load planning calculation for selected date and target DPH

@@ -161,7 +161,100 @@ export async function fetchStoreTargetDph(siteCode: string): Promise<number> {
 }
 
 /**
- * Persists store target DPH to both Supabase and localStorage.
+ * Custom event name used for cross-component in-tab DPH updates
+ */
+export const STORE_DPH_CHANGE_EVENT = 'store_target_dph_changed';
+
+/**
+ * Subscribes to real-time Target DPH updates for a specific store (or all stores).
+ * Listens to:
+ * 1. Supabase Postgres Realtime changes on `store_planning_config` (cross-user / multi-session / multi-tab)
+ * 2. Cross-tab storage events on localStorage (same browser, other tabs)
+ * 3. In-tab custom events for immediate reactivity
+ * Returns an unsubscribe function for cleanup.
+ */
+export function subscribeStoreTargetDph(
+  siteCode: string,
+  onDphChange: (newDph: number, siteCode: string) => void
+): () => void {
+  const norm = (siteCode || 'TMK7').toUpperCase().trim();
+
+  // 1. In-tab custom event listener
+  const handleInTabEvent = (e: Event) => {
+    const custom = e as CustomEvent<{ siteCode: string; targetDph: number }>;
+    if (custom.detail && custom.detail.siteCode.toUpperCase().trim() === norm) {
+      const val = Number(custom.detail.targetDph);
+      if (!isNaN(val) && val > 0) {
+        onDphChange(val, norm);
+      }
+    }
+  };
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener(STORE_DPH_CHANGE_EVENT, handleInTabEvent);
+  }
+
+  // 2. Cross-tab localStorage event listener (fires in all OTHER tabs of same origin)
+  const handleStorageEvent = (e: StorageEvent) => {
+    if (e.key === LOCAL_STORAGE_DPH_PREFIX + norm && e.newValue) {
+      const val = parseFloat(e.newValue);
+      if (!isNaN(val) && val > 0) {
+        onDphChange(val, norm);
+      }
+    }
+  };
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', handleStorageEvent);
+  }
+
+  // 3. Supabase Realtime channel subscription (across any user/machine/browser session)
+  let channel: ReturnType<typeof supabase.channel> | null = null;
+  try {
+    const channelName = `realtime:store_planning_config:${norm}`;
+    channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'store_planning_config',
+          filter: `site_code=eq.${norm}`,
+        },
+        (payload) => {
+          const newRow = payload.new as { site_code?: string; target_dph?: number | string } | null;
+          if (newRow && newRow.target_dph !== undefined) {
+            const val = Number(newRow.target_dph);
+            if (!isNaN(val) && val > 0) {
+              // Update local cache as well
+              if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.setItem(LOCAL_STORAGE_DPH_PREFIX + norm, String(val));
+              }
+              onDphChange(val, norm);
+            }
+          }
+        }
+      )
+      .subscribe();
+  } catch (err) {
+    console.warn('Realtime subscription error for store_planning_config:', err);
+  }
+
+  // Return unsubscribe cleanup function
+  return () => {
+    if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener(STORE_DPH_CHANGE_EVENT, handleInTabEvent);
+      window.removeEventListener('storage', handleStorageEvent);
+    }
+    if (channel) {
+      void supabase.removeChannel(channel);
+    }
+  };
+}
+
+/**
+ * Persists store target DPH to Supabase, localStorage, and dispatches in-tab broadcast.
  */
 export async function saveStoreTargetDph(
   siteCode: string,
@@ -173,10 +266,19 @@ export async function saveStoreTargetDph(
     return { ok: false, error: 'DPH must be a positive number greater than 0.' };
   }
 
-  // 1. Instant local cache update
+  // 1. Instant local cache update & in-tab broadcast
   try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(LOCAL_STORAGE_DPH_PREFIX + norm, String(targetDph));
+    if (typeof window !== 'undefined') {
+      if (window.localStorage) {
+        window.localStorage.setItem(LOCAL_STORAGE_DPH_PREFIX + norm, String(targetDph));
+      }
+      if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+        window.dispatchEvent(
+          new CustomEvent(STORE_DPH_CHANGE_EVENT, {
+            detail: { siteCode: norm, targetDph },
+          })
+        );
+      }
     }
   } catch {
     // Ignore

@@ -15,13 +15,15 @@ import {
   recalculatePlanningWithDph,
   saveSnopRecords,
   saveStoreTargetDph,
+  subscribeStoreTargetDph,
 } from '../../src/services/planningService';
 import { INITIAL_TMK7_SNOP_RECORDS } from '../../src/services/planningDataSeed';
 
-// Polyfill window.localStorage for Node environment if missing
+// Polyfill window.localStorage and EventTarget for Node environment if missing
 if (typeof window === 'undefined') {
   const store: Record<string, string> = {};
-  (global as unknown as { window: { localStorage: Storage } }).window = {
+  const listeners: Record<string, ((e: any) => void)[]> = {};
+  (global as unknown as { window: any }).window = {
     localStorage: {
       getItem: (key: string) => store[key] ?? null,
       setItem: (key: string, value: string) => {
@@ -38,6 +40,31 @@ if (typeof window === 'undefined') {
       key: (index: number) => Object.keys(store)[index] ?? null,
       length: Object.keys(store).length,
     },
+    addEventListener: (type: string, fn: (e: any) => void) => {
+      listeners[type] = listeners[type] || [];
+      listeners[type].push(fn);
+    },
+    removeEventListener: (type: string, fn: (e: any) => void) => {
+      if (listeners[type]) {
+        listeners[type] = listeners[type].filter((cb) => cb !== fn);
+      }
+    },
+    dispatchEvent: (event: any) => {
+      if (listeners[event.type]) {
+        for (const fn of listeners[event.type]) {
+          fn(event);
+        }
+      }
+      return true;
+    },
+  };
+  (global as any).CustomEvent = class CustomEvent {
+    type: string;
+    detail: any;
+    constructor(type: string, params?: { detail?: any }) {
+      this.type = type;
+      this.detail = params?.detail;
+    }
   };
 }
 
@@ -349,6 +376,21 @@ describe('Store Planning & SNOP Forecast Suite', () => {
 
       const resNeg = await saveStoreTargetDph('TMK7', -1.5);
       expect(resNeg.ok).toBe(false);
+    });
+
+    it('subscribes to DPH updates and notifies listeners when DPH changes', async () => {
+      let notifiedDph = 0;
+      let notifiedSite = '';
+      const unsubscribe = subscribeStoreTargetDph('TMK7', (dph, site) => {
+        notifiedDph = dph;
+        notifiedSite = site;
+      });
+
+      await saveStoreTargetDph('TMK7', 2.45);
+      expect(notifiedDph).toBe(2.45);
+      expect(notifiedSite).toBe('TMK7');
+
+      unsubscribe();
     });
   });
 
