@@ -1002,7 +1002,6 @@ export async function fetchPlanningForDate(params: {
     storeId,
     warehouseId,
     dateStr,
-    timeZone: _timeZone = 'Asia/Kolkata',
     avgTurnUpMap: overrideTurnUp,
     plannedTurnUpMap: overridePlannedTurnUp,
   } = params;

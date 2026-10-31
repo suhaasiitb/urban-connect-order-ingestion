@@ -20,8 +20,8 @@ import { fetchPlanningForDate, recalculatePlanningWithDph } from '../../src/serv
 // Polyfill window.localStorage and EventTarget for Node environment if missing
 if (typeof window === 'undefined') {
   const store: Record<string, string> = {};
-  const listeners: Record<string, ((e: any) => void)[]> = {};
-  (global as unknown as { window: any }).window = {
+  const listeners: Record<string, ((e: unknown) => void)[]> = {};
+  (global as unknown as { window: Record<string, unknown> }).window = {
     localStorage: {
       getItem: (key: string) => store[key] ?? null,
       setItem: (key: string, value: string) => {
@@ -38,16 +38,16 @@ if (typeof window === 'undefined') {
       key: (index: number) => Object.keys(store)[index] ?? null,
       length: Object.keys(store).length,
     },
-    addEventListener: (type: string, fn: (e: any) => void) => {
+    addEventListener: (type: string, fn: (e: unknown) => void) => {
       listeners[type] = listeners[type] || [];
       listeners[type].push(fn);
     },
-    removeEventListener: (type: string, fn: (e: any) => void) => {
+    removeEventListener: (type: string, fn: (e: unknown) => void) => {
       if (listeners[type]) {
         listeners[type] = listeners[type].filter((cb) => cb !== fn);
       }
     },
-    dispatchEvent: (event: any) => {
+    dispatchEvent: (event: { type: string }) => {
       if (listeners[event.type]) {
         for (const fn of listeners[event.type]) {
           fn(event);
@@ -56,10 +56,10 @@ if (typeof window === 'undefined') {
       return true;
     },
   };
-  (global as any).CustomEvent = class CustomEvent {
+  (global as unknown as Record<string, unknown>).CustomEvent = class CustomEvent {
     type: string;
-    detail: any;
-    constructor(type: string, params?: { detail?: any }) {
+    detail: unknown;
+    constructor(type: string, params?: { detail?: unknown }) {
       this.type = type;
       this.detail = params?.detail;
     }

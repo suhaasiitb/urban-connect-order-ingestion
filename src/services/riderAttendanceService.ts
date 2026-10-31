@@ -54,10 +54,10 @@ export const STORE_ATTENDANCE_CHANGE_EVENT = 'store_rider_attendance_changed';
 /**
  * Wraps an async promise or thenable with a timeout so network hangs never block UI or tests.
  */
-function withTimeout<T>(promise: PromiseLike<T>, ms: number, fallback: T): Promise<T> {
+function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F): Promise<T | F> {
   return Promise.race([
     Promise.resolve(promise),
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+    new Promise<F>((resolve) => setTimeout(() => resolve(fallback), ms)),
   ]);
 }
 
@@ -241,7 +241,7 @@ export async function fetchStoreRiderAttendance(params: {
         .eq('attendance_date', attendanceDate)
         .order('rider_name', { ascending: true }),
       1500,
-      { data: null, error: null } as any
+      { data: null, error: null }
     );
     const data = res?.data;
     const error = res?.error;
@@ -430,7 +430,7 @@ export async function saveStoreRiderAttendance(params: {
           .eq('warehouse_id', normWh)
           .eq('attendance_date', attendanceDate),
         1500,
-        { error: null } as any
+        { error: null }
       );
 
       // Insert new records in chunks of 200
@@ -458,7 +458,7 @@ export async function saveStoreRiderAttendance(params: {
         await withTimeout(
           supabase.from('store_rider_attendance').insert(chunk),
           1500,
-          { error: null } as any
+          { error: null }
         );
       }
     } catch (err) {
