@@ -5046,6 +5046,353 @@ select {
   font-weight: 700;
 }
 
+/* ==============================================================================
+   Rider Attendance & Turn-Up Planning Modal & Controls Styles
+   ============================================================================== */
+
+.btn-mark-attendance {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.36rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #1e293b;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.btn-mark-attendance:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.btn-mark-attendance.has-attendance {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.btn-mark-attendance.has-attendance:hover {
+  background: #dcfce7;
+  border-color: #4ade80;
+}
+
+.attendance-unmarked-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-radius: 9999px;
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.attendance-badge-present {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.attendance-summary-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.attendance-kpi-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.76rem;
+}
+
+.attendance-kpi-pill .kpi-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.attendance-kpi-pill .kpi-value {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.attendance-kpi-pill.kpi-present {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.attendance-kpi-pill.kpi-present .kpi-value {
+  color: #16a34a;
+}
+
+.attendance-kpi-pill.kpi-absent {
+  border-color: #fecdd3;
+  background: #fff1f2;
+}
+
+.attendance-kpi-pill.kpi-absent .kpi-value {
+  color: #e11d48;
+}
+
+.attendance-kpi-pill.kpi-unmarked {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.attendance-kpi-pill.kpi-unmarked .kpi-value {
+  color: #ea580c;
+}
+
+.attendance-kpi-pill.kpi-peak {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  margin-left: auto;
+}
+
+.attendance-controls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.65rem 1rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.attendance-search-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.attendance-status-segmented {
+  display: inline-flex;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.attendance-status-segmented .segmented-btn {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.attendance-status-segmented .segmented-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.attendance-bulk-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.btn-attendance-bulk {
+  padding: 0.24rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.btn-bulk-present {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+
+.btn-bulk-present:hover {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+.btn-bulk-absent {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #be123c;
+}
+
+.btn-bulk-absent:hover {
+  background: #ffe4e6;
+  border-color: #fda4af;
+}
+
+.btn-bulk-unmark {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.btn-bulk-unmark:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.attendance-table-container {
+  max-height: 52vh;
+  overflow-y: auto;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.attendance-roster-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.attendance-roster-table th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  z-index: 10;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.72rem;
+  color: #475569;
+  font-weight: 700;
+}
+
+.attendance-roster-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.attendance-row:hover {
+  background: #f8fafc;
+}
+
+.attendance-row.status-present {
+  background-color: rgba(240, 253, 244, 0.4);
+}
+
+.attendance-row.status-absent {
+  background-color: rgba(255, 241, 242, 0.3);
+}
+
+.rider-cell-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.rider-shift-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.shift-badge {
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.badge-morning {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.badge-second {
+  background: #faf5ff;
+  color: #7e22ce;
+  border: 1px solid #e9d5ff;
+}
+
+.badge-split {
+  background: #fefce8;
+  color: #a16207;
+  border: 1px solid #fef08a;
+}
+
+.attendance-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.btn-toggle-att {
+  padding: 0.22rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn-toggle-att:hover {
+  color: #0f172a;
+}
+
+.btn-toggle-att.selected.btn-att-present {
+  background: #16a34a;
+  border-color: #15803d;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(22, 163, 74, 0.25);
+}
+
+.btn-toggle-att.selected.btn-att-absent {
+  background: #e11d48;
+  border-color: #be123c;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(225, 29, 72, 0.25);
+}
+
+.btn-toggle-att.selected.btn-att-unmark {
+  background: #64748b;
+  border-color: #475569;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(100, 116, 139, 0.2);
+}
+
+
 
 
 

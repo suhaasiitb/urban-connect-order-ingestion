@@ -20,6 +20,14 @@ import {
   saveStoreTargetDph,
   subscribeStoreTargetDph,
 } from '../services/planningService';
+import {
+  type RiderAttendanceRecord,
+  type StoreAttendanceSummary,
+  buildAttendanceSummary,
+  fetchStoreRiderAttendance,
+  subscribeStoreRiderAttendance,
+} from '../services/riderAttendanceService';
+import { RiderAttendanceModal } from './RiderAttendanceModal';
 
 interface PlanningSectionProps {
   stores: StoreMaster[];
@@ -59,6 +67,10 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
   const [summary, setSummary] = useState<DayPlanningSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Rider attendance state for tomorrow / selected date
+  const [attendanceSummary, setAttendanceSummary] = useState<StoreAttendanceSummary | null>(null);
+  const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
 
   // Load available forecast dates whenever store changes
   useEffect(() => {
@@ -117,6 +129,44 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
   useEffect(() => {
     void loadPlanningData();
   }, [loadPlanningData]);
+
+  // Load Attendance Summary and subscribe to real-time attendance changes
+  useEffect(() => {
+    if (!selectedStore || !selectedDate) return;
+    const storeCode = selectedStore.store_code;
+
+    void fetchStoreRiderAttendance({
+      storeId: selectedStore.id,
+      warehouseId: storeCode,
+      attendanceDate: selectedDate,
+    }).then((att) => {
+      setAttendanceSummary(att);
+    });
+
+    const unsubAttendance = subscribeStoreRiderAttendance(
+      storeCode,
+      selectedDate,
+      (newSummary) => {
+        setAttendanceSummary(newSummary);
+        void loadPlanningData();
+      }
+    );
+
+    return () => {
+      unsubAttendance();
+    };
+  }, [selectedStore, selectedDate, loadPlanningData]);
+
+  const handleAttendanceSaved = (updatedRecords: RiderAttendanceRecord[]) => {
+    const newSummary = buildAttendanceSummary(
+      selectedStore?.store_code || 'TMK7',
+      selectedDate,
+      updatedRecords,
+      selectedStore?.id
+    );
+    setAttendanceSummary(newSummary);
+    void loadPlanningData();
+  };
 
   // Handle changing DPH input with live recalculation of Required Riders, Turn-Up & Status
   const handleDphInputChange = (valStr: string) => {
@@ -320,6 +370,53 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
           </strong>
           <span className="kpi-sub">
             Peak Demand: <strong>{summary?.peakSecond?.projectedOrders.toLocaleString() ?? 0} orders</strong> (3 PM – 12 AM)
+          </span>
+        </div>
+
+        {/* Card 4: Planned Workforce Balance */}
+        <div className="kpi-card">
+          <div className="kpi-header-row">
+            <span className="kpi-label">PLANNED WORKFORCE BALANCE</span>
+            {summary && (
+              <span
+                className={`badge ${
+                  summary.netTurnUpDelta < 0
+                    ? 'badge-danger'
+                    : summary.netTurnUpDelta > 0
+                    ? 'badge-success'
+                    : 'badge-secondary'
+                }`}
+                style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+              >
+                {summary.netTurnUpDelta > 0
+                  ? `+${summary.netTurnUpDelta} Surplus`
+                  : summary.netTurnUpDelta < 0
+                  ? `${summary.netTurnUpDelta} Short`
+                  : 'Balanced'}
+              </span>
+            )}
+          </div>
+          <strong
+            className={`kpi-value ${
+              (summary?.netTurnUpDelta ?? 0) < 0
+                ? 'text-red'
+                : (summary?.netTurnUpDelta ?? 0) > 0
+                ? 'text-green'
+                : 'text-slate'
+            }`}
+          >
+            {loading
+              ? '...'
+              : `${attendanceSummary?.presentCount ?? 0} Present`}
+          </strong>
+          <span className="kpi-sub">
+            {attendanceSummary ? (
+              <>
+                Active: <strong>{attendanceSummary.totalRiders}</strong> | Peak Slot: <strong>{summary?.peakTurnUp ?? 0} riders</strong>
+              </>
+            ) : (
+              'Attendance unmarked'
+            )}
           </span>
         </div>
       </div>
@@ -535,8 +632,29 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
             </div>
           </div>
 
-          {/* Right Actions: Refresh and Export Excel */}
+          {/* Right Actions: Mark Attendance, Refresh, and Export Excel */}
           <div className="perf-actions-right">
+            <button
+              type="button"
+              className={`btn-mark-attendance ${attendanceSummary && attendanceSummary.presentCount > 0 ? 'has-attendance' : ''}`}
+              onClick={() => setIsAttendanceModalOpen(true)}
+              title="Mark next day's rider attendance and populate expected slot turn-up"
+            >
+              <span style={{ fontSize: '1rem', lineHeight: 1 }}>📋</span>
+              <span>
+                {attendanceSummary && attendanceSummary.presentCount > 0
+                  ? `Attendance: ${attendanceSummary.presentCount} Present`
+                  : 'Mark Attendance'}
+              </span>
+              {(!attendanceSummary || attendanceSummary.presentCount === 0) ? (
+                <span className="attendance-unmarked-badge">Unmarked</span>
+              ) : (
+                <span className="attendance-badge-present">
+                  {attendanceSummary.presentCount}/{attendanceSummary.totalRiders}
+                </span>
+              )}
+            </button>
+
             <button
               type="button"
               className="btn btn-secondary btn-sm perf-btn-refresh"
@@ -614,7 +732,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
             <div className="callout-left">
               <span className="callout-badge">Operations Plan</span>
               <span className="callout-text">
-                Displaying hourly order projections for <strong>{formattedSelectedDate}</strong> with required workforce sizing computed at <strong>{targetDph.toFixed(2)} DPH</strong> [<code>CEIL(Orders ÷ DPH)</code>].
+                Displaying hourly order projections for <strong>{formattedSelectedDate}</strong> with required workforce sizing computed at <strong>{targetDph.toFixed(2)} DPH</strong> [<code>CEIL(Orders ÷ DPH)</code>] and turn-up from marked attendance ({attendanceSummary?.presentCount ?? 0} Present).
               </span>
             </div>
             <span className="text-secondary text-xs">
@@ -657,7 +775,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
 
                 <th className="th-avg-group text-center">
                   <div className="th-content th-content-center">
-                    <span>Last 1-Wk Avg Turn-Up</span>
+                    <span>Planned Turn-Up</span>
                   </div>
                 </th>
 
@@ -698,16 +816,16 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                       </strong>
                     </td>
 
-                    {/* Last 1-Week Average Turn-Up (rounded down to nearest whole number) */}
+                    {/* Planned Turn-Up (populated from marked attendance) */}
                     <td className="td-active text-center font-medium">
-                      <span className={s.avgTurnUpLastWeek > 0 ? 'text-slate font-semibold' : 'text-muted'}>
-                        {s.avgTurnUpLastWeek}
+                      <span className={s.plannedTurnUp > 0 ? 'text-slate font-semibold text-base' : 'text-muted'}>
+                        {s.plannedTurnUp}
                       </span>
                     </td>
 
                     {/* Status Column with Coloured Gradient Font for Short vs Surplus */}
                     <td className="td-active text-center">
-                      {s.requiredRiders === 0 && s.avgTurnUpLastWeek === 0 ? (
+                      {s.requiredRiders === 0 && s.plannedTurnUp === 0 ? (
                         <span className="text-muted">—</span>
                       ) : isDeficit ? (
                         <span className="status-pill status-pill-short">
@@ -795,6 +913,20 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Rider Attendance Modal */}
+      {selectedStore && (
+        <RiderAttendanceModal
+          isOpen={isAttendanceModalOpen}
+          onClose={() => setIsAttendanceModalOpen(false)}
+          storeId={selectedStore.id}
+          warehouseId={selectedStore.store_code}
+          storeName={selectedStore.store_name}
+          attendanceDate={selectedDate}
+          initialRecords={attendanceSummary?.records ?? []}
+          onSaved={handleAttendanceSaved}
+        />
+      )}
     </div>
   );
 };

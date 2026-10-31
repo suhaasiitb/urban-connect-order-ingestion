@@ -9,6 +9,10 @@ import { supabase } from '../config/supabaseClient';
 import { getDateRangeForDays } from './analyticsService';
 import { fetchS2POtpAnalytics } from './s2pOtpService';
 import { INITIAL_TMK7_SNOP_RECORDS } from './planningDataSeed';
+import {
+  calculateSlotTurnUpFromAttendance,
+  fetchStoreRiderAttendance,
+} from './riderAttendanceService';
 
 export interface SnopForecastRecord {
   city: string;
@@ -49,8 +53,9 @@ export interface SlotPlanningRow {
   projectedOrders: number;
   targetDph: number;
   requiredRiders: number;
-  avgTurnUpLastWeek: number;
-  deltaTurnUpVsRequired: number; // avgTurnUpLastWeek - requiredRiders
+  plannedTurnUp: number; // expected rider turn-up populated from marked attendance
+  avgTurnUpLastWeek: number; // backward compatibility fallback
+  deltaTurnUpVsRequired: number; // plannedTurnUp - requiredRiders
   turnUpCoveragePct: number;
   status: 'surplus' | 'balanced' | 'deficit';
 }
@@ -77,6 +82,9 @@ export interface DayPlanningSummary {
   netTurnUpDelta: number;
   slots: SlotPlanningRow[];
   hasSnopData: boolean;
+  hasAttendanceData?: boolean;
+  attendancePresentCount?: number;
+  attendanceTotalRoster?: number;
 }
 
 // Master LocalStorage Keys for instant zero-latency caching
@@ -988,8 +996,16 @@ export async function fetchPlanningForDate(params: {
   targetDph?: number;
   timeZone?: string;
   avgTurnUpMap?: Record<number, number>;
+  plannedTurnUpMap?: Record<number, number>;
 }): Promise<DayPlanningSummary> {
-  const { storeId, warehouseId, dateStr, timeZone = 'Asia/Kolkata', avgTurnUpMap: overrideTurnUp } = params;
+  const {
+    storeId,
+    warehouseId,
+    dateStr,
+    timeZone: _timeZone = 'Asia/Kolkata',
+    avgTurnUpMap: overrideTurnUp,
+    plannedTurnUpMap: overridePlannedTurnUp,
+  } = params;
   const normWh = (warehouseId || 'TMK7').toUpperCase().trim();
 
   // 1. Resolve Target DPH
@@ -998,15 +1014,32 @@ export async function fetchPlanningForDate(params: {
       ? params.targetDph
       : await fetchStoreTargetDph(normWh);
 
-  // 2. Fetch last 1 week's average turn-up by slot (or use override if provided)
-  const avgTurnUpMap =
-    overrideTurnUp ??
-    (await fetchAvgTurnUpBySlot({
-      storeId,
-      timeZone,
-      planningDate: dateStr,
-      warehouseId: normWh,
-    }));
+  // 2. Resolve Planned Turn-Up Map from marked attendance (or test override if supplied)
+  let plannedTurnUpMap: Record<number, number> | null =
+    overridePlannedTurnUp ?? overrideTurnUp ?? null;
+  let attendancePresentCount = 0;
+  let attendanceTotalRoster = 0;
+  let hasAttendanceData = false;
+
+  if (!plannedTurnUpMap) {
+    try {
+      const attendance = await fetchStoreRiderAttendance({
+        storeId,
+        warehouseId: normWh,
+        attendanceDate: dateStr,
+      });
+      attendancePresentCount = attendance.presentCount;
+      attendanceTotalRoster = attendance.totalRiders;
+      hasAttendanceData = attendance.presentCount > 0 || attendance.records.some((r) => r.status !== 'unmarked');
+      plannedTurnUpMap = calculateSlotTurnUpFromAttendance(attendance.records);
+    } catch (err) {
+      console.warn('Could not load attendance for planning:', err);
+    }
+  }
+
+  if (!plannedTurnUpMap) {
+    plannedTurnUpMap = {};
+  }
 
   // 3. Load SNOP forecast records for this warehouse
   const allRecords = getStoredSnopRecords(normWh);
@@ -1032,17 +1065,17 @@ export async function fetchPlanningForDate(params: {
   for (let h = 6; h <= 23; h++) {
     const projectedOrders = orderMap.get(h) ?? 0;
     const requiredRiders = calculateRequiredRiders(projectedOrders, dph);
-    const rawTurnUp = avgTurnUpMap[h] ?? 0;
+    const rawTurnUp = plannedTurnUpMap[h] ?? 0;
     // Round down to nearest whole number (integer riders)
-    const avgTurnUpLastWeek = Math.floor(rawTurnUp);
-    const delta = avgTurnUpLastWeek - requiredRiders;
+    const plannedTurnUp = Math.floor(rawTurnUp);
+    const delta = plannedTurnUp - requiredRiders;
     const turnUpCoveragePct =
-      requiredRiders > 0 ? Math.round((avgTurnUpLastWeek / requiredRiders) * 100) : 100;
+      requiredRiders > 0 ? Math.round((plannedTurnUp / requiredRiders) * 100) : 100;
 
     let status: 'surplus' | 'balanced' | 'deficit' = 'balanced';
-    if (avgTurnUpLastWeek < requiredRiders) {
+    if (plannedTurnUp < requiredRiders) {
       status = 'deficit';
-    } else if (avgTurnUpLastWeek > requiredRiders) {
+    } else if (plannedTurnUp > requiredRiders) {
       status = 'surplus';
     }
 
@@ -1052,7 +1085,8 @@ export async function fetchPlanningForDate(params: {
       projectedOrders,
       targetDph: dph,
       requiredRiders,
-      avgTurnUpLastWeek,
+      plannedTurnUp,
+      avgTurnUpLastWeek: plannedTurnUp,
       deltaTurnUpVsRequired: delta,
       turnUpCoveragePct,
       status,
@@ -1060,15 +1094,15 @@ export async function fetchPlanningForDate(params: {
 
     totalOrders += projectedOrders;
     sumRequired += requiredRiders;
-    sumTurnUp += avgTurnUpLastWeek;
-    if (avgTurnUpLastWeek > peakTurnUp) {
-      peakTurnUp = avgTurnUpLastWeek;
+    sumTurnUp += plannedTurnUp;
+    if (plannedTurnUp > peakTurnUp) {
+      peakTurnUp = plannedTurnUp;
     }
     if (requiredRiders > peakRequired) {
       peakRequired = requiredRiders;
       peakHour = h;
     }
-    if (projectedOrders > 0 || requiredRiders > 0 || avgTurnUpLastWeek > 0) {
+    if (projectedOrders > 0 || requiredRiders > 0 || plannedTurnUp > 0) {
       activeSlotCount += 1;
     }
   }
@@ -1148,6 +1182,9 @@ export async function fetchPlanningForDate(params: {
     netTurnUpDelta,
     slots: slotRows,
     hasSnopData,
+    hasAttendanceData,
+    attendancePresentCount,
+    attendanceTotalRoster,
   };
 }
 
@@ -1172,29 +1209,29 @@ export function recalculatePlanningWithDph(
 
   const updatedSlots: SlotPlanningRow[] = summary.slots.map((s) => {
     const requiredRiders = calculateRequiredRiders(s.projectedOrders, newDph);
-    const avgTurnUpLastWeek = s.avgTurnUpLastWeek;
-    const delta = avgTurnUpLastWeek - requiredRiders;
+    const plannedTurnUp = s.plannedTurnUp ?? s.avgTurnUpLastWeek ?? 0;
+    const delta = plannedTurnUp - requiredRiders;
     const turnUpCoveragePct =
-      requiredRiders > 0 ? Math.round((avgTurnUpLastWeek / requiredRiders) * 100) : 100;
+      requiredRiders > 0 ? Math.round((plannedTurnUp / requiredRiders) * 100) : 100;
 
     let status: 'surplus' | 'balanced' | 'deficit' = 'balanced';
-    if (avgTurnUpLastWeek < requiredRiders) {
+    if (plannedTurnUp < requiredRiders) {
       status = 'deficit';
-    } else if (avgTurnUpLastWeek > requiredRiders) {
+    } else if (plannedTurnUp > requiredRiders) {
       status = 'surplus';
     }
 
     totalOrders += s.projectedOrders;
     sumRequired += requiredRiders;
-    sumTurnUp += avgTurnUpLastWeek;
-    if (avgTurnUpLastWeek > peakTurnUp) {
-      peakTurnUp = avgTurnUpLastWeek;
+    sumTurnUp += plannedTurnUp;
+    if (plannedTurnUp > peakTurnUp) {
+      peakTurnUp = plannedTurnUp;
     }
     if (requiredRiders > peakRequired) {
       peakRequired = requiredRiders;
       peakHour = s.hour;
     }
-    if (s.projectedOrders > 0 || requiredRiders > 0 || avgTurnUpLastWeek > 0) {
+    if (s.projectedOrders > 0 || requiredRiders > 0 || plannedTurnUp > 0) {
       activeSlotCount += 1;
     }
 
@@ -1202,6 +1239,8 @@ export function recalculatePlanningWithDph(
       ...s,
       targetDph: newDph,
       requiredRiders,
+      plannedTurnUp,
+      avgTurnUpLastWeek: plannedTurnUp,
       deltaTurnUpVsRequired: delta,
       turnUpCoveragePct,
       status,
@@ -1295,7 +1334,7 @@ export function exportPlanningToExcel(summary: DayPlanningSummary, storeName: st
     ['Total Projected Orders', summary.totalProjectedOrders],
     ['Peak Required Riders', summary.peakRequiredRiders],
     ['Average Required Riders', summary.avgRequiredRiders],
-    ['Average Last Week Turn-Up', summary.avgTurnUp],
+    ['Average Planned Turn-Up', summary.avgTurnUp],
     ['Net Status', summary.netTurnUpDelta < 0 ? `${summary.netTurnUpDelta} Short` : summary.netTurnUpDelta > 0 ? `+${summary.netTurnUpDelta} Surplus` : 'Balanced'],
     [''],
     [
@@ -1303,14 +1342,15 @@ export function exportPlanningToExcel(summary: DayPlanningSummary, storeName: st
       'Slot Window',
       'Projected Orders',
       'Required Riders [CEIL(Orders/DPH)]',
-      'Last 1-Wk Avg Turn-Up',
+      'Planned Turn-Up',
       'Status',
     ],
   ];
 
   for (const s of summary.slots) {
+    const turnUp = s.plannedTurnUp ?? s.avgTurnUpLastWeek ?? 0;
     const statusText =
-      s.requiredRiders === 0 && s.avgTurnUpLastWeek === 0
+      s.requiredRiders === 0 && turnUp === 0
         ? '—'
         : s.deltaTurnUpVsRequired < 0
         ? `${s.deltaTurnUpVsRequired} Short`
@@ -1323,7 +1363,7 @@ export function exportPlanningToExcel(summary: DayPlanningSummary, storeName: st
       s.slotLabel,
       s.projectedOrders,
       s.requiredRiders,
-      s.avgTurnUpLastWeek,
+      turnUp,
       statusText,
     ]);
   }
