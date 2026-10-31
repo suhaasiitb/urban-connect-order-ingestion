@@ -82,6 +82,18 @@ describe('Rider Performance Analytics Unit Tests', () => {
     expect(range30.startDate <= range7.startDate).toBe(true);
     const dates30 = getAllDatesInRange(range30.startDate, range30.endDate);
     expect(dates30).toHaveLength(30);
+
+    // When includeToday is true, range ends on today
+    const range7WithToday = getDateRangeForDays(7, 'Asia/Kolkata', true);
+    expect(range7WithToday.endDate).toBe(todayStr);
+    const dates7WithToday = getAllDatesInRange(range7WithToday.startDate, range7WithToday.endDate);
+    expect(dates7WithToday).toHaveLength(7);
+    expect(dates7WithToday[0]).toBe(todayStr);
+
+    // When daysCount is 0 (Today preset), startDate and endDate are today
+    const rangeToday = getDateRangeForDays(0, 'Asia/Kolkata');
+    expect(rangeToday.startDate).toBe(todayStr);
+    expect(rangeToday.endDate).toBe(todayStr);
   });
 
   it('aggregates slot_hour via COUNTUNIQUE and order_id via COUNTA with 7-day period average', () => {

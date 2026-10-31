@@ -381,4 +381,72 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
     expect(rawSummary.days[0].completedOrdersCount).toBe(2);
     expect(rawSummary.days[0].dsrPct).toBe(66.67);
   });
+
+  it('correctly aggregates partial/ongoing day metrics (e.g. slots 6-10 uploaded so far)', () => {
+    // Simulate ongoing day with partial slot upload (slots 6 to 10)
+    const partialRpcRows = [
+      {
+        order_date: '2026-10-31',
+        slot_hour: 6,
+        orders_count: 15,
+        riders_count: 7,
+        s2p_sum: 2.31,
+        s2p_count: 15,
+        otp_achieved_count: 15,
+        otp_breached_count: 0,
+        completed_orders_count: 15,
+        day_distinct_riders: 22,
+        period_distinct_riders: 22,
+      },
+      {
+        order_date: '2026-10-31',
+        slot_hour: 7,
+        orders_count: 46,
+        riders_count: 20,
+        s2p_sum: 19.32,
+        s2p_count: 46,
+        otp_achieved_count: 46,
+        otp_breached_count: 0,
+        completed_orders_count: 46,
+        day_distinct_riders: 22,
+        period_distinct_riders: 22,
+      },
+      {
+        order_date: '2026-10-31',
+        slot_hour: 8,
+        orders_count: 56,
+        riders_count: 26,
+        s2p_sum: 26.32,
+        s2p_count: 56,
+        otp_achieved_count: 55,
+        otp_breached_count: 1,
+        completed_orders_count: 55,
+        day_distinct_riders: 22,
+        period_distinct_riders: 22,
+      },
+    ];
+
+    const summary = buildSummaryFromRpcRows(partialRpcRows, {
+      storeId: 'tmk7-store',
+      startDate: '2026-10-31',
+      endDate: '2026-10-31',
+    });
+
+    expect(summary.days).toHaveLength(1);
+    const day = summary.days[0];
+    expect(day.dateStr).toBe('2026-10-31');
+    expect(day.slots).toHaveLength(3);
+    expect(day.totalOrders).toBe(117);
+    expect(day.distinctRidersCount).toBe(22);
+    expect(day.completedOrdersCount).toBe(116);
+    // DSR: 116 / 117 = 99.15%
+    expect(day.dsrPct).toBe(99.15);
+    // DPH: 117 / (7 + 20 + 26) = 117 / 53 = 2.2
+    expect(day.avgDph).toBe(2.2);
+    // S2P: (2.31 + 19.32 + 26.32) / 117 = 47.95 / 117 = 0.41 min
+    expect(day.avgS2p).toBe(0.41);
+    // OTP achieved: (116 / 117) * 100 = 99.15%
+    expect(day.avgOtpAchievedPct).toBe(99.15);
+    expect(day.avgOtpBreachedPct).toBe(0.85);
+  });
 });

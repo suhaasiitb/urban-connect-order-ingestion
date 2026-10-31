@@ -90,16 +90,9 @@ export function getAllDatesInRange(
 }
 
 /**
- * Computes date range strings ending YESTERDAY (excluding current ongoing date)
- * going back N days (Asia/Kolkata).
- * e.g., if today is 2026-10-20 and daysCount is 7:
- * endDate = 2026-10-19 (yesterday)
- * startDate = 2026-10-13 (7 days total: 13th to 19th)
+ * Returns today's ISO date string (YYYY-MM-DD) in the specified timezone (default Asia/Kolkata).
  */
-export function getDateRangeForDays(
-  daysCount: number,
-  timeZone: string = 'Asia/Kolkata'
-): { startDate: string; endDate: string } {
+export function getTodayDateString(timeZone: string = 'Asia/Kolkata'): string {
   const now = new Date();
   const dtf = new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -107,19 +100,50 @@ export function getDateRangeForDays(
     month: '2-digit',
     day: '2-digit',
   });
-  const todayStr = dtf.format(now);
+  return dtf.format(now);
+}
+
+/**
+ * Computes date range strings going back N days (Asia/Kolkata).
+ * If includeToday is false (default):
+ *   Period ends on YESTERDAY (excluding current ongoing date).
+ *   e.g. if today is 2026-10-31 and daysCount is 7:
+ *   endDate = 2026-10-30 (yesterday)
+ *   startDate = 2026-10-24 (7 days total: 24th to 30th)
+ * If includeToday is true:
+ *   Period ends on TODAY (including current ongoing / partial date).
+ *   e.g. if today is 2026-10-31 and daysCount is 7:
+ *   endDate = 2026-10-31 (today)
+ *   startDate = 2026-10-25 (7 days total: 25th to 31st)
+ * If daysCount is 0:
+ *   Returns today's date for both startDate and endDate.
+ */
+export function getDateRangeForDays(
+  daysCount: number,
+  timeZone: string = 'Asia/Kolkata',
+  includeToday: boolean = false
+): { startDate: string; endDate: string } {
+  const todayStr = getTodayDateString(timeZone);
+  if (daysCount === 0) {
+    return {
+      startDate: todayStr,
+      endDate: todayStr,
+    };
+  }
+
   const [tY, tM, tD] = todayStr.split('-').map(Number);
   const anchorUtc = Date.UTC(tY, tM - 1, tD, 12, 0, 0);
 
-  // Exclude current date: period ends on yesterday
-  const yesterdayUtc = anchorUtc - 86400000;
-  const yD = new Date(yesterdayUtc);
+  // Exclude current date unless includeToday is requested
+  const endUtc = includeToday ? anchorUtc : anchorUtc - 86400000;
+  const yD = new Date(endUtc);
   const endY = yD.getUTCFullYear();
   const endM = String(yD.getUTCMonth() + 1).padStart(2, '0');
   const endDay = String(yD.getUTCDate()).padStart(2, '0');
   const endDate = `${endY}-${endM}-${endDay}`;
 
-  const startUtc = yesterdayUtc - (daysCount - 1) * 86400000;
+  const effectiveDays = Math.max(1, daysCount);
+  const startUtc = endUtc - (effectiveDays - 1) * 86400000;
   const sD = new Date(startUtc);
   const sY = sD.getUTCFullYear();
   const sM = String(sD.getUTCMonth() + 1).padStart(2, '0');

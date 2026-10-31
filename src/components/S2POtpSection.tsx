@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
 import type { UserProfile } from '../services/authService';
-import { getDateRangeForDays } from '../services/analyticsService';
+import {
+  formatDateToHeader,
+  getDateRangeForDays,
+  getTodayDateString,
+} from '../services/analyticsService';
+import { supabase } from '../config/supabaseClient';
 import {
   type S2POtpSummaryResult,
   exportS2POtpToExcel,
@@ -18,6 +23,25 @@ interface S2POtpSectionProps {
 
 type SlotViewType = 'all' | 's2p' | 'otp' | 'dph';
 
+export type PresetValue = 'today' | 1 | 3 | 7 | 10 | 14 | 20 | 30;
+
+interface PresetItem {
+  id: PresetValue;
+  label: string;
+  tooltip: string;
+}
+
+const PRESET_ITEMS: PresetItem[] = [
+  { id: 'today', label: 'Today (Ongoing)', tooltip: "View today's live ongoing & partial day metrics" },
+  { id: 1, label: '1 Day (Yesterday)', tooltip: "Yesterday's completed day" },
+  { id: 3, label: '3 Days', tooltip: 'Last 3 days' },
+  { id: 7, label: '7 Days', tooltip: 'Last 7 days' },
+  { id: 10, label: '10 Days', tooltip: 'Last 10 days' },
+  { id: 14, label: '14 Days', tooltip: 'Last 14 days' },
+  { id: 20, label: '20 Days', tooltip: 'Last 20 days' },
+  { id: 30, label: '30 Days', tooltip: 'Last 30 days' },
+];
+
 export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   stores,
   selectedStoreId,
@@ -25,21 +49,27 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   currentUser,
 }) => {
   const selectedStore = stores.find((s) => s.id === selectedStoreId) ?? stores[0];
+  const timeZone = selectedStore?.timezone || 'Asia/Kolkata';
+  const todayStr = getTodayDateString(timeZone);
 
-  // Presets: 3, 7, 10, 14, 20, 30 days
-  const [selectedDays, setSelectedDays] = useState<number>(7);
-  const initialRange = getDateRangeForDays(7, selectedStore?.timezone || 'Asia/Kolkata');
+  const [includeToday, setIncludeToday] = useState<boolean>(false);
+  const [selectedPreset, setSelectedPreset] = useState<PresetValue | 'custom'>(7);
+
+  const initialRange = getDateRangeForDays(7, timeZone, false);
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
 
   const [showCustomRange, setShowCustomRange] = useState(false);
   const [customStart, setCustomStart] = useState(initialRange.startDate);
-  const [customEnd, setCustomEnd] = useState(initialRange.endDate);
+  const [customEnd, setCustomEnd] = useState(todayStr);
 
   const [summary, setSummary] = useState<S2POtpSummaryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadSource, setLoadSource] = useState<'cache' | 'rpc' | 'client' | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Tracks if orders have been uploaded for today in the selected store
+  const [hasTodayOrders, setHasTodayOrders] = useState<boolean>(false);
 
   // Set of dates that are currently expanded to show slot breakdown
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
@@ -47,18 +77,38 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   // Active slot sub-view per date (defaults to 'all', can switch to 's2p', 'otp', 'dph')
   const [slotViewModes, setSlotViewModes] = useState<Record<string, SlotViewType>>({});
 
-  const presets = [1, 3, 7, 10, 14, 20, 30];
+  const checkTodayOrders = useCallback(async () => {
+    if (!selectedStore) return;
+    try {
+      const { count, error: qErr } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('store_id', selectedStore.id)
+        .eq('order_date', todayStr);
+      if (!qErr) {
+        setHasTodayOrders(Boolean(count && count > 0));
+      }
+    } catch {
+      // Ignore background check failure
+    }
+  }, [selectedStore, todayStr]);
+
+  useEffect(() => {
+    void checkTodayOrders();
+  }, [checkTodayOrders]);
 
   const loadData = useCallback(async (forceRefresh = false) => {
     if (!selectedStore) return;
     setLoading(true);
     setError(null);
 
+    // Bypass in-memory cache if explicitly forced or if querying today's live ongoing data
+    const isTodayQuery = startDate === todayStr || endDate === todayStr;
     const res = await fetchS2POtpAnalytics({
       storeId: selectedStore.id,
       startDate,
       endDate,
-      forceRefresh,
+      forceRefresh: forceRefresh || isTodayQuery,
     });
 
     setLoading(false);
@@ -67,32 +117,58 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     } else if (res.data) {
       setSummary(res.data);
       setLoadSource(res.source ?? null);
-      // Auto-expand the latest date if there's only 1 date, or keep previous state
-      if (res.data.days.length === 1) {
+      // Auto-expand the date if there's only 1 date (e.g. Today) or keep previous state
+      if (res.data.days.length === 1 || selectedPreset === 'today') {
         setExpandedDates(new Set([res.data.days[0].dateStr]));
       }
     }
-  }, [selectedStore, startDate, endDate]);
+  }, [selectedStore, startDate, endDate, todayStr, selectedPreset]);
 
   useEffect(() => {
     void loadData(false);
   }, [loadData]);
 
-  const handleSelectPreset = (days: number) => {
-    setSelectedDays(days);
+  const handleSelectPreset = (preset: PresetValue, forceIncludeToday?: boolean) => {
+    setSelectedPreset(preset);
     setShowCustomRange(false);
-    const range = getDateRangeForDays(days, selectedStore?.timezone || 'Asia/Kolkata');
-    setStartDate(range.startDate);
-    setEndDate(range.endDate);
-    setCustomStart(range.startDate);
-    setCustomEnd(range.endDate);
+    const shouldIncludeToday = forceIncludeToday !== undefined ? forceIncludeToday : includeToday;
+
+    if (preset === 'today') {
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+      setCustomStart(todayStr);
+      setCustomEnd(todayStr);
+    } else if (preset === 1) {
+      const range = getDateRangeForDays(1, timeZone, false);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      setCustomStart(range.startDate);
+      setCustomEnd(range.endDate);
+    } else {
+      const range = getDateRangeForDays(preset, timeZone, shouldIncludeToday);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      setCustomStart(range.startDate);
+      setCustomEnd(range.endDate);
+    }
+  };
+
+  const handleToggleIncludeToday = (checked: boolean) => {
+    setIncludeToday(checked);
+    if (typeof selectedPreset === 'number' && selectedPreset > 1) {
+      const range = getDateRangeForDays(selectedPreset, timeZone, checked);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      setCustomStart(range.startDate);
+      setCustomEnd(range.endDate);
+    }
   };
 
   const handleApplyCustomDate = () => {
     if (customStart && customEnd) {
       setStartDate(customStart);
       setEndDate(customEnd);
-      setSelectedDays(0);
+      setSelectedPreset('custom');
     }
   };
 
@@ -128,6 +204,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     if (!summary || !selectedStore) return;
     exportS2POtpToExcel(summary, selectedStore.store_code);
   };
+
+  const isTodayInRange = startDate <= todayStr && todayStr <= endDate;
 
   // Helper to color-code DPH heatmap background (matching Excel pivot in Image 3)
   const getDphHeatmapStyle = (dph: number): React.CSSProperties => {
@@ -181,29 +259,46 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
             </div>
 
             {/* Period Segmented Control */}
-            <div className="perf-filter-group">
+            <div className="perf-filter-group flex-wrap items-center">
               <span className="perf-control-label">Period:</span>
               <div className="segmented-control">
-                {presets.map((days) => (
+                {PRESET_ITEMS.map((item) => (
                   <button
-                    key={days}
+                    key={item.id}
                     type="button"
-                    className={`segmented-btn ${selectedDays === days && !showCustomRange ? 'segmented-btn-active' : ''}`}
-                    onClick={() => handleSelectPreset(days)}
-                    title={days === 1 ? "Yesterday's date (1 Day)" : `Last ${days} days`}
+                    className={`segmented-btn ${selectedPreset === item.id && !showCustomRange ? 'segmented-btn-active' : ''}`}
+                    onClick={() => handleSelectPreset(item.id)}
+                    title={item.tooltip}
                   >
-                    {days === 1 ? '1 Day (Yesterday)' : `${days} Days`}
+                    {item.label}
                   </button>
                 ))}
                 <button
                   type="button"
                   className={`segmented-btn ${showCustomRange ? 'segmented-btn-active' : ''}`}
-                  onClick={() => setShowCustomRange((v) => !v)}
+                  onClick={() => {
+                    setShowCustomRange((v) => !v);
+                    setSelectedPreset('custom');
+                  }}
                   title="Select custom date range"
                 >
                   Custom
                 </button>
               </div>
+
+              {/* Include Today Toggle for Multi-day Presets */}
+              <label
+                className="flex-row items-center gap-xs ml-sm text-xs cursor-pointer select-none text-slate"
+                title="Include today's ongoing / partial day data in multi-day range"
+                style={{ fontWeight: 500 }}
+              >
+                <input
+                  type="checkbox"
+                  checked={includeToday}
+                  onChange={(e) => handleToggleIncludeToday(e.target.checked)}
+                />
+                <span>Include Today (Ongoing)</span>
+              </label>
             </div>
 
             {showCustomRange && (
@@ -213,6 +308,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                   <input
                     type="date"
                     value={customStart}
+                    max={todayStr}
                     onChange={(e) => setCustomStart(e.target.value)}
                     className="custom-range-date-input"
                   />
@@ -222,6 +318,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                   <input
                     type="date"
                     value={customEnd}
+                    max={todayStr}
                     onChange={(e) => setCustomEnd(e.target.value)}
                     className="custom-range-date-input"
                   />
@@ -254,7 +351,10 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
             <button
               type="button"
               className="btn btn-secondary btn-sm perf-btn-refresh"
-              onClick={() => void loadData(true)}
+              onClick={() => {
+                void checkTodayOrders();
+                void loadData(true);
+              }}
               disabled={loading}
               title="Refresh S2P & OTP data"
             >
@@ -297,6 +397,44 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         </div>
       )}
 
+      {/* Ongoing Today Orders Notification Banner */}
+      {hasTodayOrders && !isTodayInRange && (
+        <div
+          className="alert alert-info flex-row items-center justify-between mt-md"
+          style={{
+            background: '#f0fdf4',
+            borderColor: '#86efac',
+            color: '#166534',
+            padding: '10px 16px',
+            borderRadius: '8px',
+          }}
+        >
+          <div className="flex-row items-center gap-sm">
+            <span style={{ fontSize: '1.2rem' }}>🟢</span>
+            <div>
+              <strong>Ongoing Orders Available:</strong> Uploaded partial data for{' '}
+              <strong>Today ({formatDateToHeader(todayStr)})</strong> is ready to view.
+            </div>
+          </div>
+          <div className="flex-row items-center gap-xs">
+            <button
+              type="button"
+              className="btn btn-primary btn-xs"
+              onClick={() => handleSelectPreset('today')}
+            >
+              View Today&apos;s Metrics (Ongoing) →
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-xs"
+              onClick={() => handleToggleIncludeToday(true)}
+            >
+              Include in Current Period
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 2. Top Summary KPI Cards */}
       <div className="kpi-grid mt-md">
         <div className="kpi-card">
@@ -329,7 +467,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
             {loading ? '...' : `${summary?.overallAvgS2p.toFixed(2) ?? '0.00'} min`}
           </strong>
           <span className="kpi-sub">
-            Staging-to-Pickup duration across {summary?.periodDays ?? selectedDays} {(summary?.periodDays ?? selectedDays) === 1 ? 'day' : 'days'}
+            Staging-to-Pickup duration across {summary?.periodDays ?? 1} {(summary?.periodDays ?? 1) === 1 ? 'day' : 'days'}
           </span>
         </div>
 
@@ -476,6 +614,15 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                             </svg>
                             <span>{day.formattedDate}</span>
                             <span className="text-xs text-muted">({day.dateStr})</span>
+                            {day.dateStr === todayStr && (
+                              <span
+                                className="badge badge-warning"
+                                style={{ fontSize: '10px', padding: '1px 6px', lineHeight: '1.2' }}
+                                title="Ongoing operational date with partial day orders"
+                              >
+                                Ongoing
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td>
@@ -538,6 +685,14 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                 <div className="flex-row items-center gap-xs">
                                   <h4 className="s2p-slot-title">
                                     Hourly Slot Breakdown — {day.formattedDate} ({day.dateStr})
+                                    {day.dateStr === todayStr && (
+                                      <span
+                                        className="badge badge-warning ml-xs"
+                                        style={{ fontSize: '11px', verticalAlign: 'middle' }}
+                                      >
+                                        Ongoing Partial Day
+                                      </span>
+                                    )}
                                   </h4>
                                   <span className="badge badge-info">
                                     {day.slots.length} Slots | {day.totalOrders} Orders | {day.distinctRidersCount} Active Riders
