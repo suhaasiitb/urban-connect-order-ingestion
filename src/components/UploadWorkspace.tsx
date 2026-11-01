@@ -29,7 +29,7 @@ import {
 import {
   type SnopParseResult,
   type SnopUploadMeta,
-  getSnopUploadMeta,
+  fetchSnopUploadMeta,
   parseSnopFile,
   saveSnopRecords,
 } from '../services/planningService';
@@ -167,7 +167,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     if (!selectedStore) return;
     setLoadingSnop(true);
     try {
-      const meta = getSnopUploadMeta(selectedStore.store_code);
+      const meta = await fetchSnopUploadMeta(selectedStore.store_code);
       setSnopMeta(meta);
     } finally {
       setLoadingSnop(false);

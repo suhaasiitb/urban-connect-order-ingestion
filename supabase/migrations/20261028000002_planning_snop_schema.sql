@@ -77,6 +77,11 @@ CREATE POLICY "Allow all insert store_snop_forecast"
   ON public.store_snop_forecast FOR INSERT
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow all update store_snop_forecast" ON public.store_snop_forecast;
+CREATE POLICY "Allow all update store_snop_forecast"
+  ON public.store_snop_forecast FOR UPDATE
+  USING (true);
+
 DROP POLICY IF EXISTS "Allow all delete store_snop_forecast" ON public.store_snop_forecast;
 CREATE POLICY "Allow all delete store_snop_forecast"
   ON public.store_snop_forecast FOR DELETE

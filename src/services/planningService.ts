@@ -636,6 +636,239 @@ export function getSnopUploadMeta(warehouseId: string): SnopUploadMeta | null {
 }
 
 /**
+ * Wraps an async promise or thenable with a fast timeout so network hangs never block UI or tests.
+ */
+function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F): Promise<T | F> {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise<F>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+/**
+ * Pushes SNOP forecast records and metadata to Supabase tables `store_snop_forecast` and `store_snop_uploads`.
+ */
+export async function pushSnopRecordsToSupabase(
+  warehouseId: string,
+  records: SnopForecastRecord[],
+  meta?: Partial<SnopUploadMeta>
+): Promise<{ ok: boolean; error?: string }> {
+  const norm = (warehouseId || 'TMK7').toUpperCase().trim();
+  if (!records || records.length === 0) return { ok: true };
+
+  try {
+    // Delete existing records for warehouse
+    const { error: delErr } = await supabase
+      .from('store_snop_forecast')
+      .delete()
+      .eq('warehouse_id', norm);
+
+    if (delErr) {
+      console.warn(`Supabase delete old forecast warning for ${norm}:`, delErr.message);
+    }
+
+    // Upsert in batches of 200
+    const chunkSize = 200;
+    for (let i = 0; i < records.length; i += chunkSize) {
+      const chunk = records.slice(i, i + chunkSize).map((r) => ({
+        city: r.city || '',
+        warehouse_id: norm,
+        forecast_date: r.dateStr,
+        slot_hour: r.hour,
+        projected_orders: r.projectedOrders,
+      }));
+
+      const { error: insErr } = await supabase
+        .from('store_snop_forecast')
+        .upsert(chunk, { onConflict: 'warehouse_id,forecast_date,slot_hour' });
+
+      if (insErr) {
+        console.warn(`Supabase store_snop_forecast upsert warning for ${norm}:`, insErr.message);
+        return { ok: false, error: insErr.message };
+      }
+    }
+
+    // Insert upload history
+    const sortedDates = Array.from(new Set(records.map((r) => r.dateStr))).sort();
+    await supabase.from('store_snop_uploads').insert({
+      warehouse_id: norm,
+      filename: meta?.filename || 'Forecast Import',
+      total_rows: records.length,
+      start_date: meta?.startDate || sortedDates[0] || null,
+      end_date: meta?.endDate || sortedDates[sortedDates.length - 1] || null,
+      uploaded_by: meta?.uploadedBy || 'User',
+    });
+
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`Supabase pushSnopRecordsToSupabase note for ${norm}:`, err);
+    return { ok: false, error: msg };
+  }
+}
+
+/**
+ * Asynchronously loads SNOP forecast records for a warehouse from Supabase `store_snop_forecast`,
+ * updating localStorage cache for instant future loads and offline resiliency.
+ */
+export async function fetchStoreSnopForecast(
+  warehouseId: string
+): Promise<SnopForecastRecord[]> {
+  const norm = (warehouseId || 'TMK7').toUpperCase().trim();
+
+  try {
+    const query = supabase
+      .from('store_snop_forecast')
+      .select('city, warehouse_id, forecast_date, slot_hour, projected_orders')
+      .eq('warehouse_id', norm)
+      .order('forecast_date', { ascending: true })
+      .order('slot_hour', { ascending: true })
+      .limit(5000);
+
+    const { data, error } = await withTimeout(
+      query,
+      1500,
+      { data: null, error: { message: 'Timeout loading from Supabase' } } as unknown as {
+        data: {
+          city: string;
+          warehouse_id: string;
+          forecast_date: string;
+          slot_hour: number;
+          projected_orders: number;
+        }[] | null;
+        error: { message: string } | null;
+      }
+    );
+
+    if (!error && data && data.length > 0) {
+      const records: SnopForecastRecord[] = data.map((r) => ({
+        city: r.city || '',
+        warehouseId: (r.warehouse_id || norm).toUpperCase().trim(),
+        dateStr: String(r.forecast_date),
+        hour: Number(r.slot_hour),
+        projectedOrders: Number(r.projected_orders),
+      }));
+
+      // Cache into localStorage
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(
+            LOCAL_STORAGE_SNOP_PREFIX + norm,
+            JSON.stringify(records)
+          );
+
+          // Also populate metadata if missing
+          if (!window.localStorage.getItem(LOCAL_STORAGE_SNOP_META_PREFIX + norm)) {
+            const sortedDates = Array.from(new Set(records.map((r) => r.dateStr))).sort();
+            const totalProjected = Math.round(records.reduce((sum, r) => sum + r.projectedOrders, 0));
+            const meta: SnopUploadMeta = {
+              warehouseId: norm,
+              filename: 'Supabase Cloud Sync',
+              totalRows: records.length,
+              startDate: sortedDates[0] || '',
+              endDate: sortedDates[sortedDates.length - 1] || '',
+              totalProjectedOrders: totalProjected,
+              uploadedAt: new Date().toISOString(),
+              uploadedBy: 'Cloud Sync',
+            };
+            window.localStorage.setItem(LOCAL_STORAGE_SNOP_META_PREFIX + norm, JSON.stringify(meta));
+          }
+        }
+      } catch (storageErr) {
+        console.warn(`LocalStorage caching warning for ${norm}:`, storageErr);
+      }
+
+      return records;
+    }
+
+    // Self-heal: If Supabase returned 0 rows (no error), but localStorage has valid records for this store,
+    // push local cached records to Supabase in the background so other devices and GitHub Pages can see it!
+    const cached = getStoredSnopRecords(norm);
+    if (cached.length > 0 && !error) {
+      const meta = getSnopUploadMeta(norm);
+      void pushSnopRecordsToSupabase(norm, cached, meta || undefined);
+    }
+  } catch (err) {
+    console.warn(`fetchStoreSnopForecast Supabase query warning for ${norm}:`, err);
+  }
+
+  // Fallback to localStorage or pre-seeded TMK7 baseline
+  return getStoredSnopRecords(norm);
+}
+
+/**
+ * Asynchronously loads SNOP upload audit metadata from Supabase `store_snop_uploads`
+ * with localStorage fallback.
+ */
+export async function fetchSnopUploadMeta(
+  warehouseId: string
+): Promise<SnopUploadMeta | null> {
+  const norm = (warehouseId || 'TMK7').toUpperCase().trim();
+
+  try {
+    const query = supabase
+      .from('store_snop_uploads')
+      .select('warehouse_id, filename, total_rows, start_date, end_date, uploaded_at, uploaded_by')
+      .eq('warehouse_id', norm)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data, error } = await withTimeout(
+      query,
+      1500,
+      { data: null, error: { message: 'Timeout loading from Supabase' } } as unknown as {
+        data: {
+          warehouse_id: string;
+          filename: string;
+          total_rows: number;
+          start_date: string;
+          end_date: string;
+          uploaded_at: string;
+          uploaded_by: string;
+        } | null;
+        error: { message: string } | null;
+      }
+    );
+
+    if (!error && data) {
+      const cached = getStoredSnopRecords(norm);
+      const totalProjected = cached.length > 0
+        ? Math.round(cached.reduce((acc, r) => acc + r.projectedOrders, 0))
+        : 0;
+
+      const meta: SnopUploadMeta = {
+        warehouseId: data.warehouse_id || norm,
+        filename: data.filename || 'forecast.xlsx',
+        totalRows: Number(data.total_rows || cached.length || 0),
+        startDate: data.start_date || '',
+        endDate: data.end_date || '',
+        totalProjectedOrders: totalProjected,
+        uploadedAt: data.uploaded_at || new Date().toISOString(),
+        uploadedBy: data.uploaded_by || 'Admin',
+      };
+
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(
+            LOCAL_STORAGE_SNOP_META_PREFIX + norm,
+            JSON.stringify(meta)
+          );
+        }
+      } catch {
+        // Ignore storage errors
+      }
+
+      return meta;
+    }
+  } catch (err) {
+    console.warn(`fetchSnopUploadMeta Supabase query warning for ${norm}:`, err);
+  }
+
+  return getSnopUploadMeta(norm);
+}
+
+/**
  * Saves SNOP records with strict rewrite/overwrite semantics:
  * "new upload should rewrite any old existing data"
  *
@@ -701,62 +934,35 @@ export async function saveSnopRecords(params: {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem(LOCAL_STORAGE_SNOP_PREFIX + wh, JSON.stringify(whRecords));
         window.localStorage.setItem(LOCAL_STORAGE_SNOP_META_PREFIX + wh, JSON.stringify(meta));
+        window.dispatchEvent(
+          new CustomEvent('snop_forecast_saved', { detail: { warehouseId: wh } })
+        );
       }
     } catch (err) {
       console.warn(`LocalStorage saveSnopRecords error for ${wh}:`, err);
     }
 
     // 2. Persist to Supabase database (rewrite existing rows for that warehouse)
-    try {
-      // Delete old existing forecast for this warehouse
-      const delRes = await supabase
-        .from('store_snop_forecast')
-        .delete()
-        .eq('warehouse_id', wh);
-
-      if (delRes.error) {
-        console.warn(`Supabase delete old forecast warning for ${wh}:`, delRes.error.message);
-      }
-
-      // Insert new records in batches of 200
-      const chunkSize = 200;
-      for (let i = 0; i < whRecords.length; i += chunkSize) {
-        const chunk = whRecords.slice(i, i + chunkSize).map((r) => ({
-          city: r.city,
-          warehouse_id: wh,
-          forecast_date: r.dateStr,
-          slot_hour: r.hour,
-          projected_orders: r.projectedOrders,
-        }));
-
-        const { error: insErr } = await supabase.from('store_snop_forecast').insert(chunk);
-        if (insErr) {
-          console.warn(`Supabase store_snop_forecast insert warning for ${wh}:`, insErr.message);
-        }
-      }
-
-      // Record upload history for this warehouse
-      await supabase.from('store_snop_uploads').insert({
-        warehouse_id: wh,
-        filename,
-        total_rows: whRecords.length,
-        start_date: startDate,
-        end_date: endDate,
-        uploaded_by: uploadedBy,
-      });
-    } catch (err) {
-      console.warn(`Supabase saveSnopRecords database sync note for ${wh}:`, err);
-    }
+    await pushSnopRecordsToSupabase(wh, whRecords, meta);
   }
 
   return { ok: true, count: records.length, warehousesUpdated };
 }
 
 /**
- * Returns all available forecast dates for a given store/warehouse.
+ * Returns all available forecast dates for a given store/warehouse from local cache.
  */
 export function getAvailableForecastDates(warehouseId: string): string[] {
   const records = getStoredSnopRecords(warehouseId);
+  const set = new Set(records.map((r) => r.dateStr));
+  return Array.from(set).sort();
+}
+
+/**
+ * Asynchronously returns all available forecast dates for a given store/warehouse from Supabase.
+ */
+export async function fetchAvailableForecastDates(warehouseId: string): Promise<string[]> {
+  const records = await fetchStoreSnopForecast(warehouseId);
   const set = new Set(records.map((r) => r.dateStr));
   return Array.from(set).sort();
 }
@@ -800,16 +1006,6 @@ export function getDefaultPlanningDate(
 
   // 3. If all forecast dates are in the past, fallback to the most recent available date
   return availableDates[availableDates.length - 1];
-}
-
-/**
- * Wraps an async promise with a fast timeout so network hangs never block UI or tests.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
-  ]);
 }
 
 /**
@@ -1041,7 +1237,10 @@ export async function fetchPlanningForDate(params: {
   }
 
   // 3. Load SNOP forecast records for this warehouse
-  const allRecords = getStoredSnopRecords(normWh);
+  let allRecords = getStoredSnopRecords(normWh);
+  if (allRecords.length === 0) {
+    allRecords = await fetchStoreSnopForecast(normWh);
+  }
   const dayRecords = allRecords.filter((r) => r.dateStr === dateStr);
   const hasSnopData = dayRecords.length > 0;
 

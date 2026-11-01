@@ -12,6 +12,7 @@ import {
   type DayPlanningSummary,
   exportPlanningToExcel,
   fetchPlanningForDate,
+  fetchStoreSnopForecast,
   fetchStoreTargetDph,
   getAvailableForecastDates,
   getDefaultPlanningDate,
@@ -71,22 +72,41 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
   // Rider attendance state for tomorrow / selected date
   const [attendanceSummary, setAttendanceSummary] = useState<StoreAttendanceSummary | null>(null);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
+  const [forecastRevision, setForecastRevision] = useState(0);
 
   // Load available forecast dates whenever store changes
   useEffect(() => {
     if (!selectedStore) return;
     const storeCode = selectedStore.store_code;
-    const dates = getAvailableForecastDates(storeCode);
-    setAvailableDates(dates);
+
+    // 1. Instant local read from cache / seed
+    const localDates = getAvailableForecastDates(storeCode);
+    setAvailableDates(localDates);
 
     // Display next dates data from current date by default (e.g. tomorrow or nearest upcoming forecast date)
     setSelectedDate((prev) => {
-      if (prev && dates.includes(prev)) return prev;
-      return getDefaultPlanningDate(dates, selectedStore.timezone || 'Asia/Kolkata');
+      if (prev && localDates.includes(prev)) return prev;
+      return getDefaultPlanningDate(localDates, selectedStore.timezone || 'Asia/Kolkata');
+    });
+
+    // 2. Asynchronously fetch from Supabase to sync across devices / origins
+    let isCancelled = false;
+    void fetchStoreSnopForecast(storeCode).then((records) => {
+      if (isCancelled) return;
+      const remoteDates = Array.from(new Set(records.map((r) => r.dateStr))).sort();
+      if (remoteDates.length > 0 && remoteDates.join(',') !== localDates.join(',')) {
+        setAvailableDates(remoteDates);
+        setSelectedDate((prev) => {
+          if (prev && remoteDates.includes(prev)) return prev;
+          return getDefaultPlanningDate(remoteDates, selectedStore.timezone || 'Asia/Kolkata');
+        });
+        setForecastRevision((v) => v + 1);
+      }
     });
 
     // Sync DPH for store
     void fetchStoreTargetDph(storeCode).then((val) => {
+      if (isCancelled) return;
       setTargetDph(val);
       setDphInput(String(val));
     });
@@ -98,8 +118,24 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       setSummary((prev) => (prev ? recalculatePlanningWithDph(prev, newDph) : null));
     });
 
+    // In-tab event listener for new SNOP uploads
+    const handleSnopSaved = (e: Event) => {
+      const custom = e as CustomEvent<{ warehouseId?: string }>;
+      if (
+        !custom.detail?.warehouseId ||
+        custom.detail.warehouseId.toUpperCase().trim() === storeCode.toUpperCase().trim()
+      ) {
+        const freshDates = getAvailableForecastDates(storeCode);
+        setAvailableDates(freshDates);
+        setForecastRevision((v) => v + 1);
+      }
+    };
+    window.addEventListener('snop_forecast_saved', handleSnopSaved);
+
     return () => {
+      isCancelled = true;
       unsubscribe();
+      window.removeEventListener('snop_forecast_saved', handleSnopSaved);
     };
   }, [selectedStore]);
 
@@ -129,6 +165,13 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
   useEffect(() => {
     void loadPlanningData();
   }, [loadPlanningData]);
+
+  // Re-load planning calculations when remote forecast sync finishes
+  useEffect(() => {
+    if (forecastRevision > 0) {
+      void loadPlanningData();
+    }
+  }, [forecastRevision, loadPlanningData]);
 
   // Load Attendance Summary and subscribe to real-time attendance changes
   useEffect(() => {

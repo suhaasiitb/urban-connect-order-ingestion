@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_STORE_DPH,
   calculateRequiredRiders,
+  fetchAvailableForecastDates,
   fetchPlanningForDate,
+  fetchSnopUploadMeta,
+  fetchStoreSnopForecast,
   formatPlanningSlotLabel,
   getAvailableForecastDates,
   getDefaultPlanningDate,
@@ -539,5 +542,40 @@ describe('Store Planning & SNOP Forecast Suite', () => {
         }
       }
     });
+  });
+
+  describe('8. Asynchronous Supabase SNOP Forecast Load & Cross-Origin Fallback', () => {
+    it('fetches SNOP forecast records, falling back to local cache or seed when offline', async () => {
+      // For TMK7 with empty localStorage, fetchStoreSnopForecast falls back to seed records
+      const records = await fetchStoreSnopForecast('TMK7');
+      expect(records.length).toBeGreaterThan(0);
+      expect(records[0].warehouseId).toBe('TMK7');
+
+      // fetchAvailableForecastDates returns sorted unique dates
+      const dates = await fetchAvailableForecastDates('TMK7');
+      expect(dates.length).toBe(28);
+      expect(dates[0]).toBe('2026-10-25');
+      expect(dates[dates.length - 1]).toBe('2026-11-21');
+    }, 10000);
+
+    it('fetches metadata with fallback to baseline or cached metadata', async () => {
+      const meta = await fetchSnopUploadMeta('TMK7');
+      expect(meta).not.toBeNull();
+      expect(meta?.warehouseId).toBe('TMK7');
+      expect(meta?.totalRows).toBe(504);
+      expect(meta?.startDate).toBe('2026-10-25');
+      expect(meta?.endDate).toBe('2026-11-21');
+    }, 10000);
+
+    it('gracefully handles stores with no data without crashing', async () => {
+      const emptyRecords = await fetchStoreSnopForecast('NON_EXISTENT_STORE');
+      expect(emptyRecords).toEqual([]);
+
+      const emptyDates = await fetchAvailableForecastDates('NON_EXISTENT_STORE');
+      expect(emptyDates).toEqual([]);
+
+      const emptyMeta = await fetchSnopUploadMeta('NON_EXISTENT_STORE');
+      expect(emptyMeta).toBeNull();
+    }, 10000);
   });
 });
