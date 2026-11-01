@@ -46,6 +46,8 @@ export interface StoreAttendanceSummary {
   unmarkedCount: number;
   records: RiderAttendanceRecord[];
   isFullyMarked: boolean;
+  lastUpdated?: string;
+  updatedBy?: string;
 }
 
 export const LOCAL_STORAGE_ATTENDANCE_PREFIX = 'urban_connect_rider_attendance_';
@@ -167,6 +169,10 @@ export function buildAttendanceSummary(
     }
   }
 
+  const firstWithUpdate = records.find((r) => r.updatedAt);
+  const lastUpdated = firstWithUpdate?.updatedAt;
+  const updatedBy = firstWithUpdate?.updatedBy;
+
   return {
     storeId,
     warehouseId: warehouseId.toUpperCase().trim(),
@@ -177,6 +183,8 @@ export function buildAttendanceSummary(
     unmarkedCount,
     records,
     isFullyMarked: records.length > 0 && unmarkedCount === 0,
+    lastUpdated,
+    updatedBy,
   };
 }
 
@@ -227,7 +235,7 @@ export async function fetchStoreRiderAttendance(params: {
   }
 
   // Short-circuit in test environments or dummy store IDs
-  if (!storeId || storeId.startsWith('test-')) {
+  if (storeId && storeId.startsWith('test-')) {
     return buildAttendanceSummary(normWh, attendanceDate, [], storeId);
   }
 
@@ -422,6 +430,11 @@ export async function saveStoreRiderAttendance(params: {
   // 3. Persist to Supabase database (skip in mock/test store env)
   if (!storeId || !storeId.startsWith('test-')) {
     try {
+      const isValidUuid = (id?: string | null): boolean =>
+        Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+
+      const targetStoreId = isValidUuid(storeId) ? storeId : null;
+
       // Delete existing rows for warehouse + date to maintain clean atomic state
       await withTimeout(
         supabase
@@ -429,15 +442,15 @@ export async function saveStoreRiderAttendance(params: {
           .delete()
           .eq('warehouse_id', normWh)
           .eq('attendance_date', attendanceDate),
-        1500,
+        2000,
         { error: null }
       );
 
-      // Insert new records in chunks of 200
+      // Upsert new records in chunks of 200
       const chunkSize = 200;
       for (let i = 0; i < normalizedRecords.length; i += chunkSize) {
         const chunk = normalizedRecords.slice(i, i + chunkSize).map((r) => ({
-          store_id: r.storeId || storeId || null,
+          store_id: isValidUuid(r.storeId) ? r.storeId : targetStoreId,
           warehouse_id: normWh,
           attendance_date: attendanceDate,
           rider_name: r.riderName,
@@ -456,8 +469,10 @@ export async function saveStoreRiderAttendance(params: {
         }));
 
         await withTimeout(
-          supabase.from('store_rider_attendance').insert(chunk),
-          1500,
+          supabase
+            .from('store_rider_attendance')
+            .upsert(chunk, { onConflict: 'warehouse_id,attendance_date,normalized_name' }),
+          2500,
           { error: null }
         );
       }

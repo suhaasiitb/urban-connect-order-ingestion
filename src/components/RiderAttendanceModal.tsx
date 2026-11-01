@@ -6,6 +6,7 @@
 // ==============================================================================
 
 import React, { useMemo, useState, useEffect } from 'react';
+import type { UserProfile } from '../services/authService';
 import {
   type RiderAttendanceRecord,
   type AttendanceStatus,
@@ -22,6 +23,7 @@ interface RiderAttendanceModalProps {
   storeName?: string;
   attendanceDate: string; // "YYYY-MM-DD"
   initialRecords: RiderAttendanceRecord[];
+  currentUser?: UserProfile | null;
   onSaved: (records: RiderAttendanceRecord[]) => void;
 }
 
@@ -33,6 +35,7 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
   storeName,
   attendanceDate,
   initialRecords,
+  currentUser,
   onSaved,
 }) => {
   const [records, setRecords] = useState<RiderAttendanceRecord[]>(initialRecords);
@@ -135,6 +138,29 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
     );
   };
 
+  // Audit info: when this date's attendance was last saved
+  const lastUpdatedInfo = useMemo(() => {
+    const updatedItem = initialRecords.find((r) => r.updatedAt);
+    if (!updatedItem?.updatedAt) return null;
+    try {
+      const dt = new Date(updatedItem.updatedAt);
+      const timeStr = dt.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+      const dateStr = dt.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+      });
+      return `Saved on ${dateStr} at ${timeStr}${updatedItem.updatedBy ? ` by ${updatedItem.updatedBy}` : ''}`;
+    } catch {
+      return null;
+    }
+  }, [initialRecords]);
+
   // Save attendance
   const handleSave = async () => {
     setSaving(true);
@@ -145,7 +171,7 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
       warehouseId,
       attendanceDate,
       records,
-      updatedBy: 'Store User',
+      updatedBy: currentUser?.email || currentUser?.full_name || 'Store User',
     });
 
     setSaving(false);
@@ -193,8 +219,19 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
               <h2 className="attendance-modal-title">
                 Rider Attendance &amp; Turn-Up Planning
               </h2>
-              <p className="attendance-modal-subtitle">
-                Store <strong>{warehouseId}</strong> {storeName ? `(${storeName})` : ''} • Date: <strong>{formattedDate}</strong>
+              <p className="attendance-modal-subtitle flex-row items-center flex-wrap gap-xs">
+                <span>
+                  Store <strong>{warehouseId}</strong> {storeName ? `(${storeName})` : ''} • Date: <strong>{formattedDate}</strong>
+                </span>
+                {lastUpdatedInfo ? (
+                  <span className="attendance-modal-audit-pill" title="Last confirmed turn-up for this date">
+                    ✓ {lastUpdatedInfo}
+                  </span>
+                ) : (
+                  <span className="attendance-modal-audit-pill fresh" title="No attendance logged yet for this date">
+                    Fresh Roster (Unmarked)
+                  </span>
+                )}
               </p>
             </div>
           </div>

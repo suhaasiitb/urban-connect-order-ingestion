@@ -5170,6 +5170,26 @@ select {
   margin: 0.2rem 0 0 0;
 }
 
+.attendance-modal-audit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  line-height: 1.3;
+}
+
+.attendance-modal-audit-pill.fresh {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
 .attendance-modal-close-btn {
   width: 32px;
   height: 32px;

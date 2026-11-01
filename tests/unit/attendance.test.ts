@@ -466,5 +466,52 @@ describe('Rider Attendance & Turn-Up Planning Suite', () => {
         expect(slot.deltaTurnUpVsRequired).toBe(slot.plannedTurnUp - slot.requiredRiders);
       }
     });
+
+    it('guarantees date isolation: saving for Date A does not contaminate Date B, which starts fresh and unmarked', async () => {
+      // 1. Mark Nov 2nd with 10 Present riders
+      const nov2Records: RiderAttendanceRecord[] = [
+        {
+          warehouseId: 'TMK7',
+          attendanceDate: '2026-11-02',
+          riderName: 'Rider Alpha',
+          normalizedName: 'rider alpha',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          status: 'present',
+          isPresent: true,
+          updatedBy: 'admin@urbanconnect.in',
+        },
+      ];
+
+      const saveRes = await saveStoreRiderAttendance({
+        storeId: 'test-store-id',
+        warehouseId: 'TMK7',
+        attendanceDate: '2026-11-02',
+        records: nov2Records,
+        updatedBy: 'admin@urbanconnect.in',
+      });
+      expect(saveRes.ok).toBe(true);
+
+      // 2. Fetch Nov 3rd attendance - it must be completely fresh (0 Present)
+      const nov3Summary = await fetchStoreRiderAttendance({
+        storeId: 'test-store-id',
+        warehouseId: 'TMK7',
+        attendanceDate: '2026-11-03',
+      });
+      expect(nov3Summary.presentCount).toBe(0);
+      expect(nov3Summary.attendanceDate).toBe('2026-11-03');
+
+      // 3. Fetch Nov 2nd back - it must retain its saved marked attendance and audit metadata
+      const nov2Summary = await fetchStoreRiderAttendance({
+        storeId: 'test-store-id',
+        warehouseId: 'TMK7',
+        attendanceDate: '2026-11-02',
+      });
+      expect(nov2Summary.presentCount).toBe(1);
+      expect(nov2Summary.records[0].status).toBe('present');
+      expect(nov2Summary.updatedBy).toBe('admin@urbanconnect.in');
+      expect(nov2Summary.lastUpdated).toBeDefined();
+    });
   });
 });

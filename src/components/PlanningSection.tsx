@@ -967,6 +967,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
           storeName={selectedStore.store_name}
           attendanceDate={selectedDate}
           initialRecords={attendanceSummary?.records ?? []}
+          currentUser={currentUser}
           onSaved={handleAttendanceSaved}
         />
       )}
