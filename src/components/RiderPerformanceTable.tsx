@@ -29,7 +29,7 @@ interface RiderPerformanceTableProps {
   phoneByNameMap?: Map<string, string>;
   riderShiftsMap?: Map<string, RiderShiftConfig>;
   dnrSummary?: StoreDnrSummary | null;
-  onOpenShiftModal?: () => void;
+  onOpenShiftModal?: (targetRider?: string, initialFilter?: string) => void;
   rosterLastUpdated?: string | null;
   rosterTotalCount?: number;
   shiftFilter?: string;
@@ -140,6 +140,10 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
         }
         if (activeShiftFilter === 'UNDER_6H') {
           return displayHours < 6.0;
+        }
+        if (activeShiftFilter === 'ACTIVE_NO_SHIFT') {
+          const isActive = activeNamesSet ? activeNamesSet.has(norm) : false;
+          return isActive && !shift;
         }
         if (activeShiftFilter === 'NOT_SET') {
           return !shift;
@@ -289,6 +293,26 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     return data.rows.filter((r) => activeNamesSet.has(normalizeRiderName(r.riderName))).length;
   }, [data.rows, activeNamesSet]);
 
+  const activeMissingShiftCount = useMemo(() => {
+    return data.rows.filter((r) => {
+      const norm = normalizeRiderName(r.riderName);
+      const isActive = activeNamesSet ? activeNamesSet.has(norm) : false;
+      const shift = riderShiftsMap?.get(norm);
+      return isActive && !shift;
+    }).length;
+  }, [data.rows, activeNamesSet, riderShiftsMap]);
+
+  const totalActiveRosterMissingShiftCount = useMemo(() => {
+    if (!activeNamesSet) return 0;
+    let count = 0;
+    for (const norm of activeNamesSet) {
+      if (!riderShiftsMap?.has(norm)) {
+        count++;
+      }
+    }
+    return count;
+  }, [activeNamesSet, riderShiftsMap]);
+
   const inactiveRidersCount = useMemo(() => {
     return data.rows.length - activeRidersCount;
   }, [data.rows.length, activeRidersCount]);
@@ -319,12 +343,16 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   };
 
   const handleExport = () => {
-    const shiftsExportMap = new Map<string, { shiftType: string; timings?: string }>();
+    const shiftsExportMap = new Map<
+      string,
+      { shiftType: string; timings?: string; onboardedBy?: string | null }
+    >();
     if (riderShiftsMap) {
       for (const [norm, cfg] of riderShiftsMap.entries()) {
         shiftsExportMap.set(norm, {
           shiftType: cfg.shiftType,
           timings: formatShiftTimings(cfg),
+          onboardedBy: cfg.onboardedBy || null,
         });
       }
     }
@@ -425,6 +453,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 disabled={loading}
               >
                 <option value="ALL">All Shifts</option>
+                {activeMissingShiftCount > 0 && (
+                  <option value="ACTIVE_NO_SHIFT">
+                    ⚠️ Missing Shifts ({activeMissingShiftCount})
+                  </option>
+                )}
                 <option value="Morning Shift">Morning (6 AM – 3 PM)</option>
                 <option value="2nd Shift">2nd Shift (3 PM – 12 AM)</option>
                 <option value="Split Shift">Split Shift</option>
@@ -474,6 +507,32 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               {dnrSummary && dnrSummary.totalRidersAffected > 0 && (
                 <span className="badge-dnr-pill">
                   {dnrSummary.totalRidersAffected}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Active Riders Missing Shift Warning Toggle Button */}
+          <div className="perf-filter-group">
+            <button
+              type="button"
+              className={`btn-shift-warning-toggle ${activeShiftFilter === 'ACTIVE_NO_SHIFT' ? 'btn-shift-warning-active' : ''} ${activeMissingShiftCount > 0 || totalActiveRosterMissingShiftCount > 0 ? 'has-warning' : ''}`}
+              onClick={() => {
+                setShiftFilter(activeShiftFilter === 'ACTIVE_NO_SHIFT' ? 'ALL' : 'ACTIVE_NO_SHIFT');
+              }}
+              title={
+                activeMissingShiftCount > 0
+                  ? `⚠️ Warning: ${activeMissingShiftCount} active rider(s) in this table have no shift configured! Click to filter and fill their shifts.`
+                  : totalActiveRosterMissingShiftCount > 0
+                  ? `⚠️ Warning: ${totalActiveRosterMissingShiftCount} active rider(s) in active roster have no shift configured! Click to view and fill shifts.`
+                  : 'All active riders have shifts assigned.'
+              }
+            >
+              <span className="warning-toggle-icon">⚠️</span>
+              <span>Missing Shift Warning</span>
+              {(activeMissingShiftCount > 0 || totalActiveRosterMissingShiftCount > 0) && (
+                <span className="badge-warning-pill">
+                  {activeMissingShiftCount || totalActiveRosterMissingShiftCount}
                 </span>
               )}
             </button>
@@ -592,7 +651,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
             <button
               type="button"
               className="btn btn-secondary btn-sm perf-btn-shifts"
-              onClick={onOpenShiftModal}
+              onClick={() => onOpenShiftModal()}
               title="Configure rider shifts and 8h timings"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -689,6 +748,38 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               </>
             )}
           </button>
+        </div>
+      )}
+
+      {/* Missing Shift Actionable Warning Banner */}
+      {activeShiftFilter === 'ACTIVE_NO_SHIFT' && (
+        <div className="alert-box alert-box-warning alert-missing-shift-banner" role="alert">
+          <div className="alert-missing-shift-left">
+            <span className="alert-warning-icon">⚠️</span>
+            <div>
+              <strong>
+                Active Riders with Empty Shifts ({filteredRows.length} shown
+                {totalActiveRosterMissingShiftCount > filteredRows.length && `, ${totalActiveRosterMissingShiftCount} in active roster`})
+              </strong>
+              <p className="alert-missing-shift-sub">
+                These active riders have no shift or timings configured. Click &quot;Fill Shift Data&quot; to assign their shifts and 8-hour timings.
+              </p>
+            </div>
+          </div>
+          {onOpenShiftModal && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm btn-fill-shifts"
+              onClick={() => onOpenShiftModal(undefined, 'UNASSIGNED')}
+              title="Open Manage Rider Shifts & Timings to fill shift data for these riders"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              <span>⚡ Fill Shift Data ({filteredRows.length || totalActiveRosterMissingShiftCount} Riders)</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -981,6 +1072,14 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             <strong className="rider-name-text" title={row.riderName}>
                               {row.riderName}
                             </strong>
+                            {riderShift?.onboardedBy && (
+                              <span
+                                className="rider-onboarded-tag"
+                                title={`Onboarded by ${riderShift.onboardedBy}`}
+                              >
+                                👤 {riderShift.onboardedBy}
+                              </span>
+                            )}
                             {/* Visual Cue for DNR tracking both Non_abusive and Potential_abuse with counts */}
                             {riderDnr && riderDnr.totalDnrCount > 0 && (
                               <div className="dnr-badges-wrapper flex-row items-center gap-xs">
@@ -1088,7 +1187,30 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                           </span>
                         </div>
                       ) : (
-                        <span className="badge-shift-unassigned">Not Set</span>
+                        <div className="shift-unassigned-cell flex-col items-center gap-xs">
+                          {isRiderActive ? (
+                            <>
+                              <span
+                                className="badge-shift-unassigned badge-shift-warning"
+                                title="Active rider with no shift configured"
+                              >
+                                ⚠ Shift Empty
+                              </span>
+                              {onOpenShiftModal && (
+                                <button
+                                  type="button"
+                                  className="btn-assign-shift-inline"
+                                  onClick={() => onOpenShiftModal(row.riderName, 'UNASSIGNED')}
+                                  title={`Fill shift timings for active rider ${row.riderName}`}
+                                >
+                                  + Fill Shift
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <span className="badge-shift-unassigned">Not Set</span>
+                          )}
+                        </div>
                       )}
                     </td>
 

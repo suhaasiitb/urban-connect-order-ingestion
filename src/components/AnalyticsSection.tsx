@@ -63,6 +63,14 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   });
   const [activeTab, setActiveTab] = useState<'all-riders' | 'new-riders'>('all-riders');
   const [tableShiftFilter, setTableShiftFilter] = useState<string>('ALL');
+  const [shiftModalFilter, setShiftModalFilter] = useState<string | undefined>(undefined);
+  const [shiftModalSearchQuery, setShiftModalSearchQuery] = useState<string | undefined>(undefined);
+
+  const handleOpenShiftModal = (targetRider?: string, initialFilter?: string) => {
+    setShiftModalSearchQuery(targetRider);
+    setShiftModalFilter(initialFilter);
+    setIsShiftModalOpen(true);
+  };
   const [loadingPivot, setLoadingPivot] = useState(false);
   const [pivotError, setPivotError] = useState<string | null>(null);
   const [activeRoster, setActiveRoster] = useState<ActiveRosterSummary | null>(null);
@@ -79,6 +87,17 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     if (pivotResult.totalRiders === 0) return 0;
     return Math.round((under6hCount / pivotResult.totalRiders) * 100);
   }, [under6hCount, pivotResult.totalRiders]);
+
+  const activeWithoutShiftCount = React.useMemo(() => {
+    if (!activeRoster?.activeNamesSet) return 0;
+    let count = 0;
+    for (const norm of activeRoster.activeNamesSet) {
+      if (!riderShiftsMap?.has(norm)) {
+        count++;
+      }
+    }
+    return count;
+  }, [activeRoster, riderShiftsMap]);
 
   // New Rider Onboarding State (Last 7 Days)
   const [onboardingCohortDays, setOnboardingCohortDays] = useState<number>(7);
@@ -374,6 +393,40 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                   : `${under6hCount} of ${pivotResult.totalRiders} riders (${under6hPct}%) in selected period`}
               </span>
             </div>
+
+            {/* Active Without Shift KPI Card */}
+            <div
+              className={`kpi-card kpi-card-interactive ${tableShiftFilter === 'ACTIVE_NO_SHIFT' ? 'kpi-card-active' : ''}`}
+              onClick={() => {
+                setTableShiftFilter((prev) => (prev === 'ACTIVE_NO_SHIFT' ? 'ALL' : 'ACTIVE_NO_SHIFT'));
+              }}
+              title="Click to filter table to active riders whose shift is empty"
+            >
+              <div className="kpi-header-row">
+                <span className="kpi-label">Active Without Shift</span>
+                {tableShiftFilter === 'ACTIVE_NO_SHIFT' ? (
+                  <span className="badge badge-warning" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                    Filtered
+                  </span>
+                ) : activeWithoutShiftCount > 0 ? (
+                  <span className="badge badge-danger" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                    Action Required
+                  </span>
+                ) : (
+                  <span className="badge badge-success" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                    Complete
+                  </span>
+                )}
+              </div>
+              <strong className={`kpi-value ${activeWithoutShiftCount > 0 ? 'text-amber' : 'text-slate'}`}>
+                {activeWithoutShiftCount}
+              </strong>
+              <span className="kpi-sub">
+                {activeWithoutShiftCount > 0
+                  ? `${activeWithoutShiftCount} active riders need shift assigned`
+                  : 'All active riders have shifts set'}
+              </span>
+            </div>
           </div>
 
           {pivotError && (
@@ -394,7 +447,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
               <button
                 type="button"
                 className="btn btn-secondary btn-manage-shifts"
-                onClick={() => setIsShiftModalOpen(true)}
+                onClick={() => handleOpenShiftModal()}
                 title="Configure recurring rider shifts and 8h timings"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -427,7 +480,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                 phoneByNameMap={activeRoster?.phoneByNameMap}
                 riderShiftsMap={riderShiftsMap}
                 dnrSummary={dnrSummary}
-                onOpenShiftModal={() => setIsShiftModalOpen(true)}
+                onOpenShiftModal={handleOpenShiftModal}
                 rosterLastUpdated={activeRoster?.lastUpdatedFormatted}
                 rosterTotalCount={activeRoster?.totalRiders}
                 shiftFilter={tableShiftFilter}
@@ -452,7 +505,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
             }}
             cohortDays={onboardingCohortDays}
             onSelectCohortDays={setOnboardingCohortDays}
-            onOpenShiftModal={() => setIsShiftModalOpen(true)}
+            onOpenShiftModal={() => handleOpenShiftModal()}
             onUpdateJoiningDate={handleUpdateJoiningDate}
           />
         </div>
@@ -462,12 +515,18 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
       {selectedStore && (
         <RiderShiftModal
           isOpen={isShiftModalOpen}
-          onClose={() => setIsShiftModalOpen(false)}
+          onClose={() => {
+            setIsShiftModalOpen(false);
+            setShiftModalFilter(undefined);
+            setShiftModalSearchQuery(undefined);
+          }}
           storeId={selectedStore.id}
           storeCode={selectedStore.store_code}
           storeName={selectedStore.store_name}
           activeRidersList={activeRoster?.riders ?? []}
           existingShiftsMap={riderShiftsMap}
+          initialFilter={shiftModalFilter}
+          initialSearchQuery={shiftModalSearchQuery}
           onSaved={() => {
             void loadShifts();
           }}

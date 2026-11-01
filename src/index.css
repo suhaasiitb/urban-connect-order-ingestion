@@ -5636,6 +5636,208 @@ select {
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
 }
 
+/* ==============================================================================
+   Active Rider Missing Shift Warning & Onboarded By Styles
+   ============================================================================== */
+
+/* Missing Shift Warning Toggle Button in Table Controls */
+.btn-shift-warning-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+  background-color: #ffffff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.btn-shift-warning-toggle:hover {
+  background-color: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.btn-shift-warning-toggle.has-warning {
+  border-color: #f59e0b;
+  color: #b45309;
+  background-color: #fffbeb;
+}
+
+.btn-shift-warning-active {
+  background-color: #fef3c7 !important;
+  color: #92400e !important;
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+.btn-shift-warning-toggle .badge-warning-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f59e0b;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+}
+
+.btn-shift-warning-active .badge-warning-pill {
+  background: #b45309;
+}
+
+/* Missing Shift Actionable Warning Banner */
+.alert-missing-shift-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  margin-bottom: 0.85rem;
+  border-radius: 8px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  flex-wrap: wrap;
+}
+
+.alert-missing-shift-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  flex: 1;
+}
+
+.alert-warning-icon {
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.alert-missing-shift-sub {
+  margin: 0.2rem 0 0 0;
+  font-size: 0.8rem;
+  color: #b45309;
+}
+
+.btn-fill-shifts {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #ea580c !important;
+  border-color: #c2410c !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  padding: 0.4rem 0.85rem !important;
+  border-radius: 6px !important;
+  font-size: 0.8rem !important;
+  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.25);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-fill-shifts:hover {
+  background: #c2410c !important;
+}
+
+/* Inline Fill Shift button in table cell */
+.shift-unassigned-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.badge-shift-warning {
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #fecaca !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  padding: 0.15rem 0.5rem !important;
+  border-radius: 4px;
+}
+
+.btn-assign-shift-inline {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0284c7;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-assign-shift-inline:hover {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #7dd3fc;
+}
+
+/* Onboarded By Tag in Table & Dropdown in Modal */
+.rider-onboarded-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.4rem;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.shift-onboarder-select {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.shift-onboarder-select:focus {
+  outline: none;
+  border-color: #0284c7;
+}
+
+.shift-row-unconfigured {
+  background-color: #fffbeb !important;
+}
+
+.shift-row-unconfigured td {
+  border-bottom: 1px solid #fef3c7;
+}
+
+.badge-new-shift {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.35rem;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+
 
 
 

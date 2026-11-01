@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   type RiderShiftConfig,
   type ShiftType,
+  ONBOARDED_BY_OPTIONS,
   SHIFT_PRESETS,
   TIME_SLOT_OPTIONS,
   calculatePlannedHours,
@@ -19,6 +20,8 @@ interface RiderShiftModalProps {
   activeRidersList: Array<{ name: string; phone?: string }>;
   existingShiftsMap: Map<string, RiderShiftConfig>;
   onSaved: () => void;
+  initialFilter?: string;
+  initialSearchQuery?: string;
 }
 
 export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
@@ -30,9 +33,12 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
   activeRidersList,
   existingShiftsMap,
   onSaved,
+  initialFilter,
+  initialSearchQuery,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterShift, setFilterShift] = useState<string>('ALL');
+  const [filterOnboardedBy, setFilterOnboardedBy] = useState<string>('ALL');
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -48,6 +54,7 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
           ...existing,
           shiftType: classifyShiftType(existing),
           totalPlannedHours: Math.max(existing.totalPlannedHours ?? 0, calculatePlannedHours(existing)),
+          onboardedBy: existing.onboardedBy || null,
         };
       } else {
         // Default to Morning Shift (9h: 6 AM – 3 PM)
@@ -61,6 +68,7 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
           slot2StartHour: null,
           slot2EndHour: null,
           totalPlannedHours: preset.hours,
+          onboardedBy: null,
         };
       }
     }
@@ -79,6 +87,7 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
           ...existing,
           shiftType: classifyShiftType(existing),
           totalPlannedHours: Math.max(existing.totalPlannedHours ?? 0, calculatePlannedHours(existing)),
+          onboardedBy: existing.onboardedBy || null,
         };
       } else {
         const preset = SHIFT_PRESETS['Morning Shift'];
@@ -91,12 +100,28 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
           slot2StartHour: null,
           slot2EndHour: null,
           totalPlannedHours: preset.hours,
+          onboardedBy: null,
         };
       }
     }
     setShiftsState(updated);
     setSaveSuccess(false);
-  }, [isOpen, activeRidersList, existingShiftsMap]);
+
+    if (initialFilter) {
+      setFilterShift(initialFilter);
+    }
+    if (initialSearchQuery) {
+      setSearchQuery(initialSearchQuery);
+    }
+  }, [isOpen, activeRidersList, existingShiftsMap, initialFilter, initialSearchQuery]);
+
+  // Count unconfigured / missing shifts
+  const unconfiguredRidersCount = useMemo(() => {
+    return activeRidersList.filter((r) => {
+      const norm = normalizeRiderName(r.name);
+      return !existingShiftsMap.has(norm);
+    }).length;
+  }, [activeRidersList, existingShiftsMap]);
 
   // Filter riders
   const displayedRiders = useMemo(() => {
@@ -109,15 +134,34 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
           (r.phone && r.phone.toLowerCase().includes(q))
       );
     }
-    if (filterShift !== 'ALL') {
+
+    if (filterShift === 'UNASSIGNED') {
+      list = list.filter((r) => {
+        const norm = normalizeRiderName(r.name);
+        return !existingShiftsMap.has(norm);
+      });
+    } else if (filterShift !== 'ALL') {
       list = list.filter((r) => {
         const norm = normalizeRiderName(r.name);
         const shift = shiftsState[norm];
         return shift && shift.shiftType === filterShift;
       });
     }
+
+    if (filterOnboardedBy === 'UNASSIGNED') {
+      list = list.filter((r) => {
+        const norm = normalizeRiderName(r.name);
+        return !shiftsState[norm]?.onboardedBy;
+      });
+    } else if (filterOnboardedBy !== 'ALL') {
+      list = list.filter((r) => {
+        const norm = normalizeRiderName(r.name);
+        return shiftsState[norm]?.onboardedBy === filterOnboardedBy;
+      });
+    }
+
     return list;
-  }, [activeRidersList, searchQuery, filterShift, shiftsState]);
+  }, [activeRidersList, searchQuery, filterShift, filterOnboardedBy, shiftsState, existingShiftsMap]);
 
   // Update a single rider's shift type
   const handleShiftTypeChange = (riderName: string, newType: ShiftType) => {
@@ -194,6 +238,22 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
     });
   };
 
+  // Handle Onboarded By change (Sunil, Atharva, Krushna, FM1, FM2)
+  const handleOnboardedByChange = (riderName: string, val: string) => {
+    const norm = normalizeRiderName(riderName);
+    setShiftsState((prev) => {
+      const cur = prev[norm];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [norm]: {
+          ...cur,
+          onboardedBy: val ? val.trim() : null,
+        },
+      };
+    });
+  };
+
   // Bulk Apply Preset
   const handleBulkApply = (presetType: ShiftType) => {
     const preset = SHIFT_PRESETS[presetType as keyof typeof SHIFT_PRESETS];
@@ -204,6 +264,7 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
       for (const r of displayedRiders) {
         const norm = normalizeRiderName(r.name);
         next[norm] = {
+          ...next[norm],
           riderName: r.name,
           normalizedName: norm,
           shiftType: presetType,
@@ -213,6 +274,24 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
           slot2EndHour: preset.slot2End ?? null,
           totalPlannedHours: preset.hours,
         };
+      }
+      return next;
+    });
+  };
+
+  // Bulk Apply Onboarded By to visible riders
+  const handleBulkApplyOnboarder = (onboarder: string) => {
+    if (!onboarder) return;
+    setShiftsState((prev) => {
+      const next = { ...prev };
+      for (const r of displayedRiders) {
+        const norm = normalizeRiderName(r.name);
+        if (next[norm]) {
+          next[norm] = {
+            ...next[norm],
+            onboardedBy: onboarder.trim(),
+          };
+        }
       }
       return next;
     });
@@ -303,10 +382,20 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
                   Below 8h: <strong>{underCount}</strong>
                 </span>
               )}
+              {unconfiguredRidersCount > 0 && (
+                <button
+                  type="button"
+                  className={`shift-metric-pill pill-danger cursor-pointer ${filterShift === 'UNASSIGNED' ? 'pill-active' : ''}`}
+                  onClick={() => setFilterShift((prev) => (prev === 'UNASSIGNED' ? 'ALL' : 'UNASSIGNED'))}
+                  title="Click to view only active riders whose shift is missing / not configured"
+                >
+                  ⚠️ Missing Shifts: <strong>{unconfiguredRidersCount}</strong>
+                </button>
+              )}
             </div>
 
             <div className="shift-bulk-actions">
-              <span className="bulk-label">Set visible riders to:</span>
+              <span className="bulk-label">Set visible shifts:</span>
               <button
                 type="button"
                 className="btn-shift-preset"
@@ -328,6 +417,26 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
               >
                 Split (6 AM – 3 PM & 3 PM – 12 AM)
               </button>
+
+              <span className="bulk-label ml-xs">Set Onboarder:</span>
+              <select
+                className="btn-shift-preset"
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleBulkApplyOnboarder(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                defaultValue=""
+                title="Bulk set Onboarded By for all currently visible riders"
+              >
+                <option value="" disabled>Apply to visible...</option>
+                {ONBOARDED_BY_OPTIONS.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -347,9 +456,27 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
               onChange={(e) => setFilterShift(e.target.value)}
             >
               <option value="ALL">All Shifts ({activeRidersList.length})</option>
+              {unconfiguredRidersCount > 0 && (
+                <option value="UNASSIGNED">⚠️ Missing Shifts ({unconfiguredRidersCount})</option>
+              )}
               <option value="Morning Shift">Morning Shift</option>
               <option value="2nd Shift">2nd Shift</option>
               <option value="Split Shift">Split Shift</option>
+            </select>
+
+            <select
+              className="shift-type-filter shift-onboarder-filter"
+              value={filterOnboardedBy}
+              onChange={(e) => setFilterOnboardedBy(e.target.value)}
+              title="Filter by who onboarded the rider"
+            >
+              <option value="ALL">All Onboarders</option>
+              <option value="UNASSIGNED">No Onboarder Set</option>
+              {ONBOARDED_BY_OPTIONS.map((name) => (
+                <option key={name} value={name}>
+                  Onboarded by: {name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -358,24 +485,26 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
           <table className="shift-table">
             <thead>
               <tr>
-                <th style={{ width: '18%' }}>Rider Name</th>
-                <th style={{ width: '13%' }}>Rider Number</th>
-                <th style={{ width: '15%' }}>Joining Date</th>
-                <th style={{ width: '17%' }}>Shift Type</th>
-                <th style={{ width: '23%' }}>Timings (Slot 1 & Split Slot 2)</th>
-                <th style={{ width: '14%' }} className="text-center">Planned Hours</th>
+                <th style={{ width: '16%' }}>Rider Name</th>
+                <th style={{ width: '11%' }}>Rider Number</th>
+                <th style={{ width: '13%' }}>Joining Date</th>
+                <th style={{ width: '14%' }}>Onboarded By</th>
+                <th style={{ width: '14%' }}>Shift Type</th>
+                <th style={{ width: '20%' }}>Timings (Slot 1 & Split Slot 2)</th>
+                <th style={{ width: '12%' }} className="text-center">Planned Hours</th>
               </tr>
             </thead>
             <tbody>
               {displayedRiders.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="table-empty-cell text-center">
+                  <td colSpan={7} className="table-empty-cell text-center">
                     No riders matching criteria.
                   </td>
                 </tr>
               ) : (
                 displayedRiders.map((rider) => {
                   const norm = normalizeRiderName(rider.name);
+                  const isExistingSaved = existingShiftsMap.has(norm);
                   const shift = shiftsState[norm] || {
                     riderName: rider.name,
                     normalizedName: norm,
@@ -386,16 +515,24 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
                     slot2EndHour: null,
                     totalPlannedHours: 8,
                     joiningDate: null,
+                    onboardedBy: null,
                   };
 
                   const isSplit = shift.shiftType === 'Split Shift' || shift.slot2StartHour != null;
                   const meetsMandatory8h = shift.totalPlannedHours >= 8;
 
                   return (
-                    <tr key={rider.name} className="shift-row">
+                    <tr key={rider.name} className={`shift-row ${!isExistingSaved ? 'shift-row-unconfigured' : ''}`}>
                       {/* Name */}
                       <td>
-                        <strong className="rider-row-name">{rider.name}</strong>
+                        <div className="shift-rider-cell flex-row items-center gap-xs">
+                          <strong className="rider-row-name">{rider.name}</strong>
+                          {!isExistingSaved && (
+                            <span className="badge-new-shift" title="Shift not saved in database yet">
+                              New / Unset
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Number */}
@@ -423,6 +560,25 @@ export const RiderShiftModal: React.FC<RiderShiftModalProps> = ({
                             <span className="shift-date-auto-tag">Auto (1st order)</span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Onboarded By Dropdown Menu (Sunil, Atharva, Krushna, FM1, FM2) */}
+                      <td>
+                        <select
+                          className="shift-select-input shift-onboarder-select"
+                          value={shift.onboardedBy || ''}
+                          onChange={(e) =>
+                            handleOnboardedByChange(rider.name, e.target.value)
+                          }
+                          title="Select who onboarded this rider: Sunil, Atharva, Krushna, FM1, FM2"
+                        >
+                          <option value="">— Select —</option>
+                          {ONBOARDED_BY_OPTIONS.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
                       </td>
 
                       {/* Shift Type Select */}

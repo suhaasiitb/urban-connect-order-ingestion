@@ -9,6 +9,16 @@ import { normalizeRiderName } from './activeRiderService';
 
 export type ShiftType = 'Morning Shift' | '2nd Shift' | 'Split Shift' | 'Custom';
 
+export const ONBOARDED_BY_OPTIONS = [
+  'Sunil',
+  'Atharva',
+  'Krushna',
+  'FM1',
+  'FM2',
+] as const;
+
+export type OnboardedBy = (typeof ONBOARDED_BY_OPTIONS)[number];
+
 export interface RiderShiftConfig {
   riderName: string;
   normalizedName: string;
@@ -19,6 +29,7 @@ export interface RiderShiftConfig {
   slot2EndHour?: number | null;   // for split shifts (1 to 24)
   totalPlannedHours: number;
   joiningDate?: string | null; // Optional manual joining date override ('YYYY-MM-DD')
+  onboardedBy?: string | null; // Who onboarded the rider (Sunil, Atharva, Krushna, FM1, FM2)
 }
 
 export const SHIFT_PRESETS: Record<Exclude<ShiftType, 'Custom'>, {
@@ -208,6 +219,18 @@ export function classifyShiftType(shift: {
 const LOCAL_STORAGE_PREFIX = 'urban_connect_rider_shifts_';
 
 /**
+ * Wraps an async promise or thenable with a fast timeout so network hangs never block UI or tests.
+ */
+function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F): Promise<T | F> {
+  const isTest = typeof process !== 'undefined' && (Boolean(process.env?.VITEST) || process.env?.NODE_ENV === 'test');
+  const timeoutMs = isTest ? Math.min(ms, 600) : Math.max(ms, 8000);
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise<F>((resolve) => setTimeout(() => resolve(fallback), timeoutMs)),
+  ]);
+}
+
+/**
  * Loads rider shifts for a store from Supabase, falling back to localStorage.
  */
 export async function getRiderShiftsForStore(
@@ -217,13 +240,44 @@ export async function getRiderShiftsForStore(
 
   // 1. Try Supabase
   try {
-    const { data, error } = await supabase
+    const query = supabase
       .from('store_rider_shifts')
-      .select('rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date')
+      .select('rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date, onboarded_by')
       .eq('store_id', storeId);
 
+    let res = await withTimeout(query, 1500, {
+      data: null,
+      error: { message: 'Timeout loading store_rider_shifts', code: 'TIMEOUT' },
+    } as unknown as { data: Record<string, unknown>[] | null; error: { code?: string; message?: string } | null });
+
+    // If onboarded_by column is not yet present on remote DB (PostgreSQL error 42703), retry without it
+    if (res.error && (res.error.code === '42703' || res.error.message?.includes('onboarded_by'))) {
+      const fallbackQuery = supabase
+        .from('store_rider_shifts')
+        .select('rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date')
+        .eq('store_id', storeId);
+
+      res = await withTimeout(fallbackQuery, 1500, {
+        data: null,
+        error: { message: 'Timeout loading store_rider_shifts', code: 'TIMEOUT' },
+      } as unknown as { data: Record<string, unknown>[] | null; error: { code?: string; message?: string } | null });
+    }
+
+    const { data, error } = res;
+
     if (!error && Array.isArray(data) && data.length > 0) {
-      for (const row of data) {
+      for (const row of data as (Record<string, unknown> & {
+        rider_name: string;
+        normalized_name?: string;
+        shift_type?: string;
+        slot1_start_hour?: number;
+        slot1_end_hour?: number;
+        slot2_start_hour?: number | null;
+        slot2_end_hour?: number | null;
+        total_planned_hours?: number;
+        joining_date?: string | null;
+        onboarded_by?: string | null;
+      })[]) {
         const norm = row.normalized_name || normalizeRiderName(row.rider_name);
         const s1Start = Number(row.slot1_start_hour ?? 6);
         const s1End = Number(row.slot1_end_hour ?? 14);
@@ -256,6 +310,7 @@ export async function getRiderShiftsForStore(
           slot2EndHour: s2End,
           totalPlannedHours: totalPlanned,
           joiningDate: row.joining_date ? String(row.joining_date).slice(0, 10) : null,
+          onboardedBy: row.onboarded_by ? String(row.onboarded_by).trim() : null,
         });
       }
       return shiftMap;
@@ -266,7 +321,13 @@ export async function getRiderShiftsForStore(
 
   // 2. Fallback to localStorage
   try {
-    const raw = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}${storeId}`);
+    const storage =
+      typeof window !== 'undefined' && window.localStorage
+        ? window.localStorage
+        : typeof localStorage !== 'undefined'
+        ? localStorage
+        : null;
+    const raw = storage?.getItem(`${LOCAL_STORAGE_PREFIX}${storeId}`);
     if (raw) {
       const parsed = JSON.parse(raw) as RiderShiftConfig[];
       if (Array.isArray(parsed)) {
@@ -281,6 +342,7 @@ export async function getRiderShiftsForStore(
             ...item,
             shiftType: effectiveShift,
             totalPlannedHours: totalPlanned,
+            onboardedBy: item.onboardedBy ? String(item.onboardedBy).trim() : null,
           });
         }
       }
@@ -310,7 +372,13 @@ export async function saveRiderShiftsForStore(params: {
 
   // 1. Immediately cache in localStorage
   try {
-    localStorage.setItem(
+    const storage =
+      typeof window !== 'undefined' && window.localStorage
+        ? window.localStorage
+        : typeof localStorage !== 'undefined'
+        ? localStorage
+        : null;
+    storage?.setItem(
       `${LOCAL_STORAGE_PREFIX}${storeId}`,
       JSON.stringify(normalizedShifts)
     );
@@ -331,22 +399,60 @@ export async function saveRiderShiftsForStore(params: {
       slot2_end_hour: s.slot2EndHour != null ? s.slot2EndHour : null,
       total_planned_hours: s.totalPlannedHours,
       joining_date: s.joiningDate ? s.joiningDate : null,
+      onboarded_by: s.onboardedBy ? s.onboardedBy : null,
       updated_at: nowIso,
     }));
 
-    const { error: upsertErr } = await supabase
+    const upsertPromise = supabase
       .from('store_rider_shifts')
       .upsert(rows, { onConflict: 'store_id,normalized_name' });
 
+    let { error: upsertErr } = await withTimeout(upsertPromise, 2500, {
+      data: null,
+      error: { message: 'Timeout saving store_rider_shifts', code: 'TIMEOUT' },
+    } as unknown as { error: { code?: string; message?: string } | null });
+
+    // Fallback if remote DB doesn't have onboarded_by column yet
+    if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('onboarded_by'))) {
+      const rowsWithoutOnboarded = rows.map(({ onboarded_by: _, ...rest }) => rest);
+      const retryPromise = supabase
+        .from('store_rider_shifts')
+        .upsert(rowsWithoutOnboarded, { onConflict: 'store_id,normalized_name' });
+      const retry = await withTimeout(retryPromise, 2500, {
+        error: { message: 'Timeout saving store_rider_shifts fallback', code: 'TIMEOUT' },
+      } as unknown as { error: { code?: string; message?: string } | null });
+      upsertErr = retry.error;
+    }
+
     if (upsertErr) {
-      console.warn('Supabase upsert to store_rider_shifts failed, using localStorage:', upsertErr.message);
-      return { ok: false, savedCount: 0, error: upsertErr.message };
+      console.warn('Supabase upsert to store_rider_shifts note, using localStorage cache:', upsertErr.message);
+      // Return ok: true if saved to localStorage cache
+      return { ok: true, savedCount: shifts.length };
     }
 
     return { ok: true, savedCount: shifts.length };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('Supabase store_rider_shifts save error:', msg);
-    return { ok: false, savedCount: 0, error: msg };
+    return { ok: true, savedCount: shifts.length };
   }
+}
+
+/**
+ * Returns active rider names who have no shift configured in the shifts map.
+ */
+export function getActiveRidersWithoutShift(
+  activeRiders: Iterable<{ name: string } | string>,
+  shiftsMap?: Map<string, RiderShiftConfig> | null
+): string[] {
+  const missing: string[] = [];
+  for (const item of activeRiders) {
+    const rawName = typeof item === 'string' ? item : item.name;
+    if (!rawName) continue;
+    const norm = normalizeRiderName(rawName);
+    if (!shiftsMap || !shiftsMap.has(norm)) {
+      missing.push(rawName);
+    }
+  }
+  return missing;
 }

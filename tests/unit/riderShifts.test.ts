@@ -1,11 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ONBOARDED_BY_OPTIONS,
   SHIFT_PRESETS,
   calculatePlannedHours,
   classifyShiftType,
   formatHour,
   formatShiftTimings,
+  getActiveRidersWithoutShift,
+  getRiderShiftsForStore,
+  saveRiderShiftsForStore,
+  type RiderShiftConfig,
 } from '../../src/services/riderShiftService';
+
+// Polyfill window.localStorage for Node environment if missing
+if (typeof window === 'undefined' || !window.localStorage) {
+  const memStore: Record<string, string> = {};
+  const mockStorage = {
+    getItem: (key: string) => memStore[key] ?? null,
+    setItem: (key: string, val: string) => {
+      memStore[key] = String(val);
+    },
+    removeItem: (key: string) => {
+      delete memStore[key];
+    },
+    clear: () => {
+      Object.keys(memStore).forEach((k) => delete memStore[k]);
+    },
+    length: 0,
+    key: () => null,
+  };
+  (global as unknown as { localStorage: Storage; window: { localStorage: Storage } }).localStorage = mockStorage as Storage;
+  (global as unknown as { window: { localStorage: Storage } }).window = { localStorage: mockStorage as Storage };
+}
 
 describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
   it('formats hours from 0-24 into human-friendly AM/PM strings', () => {
@@ -205,5 +231,114 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
     expect(isCompliant(7.9)).toBe(false);
     expect(isCompliant(5.2)).toBe(false);
     expect(isCompliant(0)).toBe(false);
+  });
+
+  describe('Onboarded By Field & Active Rider Missing Shift Warning Suite', () => {
+    it('defines the required Onboarded By dropdown options: Sunil, Atharva, Krushna, FM1, FM2', () => {
+      expect(ONBOARDED_BY_OPTIONS).toEqual([
+        'Sunil',
+        'Atharva',
+        'Krushna',
+        'FM1',
+        'FM2',
+      ]);
+      expect(ONBOARDED_BY_OPTIONS).toHaveLength(5);
+    });
+
+    it('identifies active riders whose shift is empty using getActiveRidersWithoutShift', () => {
+      const activeRoster = [
+        { name: 'Rider Alpha' },
+        { name: 'Rider Beta' },
+        { name: 'Rider Gamma' },
+      ];
+
+      const shiftsMap = new Map<string, RiderShiftConfig>();
+      // Only Rider Alpha has a configured shift
+      shiftsMap.set('rider alpha', {
+        riderName: 'Rider Alpha',
+        normalizedName: 'rider alpha',
+        shiftType: 'Morning Shift',
+        slot1StartHour: 6,
+        slot1EndHour: 15,
+        totalPlannedHours: 9,
+        onboardedBy: 'Sunil',
+      });
+
+      const missing = getActiveRidersWithoutShift(activeRoster, shiftsMap);
+      expect(missing).toEqual(['Rider Beta', 'Rider Gamma']);
+      expect(missing).toHaveLength(2);
+    });
+
+    it('returns empty array when all active riders have configured shifts', () => {
+      const activeRoster = ['Rider One', 'Rider Two'];
+      const shiftsMap = new Map<string, RiderShiftConfig>([
+        ['rider one', {
+          riderName: 'Rider One',
+          normalizedName: 'rider one',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          totalPlannedHours: 9,
+          onboardedBy: 'Atharva',
+        }],
+        ['rider two', {
+          riderName: 'Rider Two',
+          normalizedName: 'rider two',
+          shiftType: '2nd Shift',
+          slot1StartHour: 15,
+          slot1EndHour: 24,
+          totalPlannedHours: 9,
+          onboardedBy: 'Krushna',
+        }],
+      ]);
+
+      const missing = getActiveRidersWithoutShift(activeRoster, shiftsMap);
+      expect(missing).toHaveLength(0);
+    });
+
+    it('persists and retrieves onboardedBy in dual persistence layer', async () => {
+      const testStoreId = '00000000-0000-0000-0000-000000000099';
+      const testShifts: RiderShiftConfig[] = [
+        {
+          riderName: 'Test Rider FM1',
+          normalizedName: 'test rider fm1',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          totalPlannedHours: 9,
+          joiningDate: '2026-10-25',
+          onboardedBy: 'FM1',
+        },
+        {
+          riderName: 'Test Rider FM2',
+          normalizedName: 'test rider fm2',
+          shiftType: '2nd Shift',
+          slot1StartHour: 15,
+          slot1EndHour: 24,
+          totalPlannedHours: 9,
+          joiningDate: '2026-10-26',
+          onboardedBy: 'FM2',
+        },
+      ];
+
+      // Save shifts
+      await saveRiderShiftsForStore({
+        storeId: testStoreId,
+        shifts: testShifts,
+      });
+
+      // Retrieve shifts
+      const loaded = await getRiderShiftsForStore(testStoreId);
+      expect(loaded.has('test rider fm1')).toBe(true);
+      expect(loaded.has('test rider fm2')).toBe(true);
+
+      const r1 = loaded.get('test rider fm1');
+      expect(r1?.onboardedBy).toBe('FM1');
+      expect(r1?.shiftType).toBe('Morning Shift');
+
+      const r2 = loaded.get('test rider fm2');
+      expect(r2?.onboardedBy).toBe('FM2');
+      expect(r2?.shiftType).toBe('2nd Shift');
+    });
   });
 });
