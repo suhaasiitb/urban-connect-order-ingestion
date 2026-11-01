@@ -8,7 +8,11 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
 import { getDateRangeForDays } from './analyticsService';
 import { fetchS2POtpAnalytics } from './s2pOtpService';
-import { INITIAL_TMK7_SNOP_RECORDS } from './planningDataSeed';
+import {
+  INITIAL_TMK7_SNOP_RECORDS,
+  INITIAL_TPH1_SNOP_RECORDS,
+  INITIAL_TPE2_SNOP_RECORDS,
+} from './planningDataSeed';
 import {
   calculateSlotTurnUpFromAttendance,
   fetchStoreRiderAttendance,
@@ -592,9 +596,15 @@ export function getStoredSnopRecords(warehouseId: string): SnopForecastRecord[] 
     // Fallback
   }
 
-  // Pre-seed default for TMK7 if nothing stored yet
+  // Pre-seed defaults for active stores if nothing stored yet
   if (norm === 'TMK7') {
     return INITIAL_TMK7_SNOP_RECORDS.map((r) => ({ ...r }));
+  }
+  if (norm === 'TPH1') {
+    return INITIAL_TPH1_SNOP_RECORDS.map((r) => ({ ...r }));
+  }
+  if (norm === 'TPE2') {
+    return INITIAL_TPE2_SNOP_RECORDS.map((r) => ({ ...r }));
   }
 
   return [];
@@ -632,6 +642,38 @@ export function getSnopUploadMeta(warehouseId: string): SnopUploadMeta | null {
     };
   }
 
+  // Pre-seeded TPH1 baseline metadata
+  if (norm === 'TPH1') {
+    const records = INITIAL_TPH1_SNOP_RECORDS;
+    const totalOrders = Math.round(records.reduce((acc, r) => acc + r.projectedOrders, 0));
+    return {
+      warehouseId: 'TPH1',
+      filename: 'TPH1_SNOP_Forecast_20261025_20261121.xlsx',
+      totalRows: records.length,
+      startDate: '2026-10-25',
+      endDate: '2026-11-21',
+      totalProjectedOrders: totalOrders,
+      uploadedAt: '2026-10-25T06:00:00.000Z',
+      uploadedBy: 'System Baseline',
+    };
+  }
+
+  // Pre-seeded TPE2 baseline metadata
+  if (norm === 'TPE2') {
+    const records = INITIAL_TPE2_SNOP_RECORDS;
+    const totalOrders = Math.round(records.reduce((acc, r) => acc + r.projectedOrders, 0));
+    return {
+      warehouseId: 'TPE2',
+      filename: 'TPE2_SNOP_Forecast_20261025_20261121.xlsx',
+      totalRows: records.length,
+      startDate: '2026-10-25',
+      endDate: '2026-11-21',
+      totalProjectedOrders: totalOrders,
+      uploadedAt: '2026-10-25T06:00:00.000Z',
+      uploadedBy: 'System Baseline',
+    };
+  }
+
   return null;
 }
 
@@ -639,9 +681,11 @@ export function getSnopUploadMeta(warehouseId: string): SnopUploadMeta | null {
  * Wraps an async promise or thenable with a fast timeout so network hangs never block UI or tests.
  */
 function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F): Promise<T | F> {
+  const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  const timeoutMs = isTest ? Math.min(ms, 1200) : Math.max(ms, 8000);
   return Promise.race([
     Promise.resolve(promise),
-    new Promise<F>((resolve) => setTimeout(() => resolve(fallback), ms)),
+    new Promise<F>((resolve) => setTimeout(() => resolve(fallback), timeoutMs)),
   ]);
 }
 

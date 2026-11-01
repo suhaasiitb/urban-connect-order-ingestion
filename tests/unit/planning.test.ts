@@ -20,7 +20,11 @@ import {
   saveStoreTargetDph,
   subscribeStoreTargetDph,
 } from '../../src/services/planningService';
-import { INITIAL_TMK7_SNOP_RECORDS } from '../../src/services/planningDataSeed';
+import {
+  INITIAL_TMK7_SNOP_RECORDS,
+  INITIAL_TPH1_SNOP_RECORDS,
+  INITIAL_TPE2_SNOP_RECORDS,
+} from '../../src/services/planningDataSeed';
 
 // Polyfill window.localStorage and EventTarget for Node environment if missing
 if (typeof window === 'undefined') {
@@ -207,7 +211,7 @@ describe('Store Planning & SNOP Forecast Suite', () => {
     });
   });
 
-  describe('4. Pre-seeded TMK7 Baseline Dataset', () => {
+  describe('4. Pre-seeded TMK7, TPH1, and TPE2 Baseline Datasets', () => {
     it('contains all 504 forecast slots for TMK7 covering 28 calendar days', () => {
       expect(INITIAL_TMK7_SNOP_RECORDS.length).toBe(504);
 
@@ -224,6 +228,49 @@ describe('Store Planning & SNOP Forecast Suite', () => {
           6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
         ]);
       }
+    });
+
+    it('contains all 504 forecast slots for TPH1 and TPE2 covering 28 calendar days', () => {
+      expect(INITIAL_TPH1_SNOP_RECORDS.length).toBe(504);
+      expect(INITIAL_TPE2_SNOP_RECORDS.length).toBe(504);
+
+      const tph1Dates = Array.from(new Set(INITIAL_TPH1_SNOP_RECORDS.map((r) => r.dateStr))).sort();
+      expect(tph1Dates).toHaveLength(28);
+      expect(tph1Dates[0]).toBe('2026-10-25');
+      expect(tph1Dates[tph1Dates.length - 1]).toBe('2026-11-21');
+
+      const tpe2Dates = Array.from(new Set(INITIAL_TPE2_SNOP_RECORDS.map((r) => r.dateStr))).sort();
+      expect(tpe2Dates).toHaveLength(28);
+      expect(tpe2Dates[0]).toBe('2026-10-25');
+      expect(tpe2Dates[tpe2Dates.length - 1]).toBe('2026-11-21');
+    });
+
+    it('provides baseline data and metadata out-of-the-box for TPH1 and TPE2 before any upload', () => {
+      const tph1Records = getStoredSnopRecords('TPH1');
+      expect(tph1Records).toHaveLength(504);
+
+      const tph1Meta = getSnopUploadMeta('TPH1');
+      expect(tph1Meta).not.toBeNull();
+      expect(tph1Meta?.warehouseId).toBe('TPH1');
+      expect(tph1Meta?.totalRows).toBe(504);
+
+      const tpe2Records = getStoredSnopRecords('TPE2');
+      expect(tpe2Records).toHaveLength(504);
+
+      const tpe2Meta = getSnopUploadMeta('TPE2');
+      expect(tpe2Meta).not.toBeNull();
+      expect(tpe2Meta?.warehouseId).toBe('TPE2');
+      expect(tpe2Meta?.totalRows).toBe(504);
+    });
+
+    it('returns all 28 available forecast dates for TPH1 and TPE2 out-of-the-box', () => {
+      const tph1Dates = getAvailableForecastDates('TPH1');
+      expect(tph1Dates).toHaveLength(28);
+      expect(tph1Dates).toContain('2026-11-02');
+
+      const tpe2Dates = getAvailableForecastDates('TPE2');
+      expect(tpe2Dates).toHaveLength(28);
+      expect(tpe2Dates).toContain('2026-11-02');
     });
 
     it('provides baseline data and metadata out-of-the-box before any upload', () => {
