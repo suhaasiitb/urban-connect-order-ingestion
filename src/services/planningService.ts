@@ -16,7 +16,11 @@ import {
 import {
   calculateSlotTurnUpFromAttendance,
   fetchStoreRiderAttendance,
+  getRidersForSlot,
+  type SlotRiderInfo,
+  type RiderAttendanceRecord,
 } from './riderAttendanceService';
+import { getRiderShiftsForStore } from './riderShiftService';
 
 export interface SnopForecastRecord {
   city: string;
@@ -57,11 +61,12 @@ export interface SlotPlanningRow {
   projectedOrders: number;
   targetDph: number;
   requiredRiders: number;
-  plannedTurnUp: number; // expected rider turn-up populated from marked attendance
+  plannedTurnUp: number; // expected rider turn-up populated from marked attendance / scheduled roster shifts
   avgTurnUpLastWeek: number; // backward compatibility fallback
   deltaTurnUpVsRequired: number; // plannedTurnUp - requiredRiders
   turnUpCoveragePct: number;
   status: 'surplus' | 'balanced' | 'deficit';
+  slotRiders?: SlotRiderInfo[];
 }
 
 export interface ShiftPeakMetrics {
@@ -89,6 +94,7 @@ export interface DayPlanningSummary {
   hasAttendanceData?: boolean;
   attendancePresentCount?: number;
   attendanceTotalRoster?: number;
+  isTurnUpFromRoster?: boolean;
 }
 
 // Master LocalStorage Keys for instant zero-latency caching
@@ -1259,18 +1265,30 @@ export async function fetchPlanningForDate(params: {
   let attendancePresentCount = 0;
   let attendanceTotalRoster = 0;
   let hasAttendanceData = false;
+  let attendanceRecords: RiderAttendanceRecord[] = [];
+  let isTurnUpFromRoster = false;
 
   if (!plannedTurnUpMap) {
     try {
+      const shiftsMap = storeId && !storeId.startsWith('test-') ? await getRiderShiftsForStore(storeId) : undefined;
       const attendance = await fetchStoreRiderAttendance({
         storeId,
         warehouseId: normWh,
         attendanceDate: dateStr,
+        shiftsMap,
       });
+      attendanceRecords = attendance.records;
       attendancePresentCount = attendance.presentCount;
       attendanceTotalRoster = attendance.totalRiders;
       hasAttendanceData = attendance.presentCount > 0 || attendance.records.some((r) => r.status !== 'unmarked');
-      plannedTurnUpMap = calculateSlotTurnUpFromAttendance(attendance.records);
+
+      const hasConfirmedPresent = attendance.presentCount > 0;
+      const fallbackToRoster = !hasConfirmedPresent && attendance.totalRiders > 0;
+      isTurnUpFromRoster = fallbackToRoster;
+
+      plannedTurnUpMap = calculateSlotTurnUpFromAttendance(attendance.records, {
+        fallbackToRosterIfUnmarked: fallbackToRoster,
+      });
     } catch (err) {
       console.warn('Could not load attendance for planning:', err);
     }
@@ -1321,6 +1339,12 @@ export async function fetchPlanningForDate(params: {
       status = 'surplus';
     }
 
+    const slotRiders = attendanceRecords.length > 0
+      ? getRidersForSlot(attendanceRecords, h, {
+          fallbackToRosterIfUnmarked: isTurnUpFromRoster,
+        })
+      : [];
+
     slotRows.push({
       hour: h,
       slotLabel: formatPlanningSlotLabel(h),
@@ -1332,6 +1356,7 @@ export async function fetchPlanningForDate(params: {
       deltaTurnUpVsRequired: delta,
       turnUpCoveragePct,
       status,
+      slotRiders,
     });
 
     totalOrders += projectedOrders;
@@ -1427,6 +1452,7 @@ export async function fetchPlanningForDate(params: {
     hasAttendanceData,
     attendancePresentCount,
     attendanceTotalRoster,
+    isTurnUpFromRoster,
   };
 }
 

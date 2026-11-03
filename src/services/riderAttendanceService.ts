@@ -11,6 +11,7 @@ import { normalizeRiderName, getActiveRidersRoster } from './activeRiderService'
 import {
   type RiderShiftConfig,
   SHIFT_PRESETS,
+  formatShiftTimings,
   getRiderShiftsForStore,
 } from './riderShiftService';
 
@@ -32,6 +33,7 @@ export interface RiderAttendanceRecord {
   status: AttendanceStatus;
   isPresent: boolean;
   notes?: string | null;
+  onboardedBy?: string | null;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -116,11 +118,46 @@ export function isRiderWorkingInSlot(
 }
 
 /**
- * Calculates hourly expected turn-up (riders count) for slots 6 to 23
- * based on riders marked as 'present'.
+ * Synchronizes attendance records with the latest shift configurations from store_rider_shifts.
+ * Updates shiftType, slot timings, and onboardedBy for any rider whose shift was edited.
+ */
+export function syncAttendanceWithLatestShifts(
+  records: RiderAttendanceRecord[],
+  shiftsMap?: Map<string, RiderShiftConfig> | null
+): RiderAttendanceRecord[] {
+  if (!records || records.length === 0 || !shiftsMap || shiftsMap.size === 0) {
+    return records;
+  }
+
+  return records.map((rec) => {
+    const norm = rec.normalizedName || normalizeRiderName(rec.riderName);
+    const shift = shiftsMap.get(norm);
+    if (!shift) return rec;
+
+    return {
+      ...rec,
+      shiftType: shift.shiftType || rec.shiftType,
+      slot1StartHour: shift.slot1StartHour ?? rec.slot1StartHour,
+      slot1EndHour: shift.slot1EndHour ?? rec.slot1EndHour,
+      slot2StartHour:
+        shift.slot2StartHour !== undefined ? shift.slot2StartHour : rec.slot2StartHour,
+      slot2EndHour:
+        shift.slot2EndHour !== undefined ? shift.slot2EndHour : rec.slot2EndHour,
+      onboardedBy:
+        shift.onboardedBy !== undefined ? shift.onboardedBy : rec.onboardedBy,
+    };
+  });
+}
+
+/**
+ * Calculates hourly expected turn-up (riders count) for slots 6 to 23.
+ * - When riders are marked 'present', counts marked Present riders.
+ * - When attendance is unmarked (default state before attendance is marked) and fallbackToRosterIfUnmarked is true,
+ *   counts scheduled roster riders whose shift covers that slot (excluding explicitly absent riders).
  */
 export function calculateSlotTurnUpFromAttendance(
-  records: RiderAttendanceRecord[]
+  records: RiderAttendanceRecord[],
+  options?: { fallbackToRosterIfUnmarked?: boolean }
 ): Record<number, number> {
   const slotMap: Record<number, number> = {};
   for (let h = 0; h < 24; h++) {
@@ -135,7 +172,17 @@ export function calculateSlotTurnUpFromAttendance(
     (r) => r.status === 'present' || r.isPresent === true
   );
 
-  for (const rider of presentRiders) {
+  let targetRiders: RiderAttendanceRecord[];
+  if (presentRiders.length > 0) {
+    targetRiders = presentRiders;
+  } else if (options?.fallbackToRosterIfUnmarked) {
+    // When attendance is unmarked, planned turn-up is derived from scheduled roster shifts
+    targetRiders = records.filter((r) => r.status !== 'absent');
+  } else {
+    targetRiders = [];
+  }
+
+  for (const rider of targetRiders) {
     for (let h = 6; h <= 23; h++) {
       if (isRiderWorkingInSlot(rider, h)) {
         slotMap[h] = (slotMap[h] || 0) + 1;
@@ -144,6 +191,81 @@ export function calculateSlotTurnUpFromAttendance(
   }
 
   return slotMap;
+}
+
+export interface SlotRiderInfo {
+  riderName: string;
+  normalizedName: string;
+  phone?: string | null;
+  shiftType: string;
+  slot1StartHour: number;
+  slot1EndHour: number;
+  slot2StartHour?: number | null;
+  slot2EndHour?: number | null;
+  status: AttendanceStatus;
+  isPresent: boolean;
+  onboardedBy?: string | null;
+  isCountedInTurnUp: boolean;
+  timingsFormatted: string;
+}
+
+/**
+ * Returns the list of riders active in a specific slot hour, indicating whether
+ * each rider is counted in the turn-up count, along with their shift timings, status, and onboardedBy.
+ */
+export function getRidersForSlot(
+  records: RiderAttendanceRecord[],
+  slotHour: number,
+  options?: { fallbackToRosterIfUnmarked?: boolean }
+): SlotRiderInfo[] {
+  if (!records || records.length === 0) return [];
+
+  const hasPresentRiders = records.some((r) => r.status === 'present' || r.isPresent === true);
+  const fallback = Boolean(options?.fallbackToRosterIfUnmarked && !hasPresentRiders);
+
+  const list: SlotRiderInfo[] = [];
+
+  for (const r of records) {
+    if (isRiderWorkingInSlot(r, slotHour)) {
+      let isCounted = false;
+      if (hasPresentRiders) {
+        isCounted = r.status === 'present' || r.isPresent === true;
+      } else if (fallback) {
+        isCounted = r.status !== 'absent';
+      }
+
+      list.push({
+        riderName: r.riderName,
+        normalizedName: r.normalizedName || normalizeRiderName(r.riderName),
+        phone: r.phone || null,
+        shiftType: r.shiftType,
+        slot1StartHour: r.slot1StartHour,
+        slot1EndHour: r.slot1EndHour,
+        slot2StartHour: r.slot2StartHour,
+        slot2EndHour: r.slot2EndHour,
+        status: r.status,
+        isPresent: Boolean(r.isPresent),
+        onboardedBy: r.onboardedBy || null,
+        isCountedInTurnUp: isCounted,
+        timingsFormatted: formatShiftTimings({
+          slot1StartHour: r.slot1StartHour,
+          slot1EndHour: r.slot1EndHour,
+          slot2StartHour: r.slot2StartHour ?? undefined,
+          slot2EndHour: r.slot2EndHour ?? undefined,
+        }),
+      });
+    }
+  }
+
+  // Sort: counted in turn-up first, then alphabetically by rider name
+  list.sort((a, b) => {
+    if (a.isCountedInTurnUp !== b.isCountedInTurnUp) {
+      return a.isCountedInTurnUp ? -1 : 1;
+    }
+    return a.riderName.localeCompare(b.riderName);
+  });
+
+  return list;
 }
 
 /**
@@ -228,10 +350,20 @@ export async function fetchStoreRiderAttendance(params: {
   const { storeId, warehouseId, attendanceDate } = params;
   const normWh = (warehouseId || 'TMK7').toUpperCase().trim();
 
+  let shifts = params.shiftsMap;
+  if (!shifts && storeId && !storeId.startsWith('test-')) {
+    try {
+      shifts = await getRiderShiftsForStore(storeId);
+    } catch {
+      // Ignore
+    }
+  }
+
   // 1. Try localStorage cache for instant zero-latency UI
   const cached = getStoredAttendanceSync(normWh, attendanceDate);
   if (cached && cached.length > 0) {
-    return buildAttendanceSummary(normWh, attendanceDate, cached, storeId);
+    const synced = shifts ? syncAttendanceWithLatestShifts(cached, shifts) : cached;
+    return buildAttendanceSummary(normWh, attendanceDate, synced, storeId);
   }
 
   // Short-circuit in test environments or dummy store IDs
@@ -271,21 +403,24 @@ export async function fetchStoreRiderAttendance(params: {
         status: (row.attendance_status as AttendanceStatus) || (row.is_present ? 'present' : 'unmarked'),
         isPresent: Boolean(row.is_present),
         notes: row.notes,
+        onboardedBy: row.onboarded_by || null,
         updatedAt: row.updated_at,
         updatedBy: row.updated_by,
       }));
+
+      const synced = shifts ? syncAttendanceWithLatestShifts(records, shifts) : records;
 
       // Cache locally
       try {
         if (typeof window !== 'undefined' && window.localStorage) {
           const key = getStoreAttendanceStorageKey(normWh, attendanceDate);
-          window.localStorage.setItem(key, JSON.stringify(records));
+          window.localStorage.setItem(key, JSON.stringify(synced));
         }
       } catch {
         // Storage fail
       }
 
-      return buildAttendanceSummary(normWh, attendanceDate, records, storeId);
+      return buildAttendanceSummary(normWh, attendanceDate, synced, storeId);
     }
   } catch (err) {
     console.warn(`Supabase fetchStoreRiderAttendance error for ${normWh}:`, err);
@@ -293,9 +428,8 @@ export async function fetchStoreRiderAttendance(params: {
 
   // 3. Fallback: Initialize an unmarked roster for this date
   let ridersList = params.activeRiders;
-  let shifts = params.shiftsMap;
 
-  // If active riders or shifts not passed, load them
+  // If active riders not passed, load them
   if (!ridersList && storeId) {
     try {
       const roster = await getActiveRidersRoster(storeId, normWh);
@@ -355,6 +489,7 @@ export async function fetchStoreRiderAttendance(params: {
       slot1EndHour,
       slot2StartHour,
       slot2EndHour,
+      onboardedBy: shift?.onboardedBy || null,
       status: 'unmarked', // Default to unmarked as requested by user
       isPresent: false,
     });

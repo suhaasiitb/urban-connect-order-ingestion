@@ -10,6 +10,7 @@ import type { StoreMaster } from '../domain/types';
 import type { UserProfile } from '../services/authService';
 import {
   type DayPlanningSummary,
+  type SlotPlanningRow,
   exportPlanningToExcel,
   fetchPlanningForDate,
   fetchStoreSnopForecast,
@@ -28,7 +29,9 @@ import {
   fetchStoreRiderAttendance,
   subscribeStoreRiderAttendance,
 } from '../services/riderAttendanceService';
+import { STORE_RIDER_SHIFTS_CHANGED_EVENT } from '../services/riderShiftService';
 import { RiderAttendanceModal } from './RiderAttendanceModal';
+import { PlannedTurnUpRidersModal } from './PlannedTurnUpRidersModal';
 
 interface PlanningSectionProps {
   stores: StoreMaster[];
@@ -73,6 +76,10 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
   const [attendanceSummary, setAttendanceSummary] = useState<StoreAttendanceSummary | null>(null);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [forecastRevision, setForecastRevision] = useState(0);
+
+  // Turn-Up Riders popup modal state
+  const [selectedTurnUpSlot, setSelectedTurnUpSlot] = useState<SlotPlanningRow | null>(null);
+  const [isTurnUpModalOpen, setIsTurnUpModalOpen] = useState(false);
 
   // Load available forecast dates whenever store changes
   useEffect(() => {
@@ -195,10 +202,38 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       }
     );
 
+    // In-tab event listener for rider shifts updates (recalibrates PLANNED TURN-UP instantly)
+    const handleShiftsUpdated = (e: Event) => {
+      const custom = e as CustomEvent<{ storeId?: string }>;
+      if (!custom.detail?.storeId || custom.detail.storeId === selectedStore.id) {
+        // Also refresh attendance summary in state
+        void fetchStoreRiderAttendance({
+          storeId: selectedStore.id,
+          warehouseId: storeCode,
+          attendanceDate: selectedDate,
+        }).then((att) => {
+          setAttendanceSummary(att);
+        });
+        void loadPlanningData();
+      }
+    };
+    window.addEventListener(STORE_RIDER_SHIFTS_CHANGED_EVENT, handleShiftsUpdated);
+
     return () => {
       unsubAttendance();
+      window.removeEventListener(STORE_RIDER_SHIFTS_CHANGED_EVENT, handleShiftsUpdated);
     };
   }, [selectedStore, selectedDate, loadPlanningData]);
+
+  // Keep open turn-up modal in sync when summary is recalibrated
+  useEffect(() => {
+    if (isTurnUpModalOpen && selectedTurnUpSlot && summary) {
+      const freshSlot = summary.slots.find((s) => s.hour === selectedTurnUpSlot.hour);
+      if (freshSlot && freshSlot !== selectedTurnUpSlot) {
+        setSelectedTurnUpSlot(freshSlot);
+      }
+    }
+  }, [summary, isTurnUpModalOpen, selectedTurnUpSlot]);
 
   const handleAttendanceSaved = (updatedRecords: RiderAttendanceRecord[]) => {
     const newSummary = buildAttendanceSummary(
@@ -450,12 +485,17 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
           >
             {loading
               ? '...'
+              : (attendanceSummary?.presentCount ?? 0) > 0
+              ? `${attendanceSummary?.presentCount} Present`
+              : summary?.isTurnUpFromRoster
+              ? `${attendanceSummary?.totalRiders ?? summary.attendanceTotalRoster ?? 0} Scheduled`
               : `${attendanceSummary?.presentCount ?? 0} Present`}
           </strong>
           <span className="kpi-sub">
             {attendanceSummary ? (
               <>
                 Active: <strong>{attendanceSummary.totalRiders}</strong> | Peak Slot: <strong>{summary?.peakTurnUp ?? 0} riders</strong>
+                {summary?.isTurnUpFromRoster && (attendanceSummary.presentCount === 0) ? ' (Shift Roster)' : ''}
               </>
             ) : (
               'Attendance unmarked'
@@ -775,7 +815,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
             <div className="callout-left">
               <span className="callout-badge">Operations Plan</span>
               <span className="callout-text">
-                Displaying hourly order projections for <strong>{formattedSelectedDate}</strong> with required workforce sizing computed at <strong>{targetDph.toFixed(2)} DPH</strong> [<code>CEIL(Orders ÷ DPH)</code>] and turn-up from marked attendance ({attendanceSummary?.presentCount ?? 0} Present).
+                Displaying hourly order projections for <strong>{formattedSelectedDate}</strong> with required workforce sizing computed at <strong>{targetDph.toFixed(2)} DPH</strong> [<code>CEIL(Orders ÷ DPH)</code>] and turn-up from {summary.isTurnUpFromRoster ? `scheduled rider shifts (${attendanceSummary?.totalRiders ?? summary.attendanceTotalRoster ?? 0} Scheduled, attendance unmarked)` : `marked attendance (${attendanceSummary?.presentCount ?? 0} Present)`}.
               </span>
             </div>
             <span className="text-secondary text-xs">
@@ -859,11 +899,24 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                       </strong>
                     </td>
 
-                    {/* Planned Turn-Up (populated from marked attendance) */}
-                    <td className="td-active text-center font-medium">
-                      <span className={s.plannedTurnUp > 0 ? 'text-slate font-semibold text-base' : 'text-muted'}>
-                        {s.plannedTurnUp}
-                      </span>
+                    {/* Planned Turn-Up (populated from marked attendance / scheduled shift timings) */}
+                    <td className="td-active text-center font-medium td-turnup-interactive">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTurnUpSlot(s);
+                          setIsTurnUpModalOpen(true);
+                        }}
+                        className={`btn-slot-turnup-trigger ${s.plannedTurnUp > 0 ? 'turnup-active' : 'turnup-zero'}`}
+                        title={`Click to view riders planned for Slot ${s.hour} (${s.slotLabel})`}
+                      >
+                        <span className="turnup-number">
+                          {s.plannedTurnUp}
+                        </span>
+                        <span className="turnup-icon-indicator" aria-hidden="true">
+                          👥
+                        </span>
+                      </button>
                     </td>
 
                     {/* Status Column with Coloured Gradient Font for Short vs Surplus */}
@@ -969,6 +1022,26 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
           initialRecords={attendanceSummary?.records ?? []}
           currentUser={currentUser}
           onSaved={handleAttendanceSaved}
+        />
+      )}
+
+      {/* Planned Turn-Up Riders Modal */}
+      {isTurnUpModalOpen && selectedTurnUpSlot && (
+        <PlannedTurnUpRidersModal
+          isOpen={isTurnUpModalOpen}
+          onClose={() => {
+            setIsTurnUpModalOpen(false);
+            setSelectedTurnUpSlot(null);
+          }}
+          slotHour={selectedTurnUpSlot.hour}
+          slotLabel={selectedTurnUpSlot.slotLabel}
+          storeName={selectedStore?.store_name}
+          warehouseId={selectedStore?.store_code}
+          planningDate={selectedDate}
+          requiredRiders={selectedTurnUpSlot.requiredRiders}
+          plannedTurnUp={selectedTurnUpSlot.plannedTurnUp}
+          riders={selectedTurnUpSlot.slotRiders || []}
+          isTurnUpFromRoster={summary?.isTurnUpFromRoster}
         />
       )}
     </div>

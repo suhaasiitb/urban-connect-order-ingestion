@@ -11,11 +11,18 @@ import {
   calculateSlotTurnUpFromAttendance,
   fetchStoreRiderAttendance,
   getStoreAttendanceStorageKey,
+  getRidersForSlot,
   isRiderWorkingInSlot,
   saveStoreRiderAttendance,
   subscribeStoreRiderAttendance,
+  syncAttendanceWithLatestShifts,
 } from '../../src/services/riderAttendanceService';
 import { fetchPlanningForDate, recalculatePlanningWithDph } from '../../src/services/planningService';
+import {
+  type RiderShiftConfig,
+  saveSingleRiderShift,
+  STORE_RIDER_SHIFTS_CHANGED_EVENT,
+} from '../../src/services/riderShiftService';
 
 // Polyfill window.localStorage and EventTarget for Node environment if missing
 if (typeof window === 'undefined') {
@@ -512,6 +519,187 @@ describe('Rider Attendance & Turn-Up Planning Suite', () => {
       expect(nov2Summary.records[0].status).toBe('present');
       expect(nov2Summary.updatedBy).toBe('admin@urbanconnect.in');
       expect(nov2Summary.lastUpdated).toBeDefined();
+    });
+  });
+
+  describe('6. Shift Timing Synchronization, Dynamic Turn-Up Recalibration & Slot Breakdown', () => {
+    it('synchronizes attendance records with the latest shiftsMap updates', () => {
+      const records: RiderAttendanceRecord[] = [
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-02',
+          riderName: 'ABHAY GORE',
+          normalizedName: 'abhay gore',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          status: 'unmarked',
+          isPresent: false,
+        },
+      ];
+
+      const shiftsMap = new Map<string, RiderShiftConfig>();
+      shiftsMap.set('abhay gore', {
+        riderName: 'ABHAY GORE',
+        normalizedName: 'abhay gore',
+        shiftType: '2nd Shift',
+        slot1StartHour: 15,
+        slot1EndHour: 24,
+        totalPlannedHours: 9,
+        onboardedBy: 'Sunil',
+      });
+
+      const synced = syncAttendanceWithLatestShifts(records, shiftsMap);
+      expect(synced[0].shiftType).toBe('2nd Shift');
+      expect(synced[0].slot1StartHour).toBe(15);
+      expect(synced[0].slot1EndHour).toBe(24);
+      expect(synced[0].onboardedBy).toBe('Sunil');
+    });
+
+    it('recalibrates hourly slot turn-up dynamically when shift timings change', () => {
+      // Initially Rider 1 is on Morning Shift (6-15), Rider 2 is on 2nd Shift (15-24)
+      const records: RiderAttendanceRecord[] = [
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-02',
+          riderName: 'Rider 1',
+          normalizedName: 'rider 1',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          status: 'unmarked',
+          isPresent: false,
+        },
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-02',
+          riderName: 'Rider 2',
+          normalizedName: 'rider 2',
+          shiftType: '2nd Shift',
+          slot1StartHour: 15,
+          slot1EndHour: 24,
+          status: 'unmarked',
+          isPresent: false,
+        },
+      ];
+
+      // With fallbackToRosterIfUnmarked: true, Slot 6 has 1 rider, Slot 15 has 1 rider
+      const initialTurnUp = calculateSlotTurnUpFromAttendance(records, {
+        fallbackToRosterIfUnmarked: true,
+      });
+      expect(initialTurnUp[6]).toBe(1);
+      expect(initialTurnUp[15]).toBe(1);
+
+      // Now Rider 1 is edited to 2nd Shift (15-24)
+      const shiftsMap = new Map<string, RiderShiftConfig>();
+      shiftsMap.set('rider 1', {
+        riderName: 'Rider 1',
+        normalizedName: 'rider 1',
+        shiftType: '2nd Shift',
+        slot1StartHour: 15,
+        slot1EndHour: 24,
+        totalPlannedHours: 9,
+        onboardedBy: 'Atharva',
+      });
+
+      const recalibratedRecords = syncAttendanceWithLatestShifts(records, shiftsMap);
+      const recalibratedTurnUp = calculateSlotTurnUpFromAttendance(recalibratedRecords, {
+        fallbackToRosterIfUnmarked: true,
+      });
+
+      // Slot 6 now has 0 riders (Rider 1 moved to evening)
+      expect(recalibratedTurnUp[6]).toBe(0);
+      // Slot 15 now has 2 riders
+      expect(recalibratedTurnUp[15]).toBe(2);
+    });
+
+    it('returns exact list of riders active in a slot with onboardedBy, shift timings, and status', () => {
+      const records: RiderAttendanceRecord[] = [
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-02',
+          riderName: 'Abdul Raheem salmani',
+          normalizedName: 'abdul raheem salmani',
+          phone: '8429891727',
+          shiftType: '2nd Shift',
+          slot1StartHour: 16,
+          slot1EndHour: 24,
+          status: 'unmarked',
+          isPresent: false,
+          onboardedBy: 'Krushna',
+        },
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-02',
+          riderName: 'ABHAY GORE',
+          normalizedName: 'abhay gore',
+          phone: '8530615177',
+          shiftType: '2nd Shift',
+          slot1StartHour: 15,
+          slot1EndHour: 24,
+          status: 'unmarked',
+          isPresent: false,
+          onboardedBy: 'Sunil',
+        },
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-02',
+          riderName: 'ABHIJEET WAGH',
+          normalizedName: 'abhijeet wagh',
+          phone: '7499579269',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 14,
+          status: 'unmarked',
+          isPresent: false,
+          onboardedBy: 'FM1',
+        },
+      ];
+
+      // Query Slot 16 (4 PM)
+      const slot16Riders = getRidersForSlot(records, 16, { fallbackToRosterIfUnmarked: true });
+      expect(slot16Riders.length).toBe(2);
+      expect(slot16Riders.map((r) => r.riderName)).toContain('Abdul Raheem salmani');
+      expect(slot16Riders.map((r) => r.riderName)).toContain('ABHAY GORE');
+      expect(slot16Riders.map((r) => r.riderName)).not.toContain('ABHIJEET WAGH');
+
+      const abhay = slot16Riders.find((r) => r.riderName === 'ABHAY GORE');
+      expect(abhay?.onboardedBy).toBe('Sunil');
+      expect(abhay?.isCountedInTurnUp).toBe(true);
+      expect(abhay?.timingsFormatted).toBe('3 PM – 12 AM');
+
+      // Query Slot 6 (6 AM)
+      const slot6Riders = getRidersForSlot(records, 6, { fallbackToRosterIfUnmarked: true });
+      expect(slot6Riders.length).toBe(1);
+      expect(slot6Riders[0].riderName).toBe('ABHIJEET WAGH');
+      expect(slot6Riders[0].onboardedBy).toBe('FM1');
+      expect(slot6Riders[0].timingsFormatted).toBe('6 AM – 2 PM');
+    });
+
+    it('dispatches store_rider_shifts_changed event when saving individual rider shift', async () => {
+      let notifiedStoreId: string | null = null;
+      const listener = (e: unknown) => {
+        const custom = e as { detail?: { storeId?: string } };
+        notifiedStoreId = custom.detail?.storeId ?? null;
+      };
+
+      window.addEventListener(STORE_RIDER_SHIFTS_CHANGED_EVENT, listener);
+
+      await saveSingleRiderShift({
+        storeId: 'test-store-123',
+        shift: {
+          riderName: 'Test Rider',
+          normalizedName: 'test rider',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          totalPlannedHours: 9,
+          onboardedBy: 'FM2',
+        },
+      });
+
+      expect(notifiedStoreId).toBe('test-store-123');
+      window.removeEventListener(STORE_RIDER_SHIFTS_CHANGED_EVENT, listener);
     });
   });
 });

@@ -214,7 +214,129 @@ export function classifyShiftType(shift: {
   return 'Morning Shift';
 }
 
-const LOCAL_STORAGE_PREFIX = 'urban_connect_rider_shifts_';
+export const LOCAL_STORAGE_PREFIX = 'urban_connect_rider_shifts_';
+export const STORE_RIDER_SHIFTS_CHANGED_EVENT = 'store_rider_shifts_changed';
+const LOCAL_STORAGE_ATTENDANCE_PREFIX = 'urban_connect_rider_attendance_';
+
+/**
+ * Dispatches an in-tab event whenever rider shifts are saved or updated for a store,
+ * allowing PlanningSection, Attendance modal, and Pivot tables to recalibrate instantly.
+ */
+export function notifyRiderShiftsChanged(storeId: string): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(STORE_RIDER_SHIFTS_CHANGED_EVENT, {
+          detail: { storeId },
+        })
+      );
+    } catch {
+      // Non-browser or SSR environment
+    }
+  }
+}
+
+/**
+ * Synchronously updates cached attendance rosters in localStorage for the affected rider
+ * across all dates so slot turn-up calculations recalibrate without waiting for a re-fetch.
+ */
+export function updateCachedAttendanceForRider(
+  riderName: string,
+  updatedShift: {
+    shiftType: ShiftType;
+    slot1StartHour: number;
+    slot1EndHour: number;
+    slot2StartHour?: number | null;
+    slot2EndHour?: number | null;
+    onboardedBy?: string | null;
+  }
+): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const norm = normalizeRiderName(riderName);
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (!key || !key.startsWith(LOCAL_STORAGE_ATTENDANCE_PREFIX)) continue;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        const records = JSON.parse(raw);
+        if (!Array.isArray(records)) continue;
+        let changed = false;
+        const updated = records.map((r: Record<string, unknown>) => {
+          const rNorm = (r.normalizedName as string) || normalizeRiderName(r.riderName as string);
+          if (rNorm === norm) {
+            changed = true;
+            return {
+              ...r,
+              shiftType: updatedShift.shiftType,
+              slot1StartHour: updatedShift.slot1StartHour,
+              slot1EndHour: updatedShift.slot1EndHour,
+              slot2StartHour: updatedShift.slot2StartHour !== undefined ? updatedShift.slot2StartHour : r.slot2StartHour,
+              slot2EndHour: updatedShift.slot2EndHour !== undefined ? updatedShift.slot2EndHour : r.slot2EndHour,
+              onboardedBy: updatedShift.onboardedBy !== undefined ? updatedShift.onboardedBy : r.onboardedBy,
+            };
+          }
+          return r;
+        });
+        if (changed) {
+          window.localStorage.setItem(key, JSON.stringify(updated));
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Synchronously updates cached attendance rosters in localStorage across all dates
+ * with a newly saved shifts map.
+ */
+export function syncCachedAttendanceRosters(
+  shiftsMap: Map<string, RiderShiftConfig>
+): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage || shiftsMap.size === 0) return;
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (!key || !key.startsWith(LOCAL_STORAGE_ATTENDANCE_PREFIX)) continue;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        const records = JSON.parse(raw);
+        if (!Array.isArray(records)) continue;
+        let changed = false;
+        const updated = records.map((r: Record<string, unknown>) => {
+          const rNorm = (r.normalizedName as string) || normalizeRiderName(r.riderName as string);
+          const shift = shiftsMap.get(rNorm);
+          if (shift) {
+            changed = true;
+            return {
+              ...r,
+              shiftType: shift.shiftType,
+              slot1StartHour: shift.slot1StartHour,
+              slot1EndHour: shift.slot1EndHour,
+              slot2StartHour: shift.slot2StartHour !== undefined ? shift.slot2StartHour : r.slot2StartHour,
+              slot2EndHour: shift.slot2EndHour !== undefined ? shift.slot2EndHour : r.slot2EndHour,
+              onboardedBy: shift.onboardedBy !== undefined ? shift.onboardedBy : r.onboardedBy,
+            };
+          }
+          return r;
+        });
+        if (changed) {
+          window.localStorage.setItem(key, JSON.stringify(updated));
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  } catch {
+    // Ignore
+  }
+}
 
 /**
  * Wraps an async promise or thenable with a fast timeout so network hangs never block UI or tests.
@@ -428,6 +550,13 @@ export async function saveRiderShiftsForStore(params: {
       upsertErr = retry.error;
     }
 
+    const shiftsMap = new Map<string, RiderShiftConfig>();
+    for (const s of normalizedShifts) {
+      shiftsMap.set(s.normalizedName || normalizeRiderName(s.riderName), s);
+    }
+    syncCachedAttendanceRosters(shiftsMap);
+    notifyRiderShiftsChanged(storeId);
+
     if (upsertErr) {
       console.warn('Supabase upsert to store_rider_shifts note, using localStorage cache:', upsertErr.message);
       // Return ok: true if saved to localStorage cache
@@ -438,6 +567,7 @@ export async function saveRiderShiftsForStore(params: {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('Supabase store_rider_shifts save error:', msg);
+    notifyRiderShiftsChanged(storeId);
     return { ok: true, savedCount: shifts.length };
   }
 }
@@ -486,6 +616,8 @@ export async function saveSingleRiderShift(params: {
       list.push(normalizedShift);
     }
     storage?.setItem(`${LOCAL_STORAGE_PREFIX}${storeId}`, JSON.stringify(list));
+    updateCachedAttendanceForRider(normalizedShift.riderName, normalizedShift);
+    notifyRiderShiftsChanged(storeId);
   } catch (err) {
     console.warn('Could not cache single rider shift to localStorage:', err);
   }
@@ -569,6 +701,7 @@ export async function deleteSingleRiderShift(params: {
           (s) => (s.normalizedName || normalizeRiderName(s.riderName)) !== norm
         );
         storage?.setItem(`${LOCAL_STORAGE_PREFIX}${storeId}`, JSON.stringify(filtered));
+        notifyRiderShiftsChanged(storeId);
       }
     }
   } catch (err) {
