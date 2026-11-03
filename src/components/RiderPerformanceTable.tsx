@@ -10,14 +10,19 @@ import {
   formatShiftTimings,
   calculatePlannedHours,
   classifyShiftType,
+  SHIFT_PRESETS,
+  saveSingleRiderShift,
+  deleteSingleRiderShift,
 } from '../services/riderShiftService';
 import { formatDnrTimestamp, type RiderDnrSummary, type StoreDnrSummary } from '../services/dnrService';
 import { RiderDnrResolutionModal } from './RiderDnrResolutionModal';
+import { IndividualRiderShiftModal } from './IndividualRiderShiftModal';
 
 interface RiderPerformanceTableProps {
   data: RiderPerformancePivotResult;
   storeCode: string;
   storeName: string;
+  storeId?: string;
   selectedDays: number;
   onSelectDaysPreset: (days: number) => void;
   startDate: string;
@@ -30,6 +35,8 @@ interface RiderPerformanceTableProps {
   riderShiftsMap?: Map<string, RiderShiftConfig>;
   dnrSummary?: StoreDnrSummary | null;
   onOpenShiftModal?: (targetRider?: string, initialFilter?: string) => void;
+  onSaveSingleShift?: (shift: RiderShiftConfig) => Promise<{ ok: boolean; error?: string }>;
+  onDeleteSingleShift?: (riderName: string) => Promise<{ ok: boolean; error?: string }>;
   rosterLastUpdated?: string | null;
   rosterTotalCount?: number;
   shiftFilter?: string;
@@ -40,6 +47,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   data,
   storeCode,
   storeName,
+  storeId,
   selectedDays,
   onSelectDaysPreset,
   startDate,
@@ -52,6 +60,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   riderShiftsMap,
   dnrSummary,
   onOpenShiftModal,
+  onSaveSingleShift,
+  onDeleteSingleShift,
   rosterLastUpdated,
   rosterTotalCount = 0,
   shiftFilter: shiftFilterProp,
@@ -68,6 +78,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const [highlightDnr, setHighlightDnr] = useState<boolean>(false);
   const [selectedDnrRider, setSelectedDnrRider] = useState<RiderDnrSummary | null>(null);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<boolean>(false);
+  const [individualModalRider, setIndividualModalRider] = useState<string | null>(null);
+  const [savingShiftRider, setSavingShiftRider] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<
     'name' | 'phone' | 'shift' | 'compliance' | 'activeDays' | 'avgOrders' | 'avgHours' | 'totalOrders'
   >('name');
@@ -98,6 +110,111 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     } else {
       setSortBy(field);
       setSortAsc(field === 'name' || field === 'phone' || field === 'shift'); // default asc for text
+    }
+  };
+
+  // Quick Preset Helper Checkers
+  const isPresetMorning = (s: RiderShiftConfig) =>
+    s.slot1StartHour === 6 &&
+    s.slot1EndHour === 15 &&
+    (s.slot2StartHour == null || s.slot2EndHour == null);
+
+  const isPreset2nd = (s: RiderShiftConfig) =>
+    s.slot1StartHour === 15 &&
+    s.slot1EndHour === 24 &&
+    (s.slot2StartHour == null || s.slot2EndHour == null);
+
+  const isPresetSplit = (s: RiderShiftConfig) =>
+    s.slot1StartHour === 14 &&
+    s.slot1EndHour === 22 &&
+    (s.slot2StartHour == null || s.slot2EndHour == null);
+
+  const isStandardPreset = (s: RiderShiftConfig) =>
+    isPresetMorning(s) || isPreset2nd(s) || isPresetSplit(s);
+
+  // Handle Quick Inline Shift Selection
+  const handleInlineShiftSelect = async (riderName: string, selectedAction: string) => {
+    if (selectedAction === 'ACTION_EDIT') {
+      setIndividualModalRider(riderName);
+      return;
+    }
+
+    if (selectedAction === 'ACTION_UNASSIGN') {
+      if (!window.confirm(`Unassign shift for ${riderName}?`)) return;
+      setSavingShiftRider(riderName);
+      try {
+        if (onDeleteSingleShift) {
+          await onDeleteSingleShift(riderName);
+        } else if (storeId) {
+          await deleteSingleRiderShift({ storeId, riderName });
+          onRefresh();
+        }
+      } finally {
+        setSavingShiftRider(null);
+      }
+      return;
+    }
+
+    const norm = normalizeRiderName(riderName);
+    const existing = riderShiftsMap?.get(norm);
+    let newShift: RiderShiftConfig | null = null;
+
+    if (selectedAction === 'PRESET_MORNING') {
+      const p = SHIFT_PRESETS['Morning Shift'];
+      newShift = {
+        riderName,
+        normalizedName: norm,
+        shiftType: 'Morning Shift',
+        slot1StartHour: p.slot1Start,
+        slot1EndHour: p.slot1End,
+        slot2StartHour: null,
+        slot2EndHour: null,
+        totalPlannedHours: p.hours,
+        joiningDate: existing?.joiningDate || null,
+        onboardedBy: existing?.onboardedBy || null,
+      };
+    } else if (selectedAction === 'PRESET_2ND') {
+      const p = SHIFT_PRESETS['2nd Shift'];
+      newShift = {
+        riderName,
+        normalizedName: norm,
+        shiftType: '2nd Shift',
+        slot1StartHour: p.slot1Start,
+        slot1EndHour: p.slot1End,
+        slot2StartHour: null,
+        slot2EndHour: null,
+        totalPlannedHours: p.hours,
+        joiningDate: existing?.joiningDate || null,
+        onboardedBy: existing?.onboardedBy || null,
+      };
+    } else if (selectedAction === 'PRESET_SPLIT') {
+      const p = SHIFT_PRESETS['Split Shift'];
+      newShift = {
+        riderName,
+        normalizedName: norm,
+        shiftType: 'Split Shift',
+        slot1StartHour: p.slot1Start,
+        slot1EndHour: p.slot1End,
+        slot2StartHour: p.slot2Start ?? null,
+        slot2EndHour: p.slot2End ?? null,
+        totalPlannedHours: p.hours,
+        joiningDate: existing?.joiningDate || null,
+        onboardedBy: existing?.onboardedBy || null,
+      };
+    }
+
+    if (newShift) {
+      setSavingShiftRider(riderName);
+      try {
+        if (onSaveSingleShift) {
+          await onSaveSingleShift(newShift);
+        } else if (storeId) {
+          await saveSingleRiderShift({ storeId, shift: newShift });
+          onRefresh();
+        }
+      } finally {
+        setSavingShiftRider(null);
+      }
     }
   };
 
@@ -1173,45 +1290,102 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
 
                     {/* Assigned Shift */}
                     <td className="td-shift text-center">
-                      {riderShift ? (
-                        <div className="shift-cell-badge-wrapper">
-                          <span
-                            className={`badge-shift badge-shift-${(effectiveShiftType || riderShift.shiftType).toLowerCase().replace(/\s+/g, '-')}`}
+                      <div className="table-shift-cell-wrapper">
+                        <div className="table-shift-control-row">
+                          <div
+                            className={`inline-shift-pill-select-wrapper inline-shift-${
+                              riderShift
+                                ? (effectiveShiftType || riderShift.shiftType)
+                                    .toLowerCase()
+                                    .replace(/\s+/g, '-')
+                                : isRiderActive
+                                ? 'unassigned-warn'
+                                : 'unassigned'
+                            }`}
                           >
-                            {(effectiveShiftType || riderShift.shiftType) === 'Split Shift'
-                              ? 'Split'
-                              : (effectiveShiftType || riderShift.shiftType).replace(' Shift', '')}
-                          </span>
-                          <span className="shift-timings-caption">
-                            {formatShiftTimings(riderShift)}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="shift-unassigned-cell flex-col items-center gap-xs">
-                          {isRiderActive ? (
-                            <>
-                              <span
-                                className="badge-shift-unassigned badge-shift-warning"
-                                title="Active rider with no shift configured"
-                              >
-                                ⚠ Shift Empty
-                              </span>
-                              {onOpenShiftModal && (
-                                <button
-                                  type="button"
-                                  className="btn-assign-shift-inline"
-                                  onClick={() => onOpenShiftModal(row.riderName, 'UNASSIGNED')}
-                                  title={`Fill shift timings for active rider ${row.riderName}`}
-                                >
-                                  + Fill Shift
-                                </button>
+                            <select
+                              className="inline-shift-select"
+                              value={
+                                savingShiftRider === row.riderName
+                                  ? 'SAVING'
+                                  : riderShift
+                                  ? isPresetMorning(riderShift)
+                                    ? 'PRESET_MORNING'
+                                    : isPreset2nd(riderShift)
+                                    ? 'PRESET_2ND'
+                                    : isPresetSplit(riderShift)
+                                    ? 'PRESET_SPLIT'
+                                    : 'CUSTOM'
+                                  : 'UNASSIGNED'
+                              }
+                              onChange={(e) =>
+                                handleInlineShiftSelect(row.riderName, e.target.value)
+                              }
+                              disabled={savingShiftRider === row.riderName}
+                              title="Assign or edit shift for this rider"
+                              aria-label={`Assigned Shift for ${row.riderName}`}
+                            >
+                              {savingShiftRider === row.riderName ? (
+                                <option value="SAVING" disabled>
+                                  Saving...
+                                </option>
+                              ) : riderShift ? (
+                                <>
+                                  <option value="PRESET_MORNING">Morning Shift (6 AM – 3 PM)</option>
+                                  <option value="PRESET_2ND">2nd Shift (3 PM – 12 AM)</option>
+                                  <option value="PRESET_SPLIT">Split Shift (2 PM – 10 PM)</option>
+                                  {!isStandardPreset(riderShift) && (
+                                    <option value="CUSTOM">
+                                      Custom: {formatShiftTimings(riderShift)}
+                                    </option>
+                                  )}
+                                  <option value="ACTION_EDIT">✏️ Edit Timings & Details...</option>
+                                  <option value="ACTION_UNASSIGN">🗑️ Unassign (Clear Shift)</option>
+                                </>
+                              ) : (
+                                <>
+                                  <option value="UNASSIGNED" disabled>
+                                    {isRiderActive ? '⚠️ Shift Empty — Assign' : '— Assign Shift —'}
+                                  </option>
+                                  <option value="PRESET_MORNING">☀️ Morning Shift (6 AM – 3 PM)</option>
+                                  <option value="PRESET_2ND">🌙 2nd Shift (3 PM – 12 AM)</option>
+                                  <option value="PRESET_SPLIT">⚡ Split Shift (2 PM – 10 PM)</option>
+                                  <option value="ACTION_EDIT">✏️ Custom Hours / Details...</option>
+                                </>
                               )}
-                            </>
+                            </select>
+                            <span className="inline-shift-chevron" aria-hidden="true">▾</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="btn-edit-shift-pencil"
+                            onClick={() => setIndividualModalRider(row.riderName)}
+                            title={`Edit shift hours & onboarder for ${row.riderName}`}
+                            aria-label={`Edit shift for ${row.riderName}`}
+                          >
+                            ✏️
+                          </button>
+                        </div>
+
+                        <div className="table-shift-caption-row">
+                          {savingShiftRider === row.riderName ? (
+                            <span className="shift-saving-caption">Saving shift...</span>
+                          ) : riderShift ? (
+                            <span className="shift-timings-caption">
+                              {formatShiftTimings(riderShift)} ({shiftPlannedHours}h)
+                            </span>
+                          ) : isRiderActive ? (
+                            <span className="shift-warn-caption font-semibold">
+                              ⚠️ Action required
+                            </span>
                           ) : (
-                            <span className="badge-shift-unassigned">Not Set</span>
+                            <span className="shift-timings-caption text-muted">
+                              Not configured
+                            </span>
                           )}
                         </div>
-                      )}
+                      </div>
                     </td>
 
                     {/* 8-Hour Shift Target Compliance */}
@@ -1430,6 +1604,42 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           riderSummary={selectedDnrRider}
           onSaved={() => {
             onRefresh();
+          }}
+        />
+      )}
+
+      {/* Individual Rider Shift Modal */}
+      {individualModalRider && (
+        <IndividualRiderShiftModal
+          isOpen={Boolean(individualModalRider)}
+          onClose={() => setIndividualModalRider(null)}
+          riderName={individualModalRider}
+          storeId={storeId || ''}
+          storeCode={storeCode}
+          storeName={storeName}
+          phoneNumber={phoneByNameMap?.get(normalizeRiderName(individualModalRider))}
+          currentShift={riderShiftsMap?.get(normalizeRiderName(individualModalRider)) || null}
+          onSave={async (config) => {
+            if (onSaveSingleShift) {
+              return await onSaveSingleShift(config);
+            }
+            if (storeId) {
+              const res = await saveSingleRiderShift({ storeId, shift: config });
+              onRefresh();
+              return res;
+            }
+            return { ok: false, error: 'Store not configured' };
+          }}
+          onDelete={async (name) => {
+            if (onDeleteSingleShift) {
+              return await onDeleteSingleShift(name);
+            }
+            if (storeId) {
+              const res = await deleteSingleRiderShift({ storeId, riderName: name });
+              onRefresh();
+              return res;
+            }
+            return { ok: false, error: 'Store not configured' };
           }}
         />
       )}

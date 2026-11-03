@@ -9,6 +9,8 @@ import {
   getActiveRidersWithoutShift,
   getRiderShiftsForStore,
   saveRiderShiftsForStore,
+  saveSingleRiderShift,
+  deleteSingleRiderShift,
   type RiderShiftConfig,
 } from '../../src/services/riderShiftService';
 
@@ -339,6 +341,91 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
       const r2 = loaded.get('test rider fm2');
       expect(r2?.onboardedBy).toBe('FM2');
       expect(r2?.shiftType).toBe('2nd Shift');
+    });
+  });
+
+  describe('Individual Rider Shift Assignment & Inline Editing Suite', () => {
+    const testStoreId = '00000000-0000-0000-0000-000000000088';
+
+    it('assigns and updates an individual rider shift without wiping other riders', async () => {
+      // 1. Assign first rider shift
+      const riderA: RiderShiftConfig = {
+        riderName: 'Abhay Gore',
+        normalizedName: 'abhay gore',
+        shiftType: '2nd Shift',
+        slot1StartHour: 15,
+        slot1EndHour: 24,
+        totalPlannedHours: 9,
+        onboardedBy: 'Sunil',
+      };
+      const resA = await saveSingleRiderShift({ storeId: testStoreId, shift: riderA });
+      expect(resA.ok).toBe(true);
+
+      // Verify rider A is saved
+      let map = await getRiderShiftsForStore(testStoreId);
+      expect(map.has('abhay gore')).toBe(true);
+      expect(map.get('abhay gore')?.shiftType).toBe('2nd Shift');
+      expect(map.get('abhay gore')?.onboardedBy).toBe('Sunil');
+
+      // 2. Assign second rider shift
+      const riderB: RiderShiftConfig = {
+        riderName: 'Abhijit Dhonde',
+        normalizedName: 'abhijit dhonde',
+        shiftType: 'Split Shift',
+        slot1StartHour: 14,
+        slot1EndHour: 22,
+        totalPlannedHours: 8,
+        onboardedBy: 'Atharva',
+      };
+      const resB = await saveSingleRiderShift({ storeId: testStoreId, shift: riderB });
+      expect(resB.ok).toBe(true);
+
+      // Verify both riders exist
+      map = await getRiderShiftsForStore(testStoreId);
+      expect(map.has('abhay gore')).toBe(true);
+      expect(map.has('abhijit dhonde')).toBe(true);
+      expect(map.get('abhijit dhonde')?.shiftType).toBe('Split Shift');
+
+      // 3. Edit rider A's shift to Morning Shift
+      const updatedA: RiderShiftConfig = {
+        ...riderA,
+        shiftType: 'Morning Shift',
+        slot1StartHour: 6,
+        slot1EndHour: 15,
+        totalPlannedHours: 9,
+        onboardedBy: 'Krushna',
+      };
+      await saveSingleRiderShift({ storeId: testStoreId, shift: updatedA });
+
+      map = await getRiderShiftsForStore(testStoreId);
+      expect(map.get('abhay gore')?.shiftType).toBe('Morning Shift');
+      expect(map.get('abhay gore')?.onboardedBy).toBe('Krushna');
+      // Verify rider B is still intact
+      expect(map.has('abhijit dhonde')).toBe(true);
+      expect(map.get('abhijit dhonde')?.shiftType).toBe('Split Shift');
+      expect(map.get('abhijit dhonde')?.onboardedBy).toBe('Atharva');
+    });
+
+    it('unassigns an individual rider shift cleanly via deleteSingleRiderShift', async () => {
+      // Unassign rider A
+      const delRes = await deleteSingleRiderShift({
+        storeId: testStoreId,
+        riderName: 'Abhay Gore',
+      });
+      expect(delRes.ok).toBe(true);
+
+      const map = await getRiderShiftsForStore(testStoreId);
+      expect(map.has('abhay gore')).toBe(false);
+      // Rider B remains intact
+      expect(map.has('abhijit dhonde')).toBe(true);
+    });
+
+    it('verifies split shift preset is 8 hours (2 PM – 10 PM) for operational alignment', () => {
+      const splitPreset = SHIFT_PRESETS['Split Shift'];
+      expect(splitPreset.hours).toBe(8);
+      expect(splitPreset.slot1Start).toBe(14);
+      expect(splitPreset.slot1End).toBe(22);
+      expect(formatShiftTimings({ slot1StartHour: 14, slot1EndHour: 22 })).toBe('2 PM – 10 PM');
     });
   });
 });

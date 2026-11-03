@@ -15,6 +15,8 @@ import {
   type RiderShiftConfig,
   getRiderShiftsForStore,
   saveRiderShiftsForStore,
+  saveSingleRiderShift,
+  deleteSingleRiderShift,
 } from '../services/riderShiftService';
 import {
   type StoreDnrSummary,
@@ -247,6 +249,40 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     void loadOnboarding();
   };
 
+  // Handle inline saving of single rider shift from pivot table
+  const handleSaveSingleShift = async (shift: RiderShiftConfig) => {
+    if (!selectedStore) return { ok: false, error: 'No store selected' };
+    const norm = shift.normalizedName || normalizeRiderName(shift.riderName);
+    const updatedConfig: RiderShiftConfig = {
+      ...shift,
+      normalizedName: norm,
+    };
+    const updatedMap = new Map(riderShiftsMap);
+    updatedMap.set(norm, updatedConfig);
+    setRiderShiftsMap(updatedMap);
+
+    const res = await saveSingleRiderShift({
+      storeId: selectedStore.id,
+      shift: updatedConfig,
+    });
+    return res;
+  };
+
+  // Handle inline deleting/unassigning of single rider shift from pivot table
+  const handleDeleteSingleShift = async (riderName: string) => {
+    if (!selectedStore) return { ok: false, error: 'No store selected' };
+    const norm = normalizeRiderName(riderName);
+    const updatedMap = new Map(riderShiftsMap);
+    updatedMap.delete(norm);
+    setRiderShiftsMap(updatedMap);
+
+    const res = await deleteSingleRiderShift({
+      storeId: selectedStore.id,
+      riderName,
+    });
+    return res;
+  };
+
   return (
     <div className="analytics-container">
       {/* Tab Switcher & Store Selector */}
@@ -463,6 +499,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                 data={pivotResult}
                 storeCode={selectedStore.store_code}
                 storeName={selectedStore.store_name}
+                storeId={selectedStore.id}
                 selectedDays={selectedDays}
                 onSelectDaysPreset={handleSelectDaysPreset}
                 startDate={startDate}
@@ -481,6 +518,8 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                 riderShiftsMap={riderShiftsMap}
                 dnrSummary={dnrSummary}
                 onOpenShiftModal={handleOpenShiftModal}
+                onSaveSingleShift={handleSaveSingleShift}
+                onDeleteSingleShift={handleDeleteSingleShift}
                 rosterLastUpdated={activeRoster?.lastUpdatedFormatted}
                 rosterTotalCount={activeRoster?.totalRiders}
                 shiftFilter={tableShiftFilter}

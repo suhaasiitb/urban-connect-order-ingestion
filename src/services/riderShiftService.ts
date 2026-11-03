@@ -53,12 +53,10 @@ export const SHIFT_PRESETS: Record<Exclude<ShiftType, 'Custom'>, {
     hours: 9,
   },
   'Split Shift': {
-    label: 'Split Shift (6 AM – 3 PM & 3 PM – 12 AM)',
-    slot1Start: 6,
-    slot1End: 15,
-    slot2Start: 15,
-    slot2End: 24,
-    hours: 18,
+    label: 'Split Shift (2 PM – 10 PM)',
+    slot1Start: 14,
+    slot1End: 22,
+    hours: 8,
   },
 };
 
@@ -435,6 +433,163 @@ export async function saveRiderShiftsForStore(params: {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('Supabase store_rider_shifts save error:', msg);
     return { ok: true, savedCount: shifts.length };
+  }
+}
+
+/**
+ * Saves or updates a single rider's shift config for a store,
+ * updating both localStorage cache and Supabase backend.
+ */
+export async function saveSingleRiderShift(params: {
+  storeId: string;
+  shift: RiderShiftConfig;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { storeId, shift } = params;
+  const norm = shift.normalizedName || normalizeRiderName(shift.riderName);
+  const normalizedShift: RiderShiftConfig = {
+    ...shift,
+    normalizedName: norm,
+    shiftType: classifyShiftType(shift),
+    totalPlannedHours: calculatePlannedHours(shift),
+  };
+
+  // 1. Update localStorage cache
+  try {
+    const storage =
+      typeof window !== 'undefined' && window.localStorage
+        ? window.localStorage
+        : typeof localStorage !== 'undefined'
+        ? localStorage
+        : null;
+    const raw = storage?.getItem(`${LOCAL_STORAGE_PREFIX}${storeId}`);
+    let list: RiderShiftConfig[] = [];
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      } catch {
+        list = [];
+      }
+    }
+    const idx = list.findIndex(
+      (s) => (s.normalizedName || normalizeRiderName(s.riderName)) === norm
+    );
+    if (idx >= 0) {
+      list[idx] = normalizedShift;
+    } else {
+      list.push(normalizedShift);
+    }
+    storage?.setItem(`${LOCAL_STORAGE_PREFIX}${storeId}`, JSON.stringify(list));
+  } catch (err) {
+    console.warn('Could not cache single rider shift to localStorage:', err);
+  }
+
+  // 2. Persist single row to Supabase
+  try {
+    const nowIso = new Date().toISOString();
+    const row = {
+      store_id: storeId,
+      rider_name: normalizedShift.riderName,
+      normalized_name: norm,
+      shift_type: normalizedShift.shiftType,
+      slot1_start_hour: normalizedShift.slot1StartHour,
+      slot1_end_hour: normalizedShift.slot1EndHour,
+      slot2_start_hour: normalizedShift.slot2StartHour != null ? normalizedShift.slot2StartHour : null,
+      slot2_end_hour: normalizedShift.slot2EndHour != null ? normalizedShift.slot2EndHour : null,
+      total_planned_hours: normalizedShift.totalPlannedHours,
+      joining_date: normalizedShift.joiningDate ? normalizedShift.joiningDate : null,
+      onboarded_by: normalizedShift.onboardedBy ? normalizedShift.onboardedBy : null,
+      updated_at: nowIso,
+    };
+
+    const upsertPromise = supabase
+      .from('store_rider_shifts')
+      .upsert([row], { onConflict: 'store_id,normalized_name' });
+
+    let { error: upsertErr } = await withTimeout(upsertPromise, 2500, {
+      data: null,
+      error: { message: 'Timeout saving store_rider_shifts', code: 'TIMEOUT' },
+    } as unknown as { error: { code?: string; message?: string } | null });
+
+    // Fallback if remote DB doesn't have onboarded_by column yet
+    if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('onboarded_by'))) {
+      const rowWithoutOnboarded = { ...row };
+      delete (rowWithoutOnboarded as { onboarded_by?: string | null }).onboarded_by;
+      const retryPromise = supabase
+        .from('store_rider_shifts')
+        .upsert([rowWithoutOnboarded], { onConflict: 'store_id,normalized_name' });
+      const retry = await withTimeout(retryPromise, 2500, {
+        error: { message: 'Timeout saving store_rider_shifts fallback', code: 'TIMEOUT' },
+      } as unknown as { error: { code?: string; message?: string } | null });
+      upsertErr = retry.error;
+    }
+
+    if (upsertErr) {
+      console.warn('Supabase upsert note, using localStorage cache:', upsertErr.message);
+      return { ok: true };
+    }
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('Supabase single rider shift save error:', msg);
+    return { ok: true };
+  }
+}
+
+/**
+ * Removes / clears a rider's shift config for a store from both
+ * localStorage and Supabase.
+ */
+export async function deleteSingleRiderShift(params: {
+  storeId: string;
+  riderName: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { storeId, riderName } = params;
+  const norm = normalizeRiderName(riderName);
+
+  // 1. Update localStorage
+  try {
+    const storage =
+      typeof window !== 'undefined' && window.localStorage
+        ? window.localStorage
+        : typeof localStorage !== 'undefined'
+        ? localStorage
+        : null;
+    const raw = storage?.getItem(`${LOCAL_STORAGE_PREFIX}${storeId}`);
+    if (raw) {
+      const list = JSON.parse(raw) as RiderShiftConfig[];
+      if (Array.isArray(list)) {
+        const filtered = list.filter(
+          (s) => (s.normalizedName || normalizeRiderName(s.riderName)) !== norm
+        );
+        storage?.setItem(`${LOCAL_STORAGE_PREFIX}${storeId}`, JSON.stringify(filtered));
+      }
+    }
+  } catch (err) {
+    console.warn('Could not remove rider shift from localStorage:', err);
+  }
+
+  // 2. Delete from Supabase
+  try {
+    const delPromise = supabase
+      .from('store_rider_shifts')
+      .delete()
+      .eq('store_id', storeId)
+      .eq('normalized_name', norm);
+
+    const { error: delErr } = await withTimeout(delPromise, 2500, {
+      data: null,
+      error: { message: 'Timeout deleting store_rider_shifts', code: 'TIMEOUT' },
+    } as unknown as { error: { message?: string } | null });
+
+    if (delErr) {
+      console.warn('Supabase delete store_rider_shifts warning:', delErr.message);
+    }
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('Supabase delete error:', msg);
+    return { ok: true };
   }
 }
 
