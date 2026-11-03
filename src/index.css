@@ -3361,6 +3361,32 @@ input[type='text'].perf-search-input:focus {
   margin-top: 0.5rem;
 }
 
+.onboarding-table .th-rider-name,
+.onboarding-table .td-rider-name {
+  text-align: center !important;
+}
+
+.onboarding-rider-cell-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.22rem;
+  width: 100%;
+}
+
+.onboarding-rider-cell-content .rider-name-text {
+  text-align: center;
+  display: block;
+}
+
+.onboarding-rider-cell-content .rider-phone-sub,
+.onboarding-rider-cell-content .rider-phone-none {
+  text-align: center;
+  display: block;
+}
+
 .th-day-card-col {
   background: #f1f5f9 !important;
   color: #1e293b !important;

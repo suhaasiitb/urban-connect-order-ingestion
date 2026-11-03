@@ -39,14 +39,6 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
     { label: 'Last 30 Days', value: 30 },
   ];
 
-  const getInitials = (name: string): string => {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  };
-
   const filteredRiders = useMemo(() => {
     if (!summary?.riders) return [];
     let list = [...summary.riders];
@@ -57,7 +49,8 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
       list = list.filter(
         (r) =>
           r.riderName.toLowerCase().includes(q) ||
-          (r.phone && r.phone.toLowerCase().includes(q))
+          (r.phone && r.phone.toLowerCase().includes(q)) ||
+          (r.onboardedBy && r.onboardedBy.toLowerCase().includes(q))
       );
     }
 
@@ -323,7 +316,7 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
         <table className="perf-pivot-table onboarding-table" aria-label="New Rider First 7 Days Table">
           <thead>
             <tr className="tier1-header-row onboarding-header-row">
-              <th className="th-rider-name sticky-col text-left">
+              <th className="th-rider-name sticky-col text-center">
                 Rider Info
               </th>
 
@@ -388,22 +381,25 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
 
                 return (
                   <tr key={rider.riderName} className="perf-data-row onboarding-data-row">
-                    {/* Sticky Rider Name & Phone */}
-                    <td className="td-rider-name sticky-col text-left">
-                      <div className="rider-cell-content">
-                        <span className="rider-avatar-bubble" aria-hidden="true">
-                          {getInitials(rider.riderName)}
-                        </span>
-                        <div className="rider-info-stacked">
-                          <strong className="rider-name-text" title={rider.riderName}>
-                            {rider.riderName}
-                          </strong>
-                          {rider.phone ? (
-                            <span className="rider-phone-sub">{rider.phone}</span>
-                          ) : (
-                            <span className="rider-phone-none">No phone</span>
-                          )}
-                        </div>
+                    {/* Sticky Rider Name & Phone & Onboarded By */}
+                    <td className="td-rider-name sticky-col text-center">
+                      <div className="rider-cell-content onboarding-rider-cell-content">
+                        <strong className="rider-name-text" title={rider.riderName}>
+                          {rider.riderName}
+                        </strong>
+                        {rider.phone ? (
+                          <span className="rider-phone-sub">{rider.phone}</span>
+                        ) : (
+                          <span className="rider-phone-none">No phone</span>
+                        )}
+                        {rider.onboardedBy && (
+                          <span
+                            className="rider-onboarded-tag"
+                            title={`Onboarded by ${rider.onboardedBy}`}
+                          >
+                            👤 {rider.onboardedBy}
+                          </span>
+                        )}
                       </div>
                     </td>
 

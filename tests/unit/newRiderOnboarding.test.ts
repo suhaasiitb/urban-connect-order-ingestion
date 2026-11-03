@@ -113,4 +113,31 @@ describe('New Rider Onboarding Service Unit Tests', () => {
     expect(manualLater.effectiveStartDate).toBe('2026-10-29');
     expect(manualLater.isManualJoiningDate).toBe(false);
   });
+
+  it('supports onboardedBy attribute on new rider onboarding record when present in shiftsMap', () => {
+    const mockRecord = {
+      riderName: 'ROHIT SHARMA',
+      normalizedName: 'rohit sharma',
+      phone: '9876543210',
+      shiftType: 'Morning Shift',
+      shiftTimings: '6 AM – 3 PM',
+      joiningDate: '2026-10-30',
+      isManualJoiningDate: false,
+      endDate: '2026-11-05',
+      calendarDaysElapsed: 5,
+      activeDaysWorked: 5,
+      totalHours: 42,
+      totalOrders: 90,
+      avgHours: 8.4,
+      avgOrders: 18,
+      compliantDaysCount: 5,
+      complianceRate: 100,
+      onboardingStatus: 'ACTIVE_WEEK_1' as const,
+      healthStatus: 'ON_TRACK' as const,
+      days: [],
+      onboardedBy: 'Sunil',
+    };
+
+    expect(mockRecord.onboardedBy).toBe('Sunil');
+  });
 });

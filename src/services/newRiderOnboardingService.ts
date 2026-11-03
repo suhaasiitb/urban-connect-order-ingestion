@@ -8,7 +8,12 @@
 import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
 import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService';
-import { type RiderShiftConfig, formatShiftTimings, classifyShiftType } from './riderShiftService';
+import {
+  type RiderShiftConfig,
+  formatShiftTimings,
+  classifyShiftType,
+  getRiderShiftsForStore,
+} from './riderShiftService';
 
 export interface RiderDayMetric {
   dayNumber: number; // 1 to 7
@@ -41,6 +46,7 @@ export interface NewRiderOnboardingRecord {
   onboardingStatus: 'ACTIVE_WEEK_1' | 'COMPLETED_WEEK_1';
   healthStatus: 'ON_TRACK' | 'NEEDS_ATTENTION' | 'AT_RISK';
   days: RiderDayMetric[];      // exactly 7 items: Day 1 through Day 7
+  onboardedBy?: string | null;
 }
 
 export interface NewRiderOnboardingSummary {
@@ -415,13 +421,23 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
       firstDatesLoaded = true;
     }
 
+    // Load shifts if not provided to guarantee shifts & onboardedBy are resolved
+    let effectiveShiftsMap = shiftsMap;
+    if (!effectiveShiftsMap && storeId) {
+      try {
+        effectiveShiftsMap = await getRiderShiftsForStore(storeId);
+      } catch {
+        // ignore
+      }
+    }
+
     // Collect all candidate rider norms
     const allRiderNorms = new Set<string>();
     for (const norm of candidateRiderNames.keys()) {
       allRiderNorms.add(norm);
     }
-    if (shiftsMap) {
-      for (const [norm, cfg] of shiftsMap.entries()) {
+    if (effectiveShiftsMap) {
+      for (const [norm, cfg] of effectiveShiftsMap.entries()) {
         if (cfg.joiningDate && cfg.joiningDate >= cutoffStr) {
           allRiderNorms.add(norm);
         }
@@ -431,7 +447,7 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
     const onboardingRecords: NewRiderOnboardingRecord[] = [];
 
     for (const norm of allRiderNorms) {
-      const shiftConfig = shiftsMap?.get(norm);
+      const shiftConfig = effectiveShiftsMap?.get(norm);
       const firstOrderDate = firstDatesLoaded ? (riderFirstDates.get(norm) ?? null) : null;
 
       const resolved = resolveRiderEffectiveJoiningDate({
@@ -575,6 +591,8 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
         healthStatus = 'NEEDS_ATTENTION';
       }
 
+      const onboardedBy = shiftConfig?.onboardedBy ? shiftConfig.onboardedBy.trim() : null;
+
       onboardingRecords.push({
         riderName,
         normalizedName: norm,
@@ -595,6 +613,7 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
         onboardingStatus,
         healthStatus,
         days: daysMetrics,
+        onboardedBy,
       });
     }
 
@@ -679,6 +698,7 @@ export function exportNewRidersToExcel(
   const headers = [
     'Rider Name',
     'Rider Number',
+    'Onboarded By',
     'Assigned Shift',
     'Shift Timings',
     'Joining Date (Day 1)',
@@ -717,6 +737,7 @@ export function exportNewRidersToExcel(
     const rowData: (string | number)[] = [
       r.riderName,
       r.phone || '—',
+      r.onboardedBy || '—',
       r.shiftType,
       r.shiftTimings,
       r.joiningDate,
@@ -750,6 +771,7 @@ export function exportNewRidersToExcel(
   ws['!cols'] = [
     { wch: 24 }, // Name
     { wch: 15 }, // Phone
+    { wch: 16 }, // Onboarded By
     { wch: 16 }, // Shift
     { wch: 22 }, // Timings
     { wch: 14 }, // Joining Date
