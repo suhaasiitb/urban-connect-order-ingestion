@@ -486,335 +486,354 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
 
   return (
     <div className="rider-perf-section">
-      {/* Modern Controls & Filter Bar */}
-      <div className="perf-controls-bar">
-        <div className="perf-controls-left">
-          {/* Period Range Dropdown */}
-          <div className="perf-filter-group">
-            <label htmlFor="period-range-select" className="perf-control-label">
-              Period Range:
-            </label>
-            <div className="custom-select-wrapper">
-              <select
-                id="period-range-select"
-                className="perf-dropdown-select"
-                value={showCustomRange ? 'custom' : selectedDays}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === 'custom') {
-                    setShowCustomRange(true);
-                  } else {
-                    setShowCustomRange(false);
-                    onSelectDaysPreset(Number(val));
-                  }
-                }}
-                disabled={loading}
-              >
-                {presets.map((days) => (
-                  <option key={days} value={days}>
-                    {days === 1 ? '1 Day (Yesterday)' : `${days} Days`}
-                  </option>
-                ))}
-                <option value="custom">Custom Range...</option>
-              </select>
-              <span className="select-chevron" aria-hidden="true">
-                <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </span>
-            </div>
-          </div>
-
-          {/* Active / Inactive Status Segmented Toggle */}
-          <div className="perf-filter-group">
-            <span className="perf-control-label">Roster:</span>
-            <div className="segmented-control" role="group" aria-label="Filter by active roster status">
-              <button
-                type="button"
-                className={`segmented-btn ${activeStatusFilter === 'ALL' ? 'segmented-btn-active' : ''}`}
-                onClick={() => setActiveStatusFilter('ALL')}
-                title="Show all riders (active and inactive)"
-              >
-                All ({data.rows.length})
-              </button>
-              <button
-                type="button"
-                className={`segmented-btn ${activeStatusFilter === 'ACTIVE' ? 'segmented-btn-active' : ''}`}
-                onClick={() => setActiveStatusFilter('ACTIVE')}
-                title="Show only active riders verified in roster"
-              >
-                Active ({activeRidersCount})
-              </button>
-              <button
-                type="button"
-                className={`segmented-btn ${activeStatusFilter === 'INACTIVE' ? 'segmented-btn-active' : ''}`}
-                onClick={() => setActiveStatusFilter('INACTIVE')}
-                title="Show only inactive riders not found in roster"
-              >
-                Inactive ({inactiveRidersCount})
-              </button>
-            </div>
-          </div>
-
-          {/* Shift & Compliance Filter Dropdown */}
-          <div className="perf-filter-group">
-            <label htmlFor="shift-filter-select" className="perf-control-label">
-              Shift:
-            </label>
-            <div className="custom-select-wrapper">
-              <select
-                id="shift-filter-select"
-                className="perf-dropdown-select"
-                value={activeShiftFilter}
-                onChange={(e) => setShiftFilter(e.target.value)}
-                disabled={loading}
-              >
-                <option value="ALL">All Shifts</option>
-                {activeMissingShiftCount > 0 && (
-                  <option value="ACTIVE_NO_SHIFT">
-                    ⚠️ Missing Shifts ({activeMissingShiftCount})
-                  </option>
-                )}
-                <option value="Morning Shift">Morning (6 AM – 3 PM)</option>
-                <option value="2nd Shift">2nd Shift (3 PM – 12 AM)</option>
-                <option value="Split Shift">Split Shift</option>
-                <option value="COMPLIANT_8H">✓ Clocking ≥ 8h</option>
-                <option value="UNDER_8H">⚠ Clocking &lt; 8h</option>
-                <option value="UNDER_6H">⚠ Clocking &lt; 6h</option>
-                <option value="NOT_SET">Not Assigned</option>
-                {dnrSummary && dnrSummary.totalRidersAffected > 0 && (
-                  <>
-                    <option value="DNR_ONLY">
-                      ⚠️ All DNR ({dnrSummary.totalRidersAffected})
-                    </option>
-                    <option value="DNR_NON_ABUSIVE">
-                      ⚠️ Non_abusive ({ridersWithNonAbusiveCount})
-                    </option>
-                    <option value="DNR_POTENTIAL_ABUSE">
-                      ⚠️ Potential_abuse ({ridersWithPotentialAbuseCount})
-                    </option>
-                    <option value="DNR_FREQUENT">
-                      🚨 Frequent DNR ({dnrSummary.frequentExploitersCount})
-                    </option>
-                  </>
-                )}
-              </select>
-              <span className="select-chevron" aria-hidden="true">
-                <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </span>
-            </div>
-          </div>
-
-          {/* DNR Highlight Toggle Button */}
-          <div className="perf-filter-group">
-            <button
-              type="button"
-              className={`btn-dnr-toggle ${highlightDnr ? 'btn-dnr-toggle-active' : ''}`}
-              onClick={() => setHighlightDnr(!highlightDnr)}
-              title={
-                highlightDnr
-                  ? 'DNR riders sorted to top and highlighted. Click to restore normal sorting'
-                  : `Highlight riders with DNR cases and sort them to the top (${dnrSummary?.records.length ?? 0} incidents in ${storeCode})`
-              }
-            >
-              <span className="btn-dnr-icon">⚠️</span>
-              <span>Highlight DNR</span>
-              {dnrSummary && dnrSummary.totalRidersAffected > 0 && (
-                <span className="badge-dnr-pill">
-                  {dnrSummary.totalRidersAffected}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* Active Riders Missing Shift Warning Toggle Button */}
-          <div className="perf-filter-group">
-            <button
-              type="button"
-              className={`btn-shift-warning-toggle ${activeShiftFilter === 'ACTIVE_NO_SHIFT' ? 'btn-shift-warning-active' : ''} ${activeMissingShiftCount > 0 || totalActiveRosterMissingShiftCount > 0 ? 'has-warning' : ''}`}
-              onClick={() => {
-                setShiftFilter(activeShiftFilter === 'ACTIVE_NO_SHIFT' ? 'ALL' : 'ACTIVE_NO_SHIFT');
-              }}
-              title={
-                activeMissingShiftCount > 0
-                  ? `⚠️ Warning: ${activeMissingShiftCount} active rider(s) in this table have no shift configured! Click to filter and fill their shifts.`
-                  : totalActiveRosterMissingShiftCount > 0
-                  ? `⚠️ Warning: ${totalActiveRosterMissingShiftCount} active rider(s) in active roster have no shift configured! Click to view and fill shifts.`
-                  : 'All active riders have shifts assigned.'
-              }
-            >
-              <span className="warning-toggle-icon">⚠️</span>
-              <span>Missing Shift Warning</span>
-              {(activeMissingShiftCount > 0 || totalActiveRosterMissingShiftCount > 0) && (
-                <span className="badge-warning-pill">
-                  {activeMissingShiftCount || totalActiveRosterMissingShiftCount}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* Inline Custom Range Inputs when Custom is Selected */}
-          {showCustomRange && (
-            <div className="custom-range-inline-picker">
-              <div className="custom-range-field">
-                <span className="custom-range-label">From:</span>
-                <input
-                  type="date"
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  className="custom-range-date-input"
-                />
-              </div>
-              <div className="custom-range-field">
-                <span className="custom-range-label">To:</span>
-                <input
-                  type="date"
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  className="custom-range-date-input"
-                />
-              </div>
-              <button
-                type="button"
-                className="btn-apply-custom"
-                onClick={handleApplyCustomDate}
-                disabled={loading || !customStart || !customEnd}
-              >
-                Apply
-              </button>
-            </div>
-          )}
-
-          {/* Average Divisor Segmented Control */}
-          <div className="perf-filter-group">
-            <span className="perf-control-label">Avg Divisor:</span>
-            <div className="segmented-control">
-              <button
-                type="button"
-                className={`segmented-btn ${avgMode === 'period' ? 'segmented-btn-active' : ''}`}
-                onClick={() => setAvgMode('period')}
-                title={`Divide by total ${periodDays} days in period`}
-              >
-                {periodDays} Days
-              </button>
-              <button
-                type="button"
-                className={`segmented-btn ${avgMode === 'active' ? 'segmented-btn-active' : ''}`}
-                onClick={() => setAvgMode('active')}
-                title="Divide by active working days only"
-              >
-                Active Days
-              </button>
-            </div>
-          </div>
-
-          {/* Date Order Segmented Control (relevant when Daily Breakdown is open) */}
-          {showDailyBreakdown && (
+      {/* Modern Controls & Filter Bar — Segregated into Data Filters (Row 1) & Search / Highlights / Actions (Row 2) */}
+      <div className="perf-controls-bar perf-controls-bar-structured">
+        {/* Tier 1: Data Filters (Left) & Calculation Settings (Right) */}
+        <div className="perf-toolbar-tier perf-toolbar-tier-primary">
+          <div className="perf-toolbar-group">
+            {/* Period Range Dropdown */}
             <div className="perf-filter-group">
-              <span className="perf-control-label">Date Order:</span>
+              <label htmlFor="period-range-select" className="perf-control-label">
+                Period Range:
+              </label>
+              <div className="custom-select-wrapper">
+                <select
+                  id="period-range-select"
+                  className="perf-dropdown-select"
+                  value={showCustomRange ? 'custom' : selectedDays}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'custom') {
+                      setShowCustomRange(true);
+                    } else {
+                      setShowCustomRange(false);
+                      onSelectDaysPreset(Number(val));
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  {presets.map((days) => (
+                    <option key={days} value={days}>
+                      {days === 1 ? '1 Day (Yesterday)' : `${days} Days`}
+                    </option>
+                  ))}
+                  <option value="custom">Custom Range...</option>
+                </select>
+                <span className="select-chevron" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              </div>
+            </div>
+
+            {/* Inline Custom Range Inputs when Custom is Selected */}
+            {showCustomRange && (
+              <div className="custom-range-inline-picker">
+                <div className="custom-range-field">
+                  <span className="custom-range-label">From:</span>
+                  <input
+                    type="date"
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="custom-range-date-input"
+                  />
+                </div>
+                <div className="custom-range-field">
+                  <span className="custom-range-label">To:</span>
+                  <input
+                    type="date"
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="custom-range-date-input"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn-apply-custom"
+                  onClick={handleApplyCustomDate}
+                  disabled={loading || !customStart || !customEnd}
+                >
+                  Apply
+                </button>
+              </div>
+            )}
+
+            <span className="perf-toolbar-divider" aria-hidden="true" />
+
+            {/* Active / Inactive Status Segmented Toggle */}
+            <div className="perf-filter-group">
+              <span className="perf-control-label">Roster:</span>
+              <div className="segmented-control" role="group" aria-label="Filter by active roster status">
+                <button
+                  type="button"
+                  className={`segmented-btn ${activeStatusFilter === 'ALL' ? 'segmented-btn-active' : ''}`}
+                  onClick={() => setActiveStatusFilter('ALL')}
+                  title="Show all riders (active and inactive)"
+                >
+                  All ({data.rows.length})
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${activeStatusFilter === 'ACTIVE' ? 'segmented-btn-active' : ''}`}
+                  onClick={() => setActiveStatusFilter('ACTIVE')}
+                  title="Show only active riders verified in roster"
+                >
+                  Active ({activeRidersCount})
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${activeStatusFilter === 'INACTIVE' ? 'segmented-btn-active' : ''}`}
+                  onClick={() => setActiveStatusFilter('INACTIVE')}
+                  title="Show only inactive riders not found in roster"
+                >
+                  Inactive ({inactiveRidersCount})
+                </button>
+              </div>
+            </div>
+
+            <span className="perf-toolbar-divider" aria-hidden="true" />
+
+            {/* Shift & Compliance Filter Dropdown */}
+            <div className="perf-filter-group">
+              <label htmlFor="shift-filter-select" className="perf-control-label">
+                Shift:
+              </label>
+              <div className="custom-select-wrapper">
+                <select
+                  id="shift-filter-select"
+                  className="perf-dropdown-select"
+                  value={activeShiftFilter}
+                  onChange={(e) => setShiftFilter(e.target.value)}
+                  disabled={loading}
+                >
+                  <option value="ALL">All Shifts</option>
+                  {activeMissingShiftCount > 0 && (
+                    <option value="ACTIVE_NO_SHIFT">
+                      ⚠️ Missing Shifts ({activeMissingShiftCount})
+                    </option>
+                  )}
+                  <option value="Morning Shift">Morning (6 AM – 3 PM)</option>
+                  <option value="2nd Shift">2nd Shift (3 PM – 12 AM)</option>
+                  <option value="Split Shift">Split Shift</option>
+                  <option value="COMPLIANT_8H">✓ Clocking ≥ 8h</option>
+                  <option value="UNDER_8H">⚠ Clocking &lt; 8h</option>
+                  <option value="UNDER_6H">⚠ Clocking &lt; 6h</option>
+                  <option value="NOT_SET">Not Assigned</option>
+                  {dnrSummary && dnrSummary.totalRidersAffected > 0 && (
+                    <>
+                      <option value="DNR_ONLY">
+                        ⚠️ All DNR ({dnrSummary.totalRidersAffected})
+                      </option>
+                      <option value="DNR_NON_ABUSIVE">
+                        ⚠️ Non_abusive ({ridersWithNonAbusiveCount})
+                      </option>
+                      <option value="DNR_POTENTIAL_ABUSE">
+                        ⚠️ Potential_abuse ({ridersWithPotentialAbuseCount})
+                      </option>
+                      <option value="DNR_FREQUENT">
+                        🚨 Frequent DNR ({dnrSummary.frequentExploitersCount})
+                      </option>
+                    </>
+                  )}
+                </select>
+                <span className="select-chevron" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="perf-toolbar-group perf-toolbar-group-right">
+            {/* Average Divisor Segmented Control */}
+            <div className="perf-filter-group">
+              <span className="perf-control-label">Avg Divisor:</span>
               <div className="segmented-control">
                 <button
                   type="button"
-                  className={`segmented-btn ${dateOrder === 'desc' ? 'segmented-btn-active' : ''}`}
-                  onClick={() => setDateOrder('desc')}
-                  title="Newest date first (e.g. 19-Oct → 13-Oct)"
+                  className={`segmented-btn ${avgMode === 'period' ? 'segmented-btn-active' : ''}`}
+                  onClick={() => setAvgMode('period')}
+                  title={`Divide by total ${periodDays} days in period`}
                 >
-                  Newest First ↓
+                  {periodDays} Days
                 </button>
                 <button
                   type="button"
-                  className={`segmented-btn ${dateOrder === 'asc' ? 'segmented-btn-active' : ''}`}
-                  onClick={() => setDateOrder('asc')}
-                  title="Oldest date first (e.g. 13-Oct → 19-Oct)"
+                  className={`segmented-btn ${avgMode === 'active' ? 'segmented-btn-active' : ''}`}
+                  onClick={() => setAvgMode('active')}
+                  title="Divide by active working days only"
                 >
-                  Oldest First ↑
+                  Active Days
                 </button>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Right Actions: Search, Refresh, Export */}
-        <div className="perf-actions-right">
-          <div className="perf-search-box">
-            <span className="search-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            </span>
-            <input
-              type="text"
-              placeholder="Search rider name or number..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="perf-search-input"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                className="search-clear-btn"
-                onClick={() => setSearchQuery('')}
-                aria-label="Clear search"
-              >
-                ×
-              </button>
+            {/* Date Order Segmented Control (relevant when Daily Breakdown is open) */}
+            {showDailyBreakdown && (
+              <div className="perf-filter-group">
+                <span className="perf-control-label">Date Order:</span>
+                <div className="segmented-control">
+                  <button
+                    type="button"
+                    className={`segmented-btn ${dateOrder === 'desc' ? 'segmented-btn-active' : ''}`}
+                    onClick={() => setDateOrder('desc')}
+                    title="Newest date first (e.g. 19-Oct → 13-Oct)"
+                  >
+                    Newest First ↓
+                  </button>
+                  <button
+                    type="button"
+                    className={`segmented-btn ${dateOrder === 'asc' ? 'segmented-btn-active' : ''}`}
+                    onClick={() => setDateOrder('asc')}
+                    title="Oldest date first (e.g. 13-Oct → 19-Oct)"
+                  >
+                    Oldest First ↑
+                  </button>
+                </div>
+              </div>
             )}
           </div>
+        </div>
 
-          {onOpenShiftModal && (
+        {/* Tier 2: Search & Alert/Highlight Toggles (Left) + Actions (Right) */}
+        <div className="perf-toolbar-tier perf-toolbar-tier-secondary">
+          <div className="perf-toolbar-group">
+            {/* Rider Search Input */}
+            <div className="perf-search-box perf-search-box-wide">
+              <span className="search-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                placeholder="Search rider name or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="perf-search-input"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="search-clear-btn"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+            <span className="perf-toolbar-divider" aria-hidden="true" />
+
+            {/* Segregated Alerts & Highlighting Toggles */}
+            <div className="perf-filter-group perf-highlights-group">
+              <span className="perf-control-label">Alerts &amp; Highlights:</span>
+              <div className="perf-highlight-pills">
+                {/* DNR Highlight Toggle Button */}
+                <button
+                  type="button"
+                  className={`btn-dnr-toggle ${highlightDnr ? 'btn-dnr-toggle-active' : ''}`}
+                  onClick={() => setHighlightDnr(!highlightDnr)}
+                  title={
+                    highlightDnr
+                      ? 'DNR riders sorted to top and highlighted. Click to restore normal sorting'
+                      : `Highlight riders with DNR cases and sort them to the top (${dnrSummary?.records.length ?? 0} incidents in ${storeCode})`
+                  }
+                >
+                  <span className="btn-dnr-icon">⚠️</span>
+                  <span>Highlight DNR</span>
+                  {dnrSummary && dnrSummary.totalRidersAffected > 0 && (
+                    <span className="badge-dnr-pill">
+                      {dnrSummary.totalRidersAffected}
+                    </span>
+                  )}
+                </button>
+
+                {/* Active Riders Missing Shift Warning Toggle Button */}
+                <button
+                  type="button"
+                  className={`btn-shift-warning-toggle ${activeShiftFilter === 'ACTIVE_NO_SHIFT' ? 'btn-shift-warning-active' : ''} ${activeMissingShiftCount > 0 || totalActiveRosterMissingShiftCount > 0 ? 'has-warning' : ''}`}
+                  onClick={() => {
+                    setShiftFilter(activeShiftFilter === 'ACTIVE_NO_SHIFT' ? 'ALL' : 'ACTIVE_NO_SHIFT');
+                  }}
+                  title={
+                    activeMissingShiftCount > 0
+                      ? `⚠️ Warning: ${activeMissingShiftCount} active rider(s) in this table have no shift configured! Click to filter and fill their shifts.`
+                      : totalActiveRosterMissingShiftCount > 0
+                      ? `⚠️ Warning: ${totalActiveRosterMissingShiftCount} active rider(s) in active roster have no shift configured! Click to view and fill shifts.`
+                      : 'All active riders have shifts assigned.'
+                  }
+                >
+                  <span className="warning-toggle-icon">⚠️</span>
+                  <span>Missing Shift Warning</span>
+                  {(activeMissingShiftCount > 0 || totalActiveRosterMissingShiftCount > 0) && (
+                    <span className="badge-warning-pill">
+                      {activeMissingShiftCount || totalActiveRosterMissingShiftCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Actions: Shifts, Refresh, Export */}
+          <div className="perf-actions-right">
+            {onOpenShiftModal && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm perf-btn-shifts"
+                onClick={() => onOpenShiftModal()}
+                title="Configure rider shifts and 8h timings"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                <span>Shifts</span>
+              </button>
+            )}
+
             <button
               type="button"
-              className="btn btn-secondary btn-sm perf-btn-shifts"
-              onClick={() => onOpenShiftModal()}
-              title="Configure rider shifts and 8h timings"
+              className="btn btn-secondary btn-sm perf-btn-refresh"
+              onClick={onRefresh}
+              disabled={loading}
+              title="Refresh analytics data"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
+              <svg
+                className={`btn-icon ${loading ? 'spin-icon' : ''}`}
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M23 4v6h-6M1 20v-6h6" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span>Shifts</span>
+              <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
             </button>
-          )}
 
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm perf-btn-refresh"
-            onClick={onRefresh}
-            disabled={loading}
-            title="Refresh analytics data"
-          >
-            <svg
-              className={`btn-icon ${loading ? 'spin-icon' : ''}`}
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+            <button
+              type="button"
+              className="btn-export-excel"
+              onClick={handleExport}
+              disabled={data.rows.length === 0}
+              title="Download Excel spreadsheet matching Google Sheets layout"
             >
-              <path d="M23 4v6h-6M1 20v-6h6" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
-          </button>
-
-          <button
-            type="button"
-            className="btn-export-excel"
-            onClick={handleExport}
-            disabled={data.rows.length === 0}
-            title="Download Excel spreadsheet matching Google Sheets layout"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" strokeLinecap="round" strokeLinejoin="round" />
-              <polyline points="7 10 12 15 17 10" strokeLinecap="round" strokeLinejoin="round" />
-              <line x1="12" y1="15" x2="12" y2="3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>Export Excel</span>
-          </button>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" strokeLinecap="round" strokeLinejoin="round" />
+                <polyline points="7 10 12 15 17 10" strokeLinecap="round" strokeLinejoin="round" />
+                <line x1="12" y1="15" x2="12" y2="3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>Export Excel</span>
+            </button>
+          </div>
         </div>
       </div>
 

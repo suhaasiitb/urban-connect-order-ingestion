@@ -473,7 +473,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
 
           {/* Primary Rider Hours & Orders Pivot Section */}
           <div className="section-card perf-card">
-            <div className="perf-section-header">
+            <div className="perf-section-header perf-section-header-row">
               <div>
                 <h3 className="section-title">Rider Hours & Orders Pivot Table</h3>
                 <p className="section-subtitle">

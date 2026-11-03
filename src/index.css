@@ -1419,6 +1419,14 @@ select {
   padding-bottom: 0.75rem;
 }
 
+.perf-section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .perf-controls-bar {
   display: flex;
   align-items: center;
@@ -1430,6 +1438,70 @@ select {
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+/* Structured 2-Tier Controls Bar for Rider Performance Pivot Table */
+.perf-controls-bar-structured {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  padding: 0.9rem 1.15rem;
+}
+
+.perf-toolbar-tier {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem 1.25rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.perf-toolbar-tier-secondary {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 0.75rem;
+}
+
+.perf-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+}
+
+.perf-toolbar-group-right {
+  margin-left: auto;
+}
+
+.perf-toolbar-divider {
+  width: 1px;
+  height: 22px;
+  background: #e2e8f0;
+  flex-shrink: 0;
+}
+
+.perf-highlights-group {
+  background: #f8fafc;
+  padding: 0.25rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  gap: 0.6rem;
+}
+
+.perf-highlight-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 960px) {
+  .perf-toolbar-divider {
+    display: none;
+  }
+  .perf-toolbar-group-right {
+    margin-left: 0;
+  }
 }
 
 .perf-controls-left {
@@ -1600,29 +1672,42 @@ select {
 
 .search-icon {
   position: absolute;
-  left: 0.65rem;
+  left: 0.7rem;
   color: #94a3b8;
   pointer-events: none;
   display: flex;
   align-items: center;
+  z-index: 1;
 }
 
-.perf-search-input {
-  padding: 0.45rem 1.8rem 0.45rem 2rem;
+.perf-search-input,
+input[type='text'].perf-search-input {
+  padding: 0.45rem 1.85rem 0.45rem 2.15rem;
   font-size: 0.84rem;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #ffffff;
   color: #0f172a;
   outline: none;
-  width: 175px;
+  width: 210px;
   transition: all 0.15s ease;
 }
 
-.perf-search-input:focus {
+.perf-search-input:focus,
+input[type='text'].perf-search-input:focus {
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-  width: 215px;
+  width: 245px;
+}
+
+.perf-search-box-wide .perf-search-input,
+.perf-search-box-wide input[type='text'].perf-search-input {
+  width: 250px;
+}
+
+.perf-search-box-wide .perf-search-input:focus,
+.perf-search-box-wide input[type='text'].perf-search-input:focus {
+  width: 285px;
 }
 
 .search-clear-btn {
