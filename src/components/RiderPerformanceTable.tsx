@@ -445,14 +445,6 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
 
   const totalColSpan = showDailyBreakdown ? displayedDateColumns.length * 2 + 8 : 8;
 
-  const getInitials = (name: string): string => {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  };
-
   const handleApplyCustomDate = () => {
     if (customStart && customEnd && onCustomDateChange) {
       onCustomDateChange(customStart, customEnd);
@@ -927,11 +919,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
             {!showDailyBreakdown ? (
               <tr className="tier1-header-row modern-summary-header">
                 <th
-                  className="th-rider-name sticky-col text-left"
+                  className="th-rider-name sticky-col text-center"
                   onClick={() => handleSort('name')}
                   title="Click to sort by rider name"
                 >
-                  <div className="th-content">
+                  <div className="th-content th-content-center">
                     <span>Rider Info</span>
                     <span className="sort-arrow">
                       {sortBy === 'name' ? (sortAsc ? '▲' : '▼') : '↕'}
@@ -1025,11 +1017,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 <tr className="tier1-header-row">
                   <th
                     rowSpan={2}
-                    className="th-rider-name sticky-col text-left"
+                    className="th-rider-name sticky-col text-center"
                     onClick={() => handleSort('name')}
                     title="Click to sort by rider name"
                   >
-                    <div className="th-content">
+                    <div className="th-content th-content-center">
                       <span>Rider Info</span>
                       <span className="sort-arrow">
                         {sortBy === 'name' ? (sortAsc ? '▲' : '▼') : '↕'}
@@ -1198,13 +1190,10 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     }`}
                   >
                     {/* Sticky Rider Name & Stacked Phone Number */}
-                    <td className="td-rider-name sticky-col text-left">
-                      <div className="rider-cell-content">
-                        <span className="rider-avatar-bubble" aria-hidden="true">
-                          {getInitials(row.riderName)}
-                        </span>
-                        <div className="rider-info-stacked">
-                          <div className="rider-name-row flex-row items-center gap-xs">
+                    <td className="td-rider-name sticky-col text-center">
+                      <div className="rider-cell-content rider-cell-content-center">
+                        <div className="rider-info-stacked items-center text-center">
+                          <div className="rider-name-row flex-row items-center justify-center gap-xs flex-wrap">
                             <strong className="rider-name-text" title={row.riderName}>
                               {row.riderName}
                             </strong>
@@ -1251,11 +1240,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             )}
                           </div>
                           {riderPhone ? (
-                            <span className="rider-phone-sub" title={`Phone: ${riderPhone}`}>
+                            <span className="rider-phone-sub text-center" title={`Phone: ${riderPhone}`}>
                               {riderPhone}
                             </span>
                           ) : (
-                            <span className="rider-phone-none">No phone</span>
+                            <span className="rider-phone-none text-center">No phone</span>
                           )}
                         </div>
                       </div>

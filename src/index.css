@@ -2078,14 +2078,49 @@ input[type='text'].perf-search-input:focus {
   color: #0f172a;
   border-right: 1px solid #e2e8f0 !important;
   font-weight: 600;
-  text-align: left !important;
+  text-align: center !important;
   box-shadow: 3px 0 6px -2px rgba(0, 0, 0, 0.04);
+}
+
+.th-rider-name {
+  text-align: center !important;
 }
 
 .rider-cell-content {
   display: flex;
   align-items: center;
   gap: 0.55rem;
+}
+
+.rider-cell-content-center {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.rider-cell-content-center .rider-info-stacked {
+  align-items: center;
+  text-align: center;
+  width: 100%;
+}
+
+.rider-cell-content-center .rider-name-row {
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+}
+
+.rider-cell-content-center .rider-name-text {
+  text-align: center;
+}
+
+.rider-cell-content-center .rider-phone-sub,
+.rider-cell-content-center .rider-phone-none {
+  text-align: center;
+  display: block;
 }
 
 .rider-avatar-bubble {
