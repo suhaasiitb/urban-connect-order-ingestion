@@ -701,5 +701,120 @@ describe('Rider Attendance & Turn-Up Planning Suite', () => {
       expect(notifiedStoreId).toBe('test-store-123');
       window.removeEventListener(STORE_RIDER_SHIFTS_CHANGED_EVENT, listener);
     });
+
+    it('strictly shows 0 PLANNED TURN-UP on unmarked dates and preserves marked dates without stale shift clobbering', async () => {
+      // 1. Seed an unmarked roster for 2026-11-05 (0 present riders)
+      const unmarkedRecords: RiderAttendanceRecord[] = [
+        {
+          warehouseId: 'TMK7',
+          attendanceDate: '2026-11-05',
+          riderName: 'Rider Unmarked 1',
+          normalizedName: 'rider unmarked 1',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          status: 'unmarked',
+          isPresent: false,
+        },
+        {
+          warehouseId: 'TMK7',
+          attendanceDate: '2026-11-05',
+          riderName: 'Rider Unmarked 2',
+          normalizedName: 'rider unmarked 2',
+          shiftType: '2nd Shift',
+          slot1StartHour: 15,
+          slot1EndHour: 24,
+          status: 'unmarked',
+          isPresent: false,
+        },
+      ];
+
+      await saveStoreRiderAttendance({
+        storeId: 'test-store-id',
+        warehouseId: 'TMK7',
+        attendanceDate: '2026-11-05',
+        records: unmarkedRecords,
+      });
+
+      const unmarkedPlanning = await fetchPlanningForDate({
+        storeId: 'test-store-id',
+        warehouseId: 'TMK7',
+        dateStr: '2026-11-05',
+        targetDph: 2.1,
+      });
+
+      expect(unmarkedPlanning.attendancePresentCount).toBe(0);
+      expect(unmarkedPlanning.isTurnUpFromRoster).toBe(false);
+      for (const s of unmarkedPlanning.slots) {
+        expect(s.plannedTurnUp).toBe(0);
+      }
+
+      // 2. Verify stale shift (older updatedAt) does NOT overwrite saved attendance record
+      const savedAttendance: RiderAttendanceRecord[] = [
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-04',
+          riderName: 'ABHAY GORE',
+          normalizedName: 'abhay gore',
+          shiftType: 'Split Shift',
+          slot1StartHour: 7,
+          slot1EndHour: 14,
+          slot2StartHour: 16,
+          slot2EndHour: 24,
+          status: 'present',
+          isPresent: true,
+          updatedAt: '2026-11-03T15:00:57.000Z',
+        },
+      ];
+
+      const staleShiftsMap = new Map<string, RiderShiftConfig>([
+        [
+          'abhay gore',
+          {
+            riderName: 'ABHAY GORE',
+            normalizedName: 'abhay gore',
+            shiftType: 'Morning Shift',
+            slot1StartHour: 6,
+            slot1EndHour: 15,
+            totalPlannedHours: 9,
+            onboardedBy: 'Sunil',
+            updatedAt: '2026-10-25T10:00:00.000Z', // Older than attendance
+          },
+        ],
+      ]);
+
+      const afterStaleSync = syncAttendanceWithLatestShifts(savedAttendance, staleShiftsMap);
+      expect(afterStaleSync[0].shiftType).toBe('Split Shift');
+      expect(afterStaleSync[0].slot1StartHour).toBe(7);
+      expect(afterStaleSync[0].slot1EndHour).toBe(14);
+      expect(afterStaleSync[0].slot2StartHour).toBe(16);
+      expect(afterStaleSync[0].slot2EndHour).toBe(24);
+      expect(afterStaleSync[0].onboardedBy).toBe('Sunil');
+
+      // 3. Verify newer shift edit (newer updatedAt) DOES recalibrate saved attendance record
+      const newerShiftsMap = new Map<string, RiderShiftConfig>([
+        [
+          'abhay gore',
+          {
+            riderName: 'ABHAY GORE',
+            normalizedName: 'abhay gore',
+            shiftType: '2nd Shift',
+            slot1StartHour: 15,
+            slot1EndHour: 24,
+            slot2StartHour: null,
+            slot2EndHour: null,
+            totalPlannedHours: 9,
+            onboardedBy: 'Sunil',
+            updatedAt: '2026-11-03T16:00:00.000Z', // Newer than attendance
+          },
+        ],
+      ]);
+
+      const afterNewerSync = syncAttendanceWithLatestShifts(savedAttendance, newerShiftsMap);
+      expect(afterNewerSync[0].shiftType).toBe('2nd Shift');
+      expect(afterNewerSync[0].slot1StartHour).toBe(15);
+      expect(afterNewerSync[0].slot1EndHour).toBe(24);
+      expect(afterNewerSync[0].slot2StartHour).toBeNull();
+    });
   });
 });

@@ -59,9 +59,13 @@ export const STORE_ATTENDANCE_CHANGE_EVENT = 'store_rider_attendance_changed';
  * Wraps an async promise or thenable with a timeout so network hangs never block UI or tests.
  */
 function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F): Promise<T | F> {
+  const isTest =
+    typeof process !== 'undefined' &&
+    (Boolean(process.env?.VITEST) || process.env?.NODE_ENV === 'test');
+  const timeoutMs = isTest ? Math.min(ms, 600) : Math.max(ms, 12000);
   return Promise.race([
     Promise.resolve(promise),
-    new Promise<F>((resolve) => setTimeout(() => resolve(fallback), ms)),
+    new Promise<F>((resolve) => setTimeout(() => resolve(fallback), timeoutMs)),
   ]);
 }
 
@@ -120,6 +124,9 @@ export function isRiderWorkingInSlot(
 /**
  * Synchronizes attendance records with the latest shift configurations from store_rider_shifts.
  * Updates shiftType, slot timings, and onboardedBy for any rider whose shift was edited.
+ * For already-saved attendance records (where rec.updatedAt is present), only overwrites
+ * shift timings if the shift configuration was updated at or after the attendance record,
+ * preventing stale shift rows from clobbering confirmed attendance shift timings.
  */
 export function syncAttendanceWithLatestShifts(
   records: RiderAttendanceRecord[],
@@ -133,6 +140,17 @@ export function syncAttendanceWithLatestShifts(
     const norm = rec.normalizedName || normalizeRiderName(rec.riderName);
     const shift = shiftsMap.get(norm);
     if (!shift) return rec;
+
+    if (rec.updatedAt) {
+      const recTime = new Date(rec.updatedAt).getTime();
+      const shiftTime = shift.updatedAt ? new Date(shift.updatedAt).getTime() : 0;
+      if (!shiftTime || shiftTime < recTime) {
+        return {
+          ...rec,
+          onboardedBy: rec.onboardedBy || shift.onboardedBy || null,
+        };
+      }
+    }
 
     return {
       ...rec,
@@ -350,39 +368,40 @@ export async function fetchStoreRiderAttendance(params: {
   const { storeId, warehouseId, attendanceDate } = params;
   const normWh = (warehouseId || 'TMK7').toUpperCase().trim();
 
-  let shifts = params.shiftsMap;
-  if (!shifts && storeId && !storeId.startsWith('test-')) {
-    try {
-      shifts = await getRiderShiftsForStore(storeId);
-    } catch {
-      // Ignore
-    }
-  }
-
-  // 1. Try localStorage cache for instant zero-latency UI
+  // 1. Read localStorage cache
   const cached = getStoredAttendanceSync(normWh, attendanceDate);
-  if (cached && cached.length > 0) {
-    const synced = shifts ? syncAttendanceWithLatestShifts(cached, shifts) : cached;
-    return buildAttendanceSummary(normWh, attendanceDate, synced, storeId);
-  }
 
   // Short-circuit in test environments or dummy store IDs
   if (storeId && storeId.startsWith('test-')) {
+    if (cached && cached.length > 0) {
+      const synced = params.shiftsMap ? syncAttendanceWithLatestShifts(cached, params.shiftsMap) : cached;
+      return buildAttendanceSummary(normWh, attendanceDate, synced, storeId);
+    }
     return buildAttendanceSummary(normWh, attendanceDate, [], storeId);
   }
 
-  // 2. Try Supabase store_rider_attendance table
+  // 2. Fetch shifts and Supabase store_rider_attendance in parallel
+  let shifts = params.shiftsMap;
+  const shiftsPromise =
+    !shifts && storeId
+      ? getRiderShiftsForStore(storeId).catch(() => undefined)
+      : Promise.resolve(shifts);
+
   try {
-    const res = await withTimeout(
-      supabase
-        .from('store_rider_attendance')
-        .select('*')
-        .eq('warehouse_id', normWh)
-        .eq('attendance_date', attendanceDate)
-        .order('rider_name', { ascending: true }),
-      1500,
-      { data: null, error: null }
-    );
+    const [resolvedShifts, res] = await Promise.all([
+      shiftsPromise,
+      withTimeout(
+        supabase
+          .from('store_rider_attendance')
+          .select('*')
+          .eq('warehouse_id', normWh)
+          .eq('attendance_date', attendanceDate)
+          .order('rider_name', { ascending: true }),
+        12000,
+        { data: null, error: null }
+      ),
+    ]);
+    shifts = resolvedShifts;
     const data = res?.data;
     const error = res?.error;
 
@@ -408,7 +427,15 @@ export async function fetchStoreRiderAttendance(params: {
         updatedBy: row.updated_by,
       }));
 
-      const synced = shifts ? syncAttendanceWithLatestShifts(records, shifts) : records;
+      // If local cache has a strictly newer attendance save than remote, prefer local
+      const cachedFirstUpdate = cached?.find((r) => r.updatedAt)?.updatedAt;
+      const remoteFirstUpdate = records.find((r) => r.updatedAt)?.updatedAt;
+      const cachedTime = cachedFirstUpdate ? new Date(cachedFirstUpdate).getTime() : 0;
+      const remoteTime = remoteFirstUpdate ? new Date(remoteFirstUpdate).getTime() : 0;
+      const baseRecords =
+        cached && cached.length > 0 && cachedTime > remoteTime ? cached : records;
+
+      const synced = shifts ? syncAttendanceWithLatestShifts(baseRecords, shifts) : baseRecords;
 
       // Cache locally
       try {
@@ -424,6 +451,12 @@ export async function fetchStoreRiderAttendance(params: {
     }
   } catch (err) {
     console.warn(`Supabase fetchStoreRiderAttendance error for ${normWh}:`, err);
+  }
+
+  // Fallback to localStorage cache if Supabase returned no rows or was unreachable
+  if (cached && cached.length > 0) {
+    const synced = shifts ? syncAttendanceWithLatestShifts(cached, shifts) : cached;
+    return buildAttendanceSummary(normWh, attendanceDate, synced, storeId);
   }
 
   // 3. Fallback: Initialize an unmarked roster for this date

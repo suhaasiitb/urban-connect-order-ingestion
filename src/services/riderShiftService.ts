@@ -30,6 +30,7 @@ export interface RiderShiftConfig {
   totalPlannedHours: number;
   joiningDate?: string | null; // Optional manual joining date override ('YYYY-MM-DD')
   onboardedBy?: string | null; // Who onboarded the rider (Sunil, Atharva, Krushna, FM1, FM2)
+  updatedAt?: string | null;
 }
 
 export const SHIFT_PRESETS: Record<Exclude<ShiftType, 'Custom'>, {
@@ -350,8 +351,10 @@ function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F)
   ]);
 }
 
+let remoteHasOnboardedByColumn = true;
+
 /**
- * Loads rider shifts for a store from Supabase, falling back to localStorage.
+ * Loads rider shifts for a store from Supabase and merges with localStorage.
  */
 export async function getRiderShiftsForStore(
   storeId: string
@@ -360,9 +363,13 @@ export async function getRiderShiftsForStore(
 
   // 1. Try Supabase
   try {
+    const selectCols = remoteHasOnboardedByColumn
+      ? 'rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date, onboarded_by, updated_at'
+      : 'rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date, updated_at';
+
     const query = supabase
       .from('store_rider_shifts')
-      .select('rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date, onboarded_by')
+      .select(selectCols)
       .eq('store_id', storeId);
 
     let res = await withTimeout(query, 1500, {
@@ -372,9 +379,10 @@ export async function getRiderShiftsForStore(
 
     // If onboarded_by column is not yet present on remote DB (PostgreSQL error 42703), retry without it
     if (res.error && (res.error.code === '42703' || res.error.message?.includes('onboarded_by'))) {
+      remoteHasOnboardedByColumn = false;
       const fallbackQuery = supabase
         .from('store_rider_shifts')
-        .select('rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date')
+        .select('rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date, updated_at')
         .eq('store_id', storeId);
 
       res = await withTimeout(fallbackQuery, 1500, {
@@ -397,10 +405,20 @@ export async function getRiderShiftsForStore(
         total_planned_hours?: number;
         joining_date?: string | null;
         onboarded_by?: string | null;
+        updated_at?: string | null;
       })[]) {
+        const rawHadAsterisk =
+          String(row.rider_name || '').includes('*') ||
+          String(row.normalized_name || '').includes('*');
         const cleanName = cleanRiderDisplayName(row.rider_name);
         const norm = normalizeRiderName(cleanName || row.normalized_name);
         if (!norm) continue;
+
+        // Do not let legacy asterisk-suffixed rows overwrite a clean row
+        if (rawHadAsterisk && shiftMap.has(norm)) {
+          continue;
+        }
+
         const s1Start = Number(row.slot1_start_hour ?? 6);
         const s1End = Number(row.slot1_end_hour ?? 14);
         const s2Start = row.slot2_start_hour != null ? Number(row.slot2_start_hour) : null;
@@ -433,15 +451,15 @@ export async function getRiderShiftsForStore(
           totalPlannedHours: totalPlanned,
           joiningDate: row.joining_date ? String(row.joining_date).slice(0, 10) : null,
           onboardedBy: row.onboarded_by ? String(row.onboarded_by).trim() : null,
+          updatedAt: row.updated_at ? String(row.updated_at) : null,
         });
       }
-      return shiftMap;
     }
   } catch (err) {
     console.warn('Could not load store_rider_shifts from Supabase:', err);
   }
 
-  // 2. Fallback to localStorage
+  // 2. Merge with localStorage so local edits and onboardedBy are preserved
   try {
     const storage =
       typeof window !== 'undefined' && window.localStorage
@@ -462,14 +480,39 @@ export async function getRiderShiftsForStore(
             ? Math.max(Number(item.totalPlannedHours), calcHours)
             : calcHours;
           const effectiveShift = classifyShiftType(item);
-          shiftMap.set(norm, {
-            ...item,
-            riderName: cleanName || item.riderName,
-            normalizedName: norm,
-            shiftType: effectiveShift,
-            totalPlannedHours: totalPlanned,
-            onboardedBy: item.onboardedBy ? String(item.onboardedBy).trim() : null,
-          });
+          const existing = shiftMap.get(norm);
+
+          if (!existing) {
+            shiftMap.set(norm, {
+              ...item,
+              riderName: cleanName || item.riderName,
+              normalizedName: norm,
+              shiftType: effectiveShift,
+              totalPlannedHours: totalPlanned,
+              onboardedBy: item.onboardedBy ? String(item.onboardedBy).trim() : null,
+            });
+          } else {
+            const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
+            const remoteUpdated = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+            if (localUpdated > 0 && localUpdated >= remoteUpdated) {
+              shiftMap.set(norm, {
+                ...item,
+                riderName: cleanName || item.riderName,
+                normalizedName: norm,
+                shiftType: effectiveShift,
+                totalPlannedHours: totalPlanned,
+                onboardedBy: item.onboardedBy
+                  ? String(item.onboardedBy).trim()
+                  : existing.onboardedBy || null,
+                updatedAt: item.updatedAt,
+              });
+            } else if (item.onboardedBy && !existing.onboardedBy) {
+              shiftMap.set(norm, {
+                ...existing,
+                onboardedBy: String(item.onboardedBy).trim(),
+              });
+            }
+          }
         }
       }
     }
@@ -490,20 +533,62 @@ export async function saveRiderShiftsForStore(params: {
   const { storeId, shifts } = params;
   const nowIso = new Date().toISOString();
 
-  // Normalize all shifts with classifyShiftType
-  const normalizedShifts = shifts.map((s) => ({
-    ...s,
-    shiftType: classifyShiftType(s),
-  }));
+  const storage =
+    typeof window !== 'undefined' && window.localStorage
+      ? window.localStorage
+      : typeof localStorage !== 'undefined'
+      ? localStorage
+      : null;
+
+  // Read previous shifts from localStorage to detect which riders actually changed
+  const prevMap = new Map<string, RiderShiftConfig>();
+  try {
+    const rawPrev = storage?.getItem(`${LOCAL_STORAGE_PREFIX}${storeId}`);
+    if (rawPrev) {
+      const parsedPrev = JSON.parse(rawPrev) as RiderShiftConfig[];
+      if (Array.isArray(parsedPrev)) {
+        for (const p of parsedPrev) {
+          const pNorm = p.normalizedName || normalizeRiderName(p.riderName);
+          if (pNorm) prevMap.set(pNorm, p);
+        }
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  const changedShiftsMap = new Map<string, RiderShiftConfig>();
+
+  // Normalize all shifts with classifyShiftType and stamp updatedAt on modified shifts
+  const normalizedShifts = shifts.map((s) => {
+    const norm = s.normalizedName || normalizeRiderName(s.riderName);
+    const effectiveShiftType = classifyShiftType(s);
+    const prev = prevMap.get(norm);
+    const isModified =
+      !prev ||
+      prev.shiftType !== effectiveShiftType ||
+      Number(prev.slot1StartHour) !== Number(s.slot1StartHour) ||
+      Number(prev.slot1EndHour) !== Number(s.slot1EndHour) ||
+      (prev.slot2StartHour ?? null) !== (s.slot2StartHour ?? null) ||
+      (prev.slot2EndHour ?? null) !== (s.slot2EndHour ?? null) ||
+      (prev.onboardedBy ?? null) !== (s.onboardedBy ?? null) ||
+      (prev.joiningDate ?? null) !== (s.joiningDate ?? null);
+
+    const updatedItem: RiderShiftConfig = {
+      ...s,
+      normalizedName: norm,
+      shiftType: effectiveShiftType,
+      updatedAt: isModified ? nowIso : prev?.updatedAt || s.updatedAt || null,
+    };
+
+    if (isModified) {
+      changedShiftsMap.set(norm, updatedItem);
+    }
+    return updatedItem;
+  });
 
   // 1. Immediately cache in localStorage
   try {
-    const storage =
-      typeof window !== 'undefined' && window.localStorage
-        ? window.localStorage
-        : typeof localStorage !== 'undefined'
-        ? localStorage
-        : null;
     storage?.setItem(
       `${LOCAL_STORAGE_PREFIX}${storeId}`,
       JSON.stringify(normalizedShifts)
@@ -512,22 +597,32 @@ export async function saveRiderShiftsForStore(params: {
     console.warn('Could not cache rider shifts to localStorage:', err);
   }
 
+  // Update cached attendance rosters only for riders whose shifts were modified
+  if (changedShiftsMap.size > 0) {
+    syncCachedAttendanceRosters(changedShiftsMap);
+  }
+
   // 2. Persist to Supabase
   try {
-    const rows = normalizedShifts.map((s) => ({
-      store_id: storeId,
-      rider_name: s.riderName,
-      normalized_name: s.normalizedName || normalizeRiderName(s.riderName),
-      shift_type: s.shiftType,
-      slot1_start_hour: s.slot1StartHour,
-      slot1_end_hour: s.slot1EndHour,
-      slot2_start_hour: s.slot2StartHour != null ? s.slot2StartHour : null,
-      slot2_end_hour: s.slot2EndHour != null ? s.slot2EndHour : null,
-      total_planned_hours: s.totalPlannedHours,
-      joining_date: s.joiningDate ? s.joiningDate : null,
-      onboarded_by: s.onboardedBy ? s.onboardedBy : null,
-      updated_at: nowIso,
-    }));
+    const rows = normalizedShifts.map((s) => {
+      const baseRow: Record<string, unknown> = {
+        store_id: storeId,
+        rider_name: s.riderName,
+        normalized_name: s.normalizedName || normalizeRiderName(s.riderName),
+        shift_type: s.shiftType,
+        slot1_start_hour: s.slot1StartHour,
+        slot1_end_hour: s.slot1EndHour,
+        slot2_start_hour: s.slot2StartHour != null ? s.slot2StartHour : null,
+        slot2_end_hour: s.slot2EndHour != null ? s.slot2EndHour : null,
+        total_planned_hours: s.totalPlannedHours,
+        joining_date: s.joiningDate ? s.joiningDate : null,
+        updated_at: s.updatedAt || nowIso,
+      };
+      if (remoteHasOnboardedByColumn) {
+        baseRow.onboarded_by = s.onboardedBy ? s.onboardedBy : null;
+      }
+      return baseRow;
+    });
 
     const upsertPromise = supabase
       .from('store_rider_shifts')
@@ -539,7 +634,13 @@ export async function saveRiderShiftsForStore(params: {
     } as unknown as { error: { code?: string; message?: string } | null });
 
     // Fallback if remote DB doesn't have onboarded_by column yet
-    if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('onboarded_by'))) {
+    if (
+      upsertErr &&
+      (upsertErr.code === '42703' ||
+        upsertErr.code === 'PGRST204' ||
+        upsertErr.message?.includes('onboarded_by'))
+    ) {
+      remoteHasOnboardedByColumn = false;
       const rowsWithoutOnboarded = rows.map(({ onboarded_by: _, ...rest }) => rest);
       const retryPromise = supabase
         .from('store_rider_shifts')
@@ -550,16 +651,32 @@ export async function saveRiderShiftsForStore(params: {
       upsertErr = retry.error;
     }
 
-    const shiftsMap = new Map<string, RiderShiftConfig>();
-    for (const s of normalizedShifts) {
-      shiftsMap.set(s.normalizedName || normalizeRiderName(s.riderName), s);
+    // Also update store_rider_attendance in Supabase for explicitly modified riders (when reasonable batch size)
+    if (changedShiftsMap.size > 0 && changedShiftsMap.size <= 25 && !storeId.startsWith('test-')) {
+      await Promise.all(
+        Array.from(changedShiftsMap.values()).map((s) =>
+          withTimeout(
+            supabase
+              .from('store_rider_attendance')
+              .update({
+                shift_type: s.shiftType,
+                slot1_start_hour: s.slot1StartHour,
+                slot1_end_hour: s.slot1EndHour,
+                slot2_start_hour: s.slot2StartHour ?? null,
+                slot2_end_hour: s.slot2EndHour ?? null,
+              })
+              .eq('normalized_name', s.normalizedName),
+            2500,
+            { error: null }
+          )
+        )
+      );
     }
-    syncCachedAttendanceRosters(shiftsMap);
+
     notifyRiderShiftsChanged(storeId);
 
     if (upsertErr) {
       console.warn('Supabase upsert to store_rider_shifts note, using localStorage cache:', upsertErr.message);
-      // Return ok: true if saved to localStorage cache
       return { ok: true, savedCount: shifts.length };
     }
 
@@ -581,12 +698,14 @@ export async function saveSingleRiderShift(params: {
   shift: RiderShiftConfig;
 }): Promise<{ ok: boolean; error?: string }> {
   const { storeId, shift } = params;
+  const nowIso = new Date().toISOString();
   const norm = shift.normalizedName || normalizeRiderName(shift.riderName);
   const normalizedShift: RiderShiftConfig = {
     ...shift,
     normalizedName: norm,
     shiftType: classifyShiftType(shift),
     totalPlannedHours: calculatePlannedHours(shift),
+    updatedAt: nowIso,
   };
 
   // 1. Update localStorage cache
@@ -622,10 +741,9 @@ export async function saveSingleRiderShift(params: {
     console.warn('Could not cache single rider shift to localStorage:', err);
   }
 
-  // 2. Persist single row to Supabase
+  // 2. Persist single row to Supabase store_rider_shifts and update store_rider_attendance
   try {
-    const nowIso = new Date().toISOString();
-    const row = {
+    const row: Record<string, unknown> = {
       store_id: storeId,
       rider_name: normalizedShift.riderName,
       normalized_name: norm,
@@ -636,9 +754,11 @@ export async function saveSingleRiderShift(params: {
       slot2_end_hour: normalizedShift.slot2EndHour != null ? normalizedShift.slot2EndHour : null,
       total_planned_hours: normalizedShift.totalPlannedHours,
       joining_date: normalizedShift.joiningDate ? normalizedShift.joiningDate : null,
-      onboarded_by: normalizedShift.onboardedBy ? normalizedShift.onboardedBy : null,
       updated_at: nowIso,
     };
+    if (remoteHasOnboardedByColumn) {
+      row.onboarded_by = normalizedShift.onboardedBy ? normalizedShift.onboardedBy : null;
+    }
 
     const upsertPromise = supabase
       .from('store_rider_shifts')
@@ -650,9 +770,15 @@ export async function saveSingleRiderShift(params: {
     } as unknown as { error: { code?: string; message?: string } | null });
 
     // Fallback if remote DB doesn't have onboarded_by column yet
-    if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('onboarded_by'))) {
+    if (
+      upsertErr &&
+      (upsertErr.code === '42703' ||
+        upsertErr.code === 'PGRST204' ||
+        upsertErr.message?.includes('onboarded_by'))
+    ) {
+      remoteHasOnboardedByColumn = false;
       const rowWithoutOnboarded = { ...row };
-      delete (rowWithoutOnboarded as { onboarded_by?: string | null }).onboarded_by;
+      delete rowWithoutOnboarded.onboarded_by;
       const retryPromise = supabase
         .from('store_rider_shifts')
         .upsert([rowWithoutOnboarded], { onConflict: 'store_id,normalized_name' });
@@ -660,6 +786,25 @@ export async function saveSingleRiderShift(params: {
         error: { message: 'Timeout saving store_rider_shifts fallback', code: 'TIMEOUT' },
       } as unknown as { error: { code?: string; message?: string } | null });
       upsertErr = retry.error;
+    }
+
+    // Also update this rider's shift timings in store_rider_attendance in Supabase
+    if (!storeId.startsWith('test-')) {
+      await withTimeout(
+        supabase
+          .from('store_rider_attendance')
+          .update({
+            shift_type: normalizedShift.shiftType,
+            slot1_start_hour: normalizedShift.slot1StartHour,
+            slot1_end_hour: normalizedShift.slot1EndHour,
+            slot2_start_hour: normalizedShift.slot2StartHour ?? null,
+            slot2_end_hour: normalizedShift.slot2EndHour ?? null,
+          })
+          .eq('normalized_name', norm),
+        2500,
+        { error: null }
+      );
+      notifyRiderShiftsChanged(storeId);
     }
 
     if (upsertErr) {

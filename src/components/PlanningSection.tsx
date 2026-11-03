@@ -485,17 +485,12 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
           >
             {loading
               ? '...'
-              : (attendanceSummary?.presentCount ?? 0) > 0
-              ? `${attendanceSummary?.presentCount} Present`
-              : summary?.isTurnUpFromRoster
-              ? `${attendanceSummary?.totalRiders ?? summary.attendanceTotalRoster ?? 0} Scheduled`
-              : `${attendanceSummary?.presentCount ?? 0} Present`}
+              : `${attendanceSummary?.presentCount ?? summary?.attendancePresentCount ?? 0} Present`}
           </strong>
           <span className="kpi-sub">
             {attendanceSummary ? (
               <>
                 Active: <strong>{attendanceSummary.totalRiders}</strong> | Peak Slot: <strong>{summary?.peakTurnUp ?? 0} riders</strong>
-                {summary?.isTurnUpFromRoster && (attendanceSummary.presentCount === 0) ? ' (Shift Roster)' : ''}
               </>
             ) : (
               'Attendance unmarked'
@@ -815,7 +810,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
             <div className="callout-left">
               <span className="callout-badge">Operations Plan</span>
               <span className="callout-text">
-                Displaying hourly order projections for <strong>{formattedSelectedDate}</strong> with required workforce sizing computed at <strong>{targetDph.toFixed(2)} DPH</strong> [<code>CEIL(Orders ÷ DPH)</code>] and turn-up from {summary.isTurnUpFromRoster ? `scheduled rider shifts (${attendanceSummary?.totalRiders ?? summary.attendanceTotalRoster ?? 0} Scheduled, attendance unmarked)` : `marked attendance (${attendanceSummary?.presentCount ?? 0} Present)`}.
+                Displaying hourly order projections for <strong>{formattedSelectedDate}</strong> with required workforce sizing computed at <strong>{targetDph.toFixed(2)} DPH</strong> [<code>CEIL(Orders ÷ DPH)</code>] and turn-up from marked attendance ({attendanceSummary?.presentCount ?? summary?.attendancePresentCount ?? 0} Present).
               </span>
             </div>
             <span className="text-secondary text-xs">
