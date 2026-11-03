@@ -6,6 +6,7 @@
 
 import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
+import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService';
 
 export interface RiderDailyMetric {
   hours: number;
@@ -277,19 +278,26 @@ export async function fetchRiderPerformanceAnalytics(params: {
         }
       }
 
-      // Group by (rider_name, order_date) and compute COUNTUNIQUE(slot_hour) & COUNT(order_id)
+      // Group by (normalized rider_name, order_date) and compute COUNTUNIQUE(slot_hour) & COUNT(order_id)
       const riderDateSlots = new Map<string, Set<number>>();
       const riderDateOrders = new Map<string, number>();
+      const canonicalDisplayByNorm = new Map<string, string>();
 
       for (const row of orderRows) {
         const rawName = row.rider_name;
         if (!rawName || typeof rawName !== 'string') continue;
-        const name = rawName.trim();
-        if (!name || name === '-' || name.toLowerCase() === 'null') continue;
+        const cleanName = cleanRiderDisplayName(rawName);
+        if (!cleanName || cleanName === '-' || cleanName.toLowerCase() === 'null') continue;
+        const normName = normalizeRiderName(cleanName);
+        if (!normName) continue;
+
+        if (!canonicalDisplayByNorm.has(normName) || !rawName.includes('*')) {
+          canonicalDisplayByNorm.set(normName, cleanName);
+        }
 
         const date = String(row.order_date);
         const slot = Number(row.slot_hour);
-        const key = `${name}:::${date}`;
+        const key = `${normName}:::${date}`;
 
         if (!riderDateSlots.has(key)) {
           riderDateSlots.set(key, new Set<number>());
@@ -302,7 +310,8 @@ export async function fetchRiderPerformanceAnalytics(params: {
       }
 
       for (const [key, slots] of riderDateSlots.entries()) {
-        const [rider_name, order_date] = key.split(':::');
+        const [normName, order_date] = key.split(':::');
+        const rider_name = canonicalDisplayByNorm.get(normName) || normName;
         const orders = riderDateOrders.get(key) ?? 0;
         rawAggregated.push({
           rider_name,
@@ -321,39 +330,45 @@ export async function fetchRiderPerformanceAnalytics(params: {
     }));
     const totalPeriodDays = Math.max(dateColumns.length, 1);
 
-    // 4. Build rider row map
+    // 4. Build rider row map keyed by canonical normalized name (deduplicating e.g. 'ABHAY GORE' & 'ABHAY GORE*')
     const riderMap = new Map<
       string,
       {
+        displayName: string;
         dailyMetrics: Record<string, RiderDailyMetric>;
-        workingDays: number;
-        totalHours: number;
-        totalOrders: number;
       }
     >();
 
     for (const item of rawAggregated) {
       if (!item.rider_name) continue;
-      let entry = riderMap.get(item.rider_name);
+      const cleanName = cleanRiderDisplayName(item.rider_name);
+      if (!cleanName || cleanName === '-' || cleanName.toLowerCase() === 'null') continue;
+      const normKey = normalizeRiderName(cleanName);
+      if (!normKey) continue;
+
+      let entry = riderMap.get(normKey);
       if (!entry) {
         entry = {
+          displayName: cleanName,
           dailyMetrics: {},
-          workingDays: 0,
-          totalHours: 0,
-          totalOrders: 0,
         };
-        riderMap.set(item.rider_name, entry);
+        riderMap.set(normKey, entry);
+      } else if (!item.rider_name.includes('*')) {
+        // Prefer display name from records that did not originally carry an asterisk
+        entry.displayName = cleanName;
       }
 
-      entry.dailyMetrics[item.order_date] = {
-        hours: item.hours,
-        orders: item.orders,
-      };
-
-      if (item.orders > 0 || item.hours > 0) {
-        entry.workingDays += 1;
-        entry.totalHours += item.hours;
-        entry.totalOrders += item.orders;
+      const existingMetric = entry.dailyMetrics[item.order_date];
+      if (existingMetric) {
+        entry.dailyMetrics[item.order_date] = {
+          hours: Math.min(24, existingMetric.hours + item.hours),
+          orders: existingMetric.orders + item.orders,
+        };
+      } else {
+        entry.dailyMetrics[item.order_date] = {
+          hours: item.hours,
+          orders: item.orders,
+        };
       }
     }
 
@@ -362,37 +377,50 @@ export async function fetchRiderPerformanceAnalytics(params: {
     let cumulativeSumHours = 0;
     let cumulativeSumOrders = 0;
 
-    for (const [riderName, entry] of riderMap.entries()) {
+    for (const entry of riderMap.values()) {
+      const riderName = entry.displayName;
+      let workingDays = 0;
+      let totalHours = 0;
+      let totalOrders = 0;
+
+      for (const m of Object.values(entry.dailyMetrics)) {
+        if (m.orders > 0 || m.hours > 0) {
+          workingDays += 1;
+          totalHours += m.hours;
+          totalOrders += m.orders;
+        }
+      }
+
       // Period average: total hours/orders divided by the selected range days (e.g. 7 days)
       const avgHours =
-        Math.round((entry.totalHours / totalPeriodDays) * 10) / 10;
+        Math.round((totalHours / totalPeriodDays) * 10) / 10;
       const avgOrders =
-        Math.round((entry.totalOrders / totalPeriodDays) * 10) / 10;
+        Math.round((totalOrders / totalPeriodDays) * 10) / 10;
 
       // Active working-days average: total divided by working days
       const activeAvgHours =
-        entry.workingDays > 0
-          ? Math.round((entry.totalHours / entry.workingDays) * 10) / 10
+        workingDays > 0
+          ? Math.round((totalHours / workingDays) * 10) / 10
           : 0;
       const activeAvgOrders =
-        entry.workingDays > 0
-          ? Math.round((entry.totalOrders / entry.workingDays) * 10) / 10
+        workingDays > 0
+          ? Math.round((totalOrders / workingDays) * 10) / 10
           : 0;
 
       rows.push({
         riderName,
         dailyMetrics: entry.dailyMetrics,
-        workingDays: entry.workingDays,
-        totalHours: entry.totalHours,
-        totalOrders: entry.totalOrders,
+        workingDays,
+        totalHours,
+        totalOrders,
         avgHours,
         avgOrders,
         activeAvgHours,
         activeAvgOrders,
       });
 
-      cumulativeSumHours += entry.totalHours;
-      cumulativeSumOrders += entry.totalOrders;
+      cumulativeSumHours += totalHours;
+      cumulativeSumOrders += totalOrders;
     }
 
     // Sort riders alphabetically
@@ -462,7 +490,7 @@ export function exportRiderPerformanceToExcel(
   const sheetData: Array<Array<string | number>> = [row1, row2];
 
   for (const row of pivot.rows) {
-    const norm = row.riderName.trim().toLowerCase().replace(/\s+/g, ' ');
+    const norm = normalizeRiderName(row.riderName);
     const isActive = activeNamesSet ? activeNamesSet.has(norm) : true;
     const phone = phoneByNameMap ? phoneByNameMap.get(norm) ?? '' : '';
     const shift = riderShiftsMap?.get(norm);

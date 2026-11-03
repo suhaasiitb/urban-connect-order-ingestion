@@ -41,14 +41,31 @@ export interface ActiveRosterSummary {
 }
 
 /**
+ * Cleans a rider's display name by stripping asterisks (*), trimming whitespace,
+ * and collapsing multiple spaces into a single space.
+ */
+export function cleanRiderDisplayName(name: string | null | undefined): string {
+  if (!name || typeof name !== 'string') return '';
+  return name
+    .replace(/\*+/g, '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+/**
  * Normalizes a rider's name for canonical matching:
+ * - Strips asterisks (*)
  * - Trims leading & trailing whitespace
  * - Converts to lower case
  * - Collapses multiple spaces into a single space
  */
 export function normalizeRiderName(name: string | null | undefined): string {
   if (!name || typeof name !== 'string') return '';
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+  return name
+    .replace(/\*+/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 }
 
 /**
@@ -176,11 +193,12 @@ export function parseActiveRidersFile(params: {
 
     for (const row of rawRows) {
       const rawName = String(row[nameKey] ?? '').trim();
-      if (!rawName || rawName === '-' || rawName.toLowerCase() === 'null') {
+      const cleanName = cleanRiderDisplayName(rawName);
+      if (!cleanName || cleanName === '-' || cleanName.toLowerCase() === 'null') {
         continue;
       }
 
-      const normalizedName = normalizeRiderName(rawName);
+      const normalizedName = normalizeRiderName(cleanName);
       if (!normalizedName) continue;
 
       const rowStore = storeKey ? String(row[storeKey] ?? '').trim().toUpperCase() : '';
@@ -201,7 +219,7 @@ export function parseActiveRidersFile(params: {
       seenNames.add(normalizedName);
 
       validRiders.push({
-        name: rawName,
+        name: cleanName,
         normalizedName,
         phone: phoneKey ? String(row[phoneKey] ?? '').trim() : undefined,
         onlineStatus: statusKey ? String(row[statusKey] ?? '').trim() : undefined,
@@ -383,20 +401,25 @@ export async function getActiveRidersRoster(
 
     if (!ridersErr && dbRiders && dbRiders.length > 0) {
       for (const r of dbRiders) {
-        const norm = r.normalized_name || normalizeRiderName(r.rider_name);
+        const cleanName = cleanRiderDisplayName(r.rider_name);
+        const norm = normalizeRiderName(cleanName || r.normalized_name);
+        if (!norm) continue;
+        const alreadyInList = activeNamesSet.has(norm);
         activeNamesSet.add(norm);
         if (r.phone && String(r.phone).trim()) {
           phoneByNameMap.set(norm, String(r.phone).trim());
         }
-        ridersList.push({
-          name: r.rider_name,
-          normalizedName: norm,
-          phone: r.phone || undefined,
-          onlineStatus: r.online_status || undefined,
-          eligibility: r.eligibility || undefined,
-          attendance: r.attendance || undefined,
-          storeCode: r.source_store_code || storeCode,
-        });
+        if (!alreadyInList) {
+          ridersList.push({
+            name: cleanName || r.rider_name,
+            normalizedName: norm,
+            phone: r.phone || undefined,
+            onlineStatus: r.online_status || undefined,
+            eligibility: r.eligibility || undefined,
+            attendance: r.attendance || undefined,
+            storeCode: r.source_store_code || storeCode,
+          });
+        }
       }
       lastUpdated = dbRiders[0]?.uploaded_at || null;
 
@@ -437,12 +460,21 @@ export async function getActiveRidersRoster(
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed.riders)) {
         for (const r of parsed.riders) {
-          const norm = r.normalizedName || normalizeRiderName(r.name);
+          const cleanName = cleanRiderDisplayName(r.name);
+          const norm = normalizeRiderName(cleanName || r.normalizedName);
+          if (!norm) continue;
+          const alreadyInList = activeNamesSet.has(norm);
           activeNamesSet.add(norm);
           if (r.phone && String(r.phone).trim()) {
             phoneByNameMap.set(norm, String(r.phone).trim());
           }
-          ridersList.push(r);
+          if (!alreadyInList) {
+            ridersList.push({
+              ...r,
+              name: cleanName || r.name,
+              normalizedName: norm,
+            });
+          }
         }
         lastUpdated = parsed.lastUpdated || null;
         filename = parsed.filename || null;

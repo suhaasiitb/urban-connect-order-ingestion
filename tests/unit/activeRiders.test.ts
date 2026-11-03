@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cleanRiderDisplayName,
   normalizeRiderName,
   parseActiveRidersFile,
 } from '../../src/services/activeRiderService';
@@ -82,10 +83,16 @@ const SAMPLE_CSV = `"Name","Phone","Online Status","Eligibility","Attendance","S
 "ROHIT GOTMUKLE","8788074423","Offline","Eligible","NA","TMK7"`;
 
 describe('Active Riders Service Unit Tests', () => {
-  it('normalizes rider names robustly', () => {
+  it('normalizes rider names robustly including stripping asterisks', () => {
     expect(normalizeRiderName('Shubham suresh giri ')).toBe('shubham suresh giri');
     expect(normalizeRiderName('SHUBHAM SURESH GIRI')).toBe('shubham suresh giri');
     expect(normalizeRiderName('  Shubham   Suresh   Giri  ')).toBe('shubham suresh giri');
+    expect(normalizeRiderName('ABHAY GORE*')).toBe('abhay gore');
+    expect(normalizeRiderName('ABHAY GORE *')).toBe('abhay gore');
+    expect(normalizeRiderName('*ABHAY GORE*')).toBe('abhay gore');
+    expect(normalizeRiderName('ABHAY GORE')).toBe(normalizeRiderName('ABHAY GORE*'));
+    expect(cleanRiderDisplayName('ABHAY GORE*')).toBe('ABHAY GORE');
+    expect(cleanRiderDisplayName('  ABHAY   GORE * ')).toBe('ABHAY GORE');
     expect(normalizeRiderName('')).toBe('');
     expect(normalizeRiderName(null)).toBe('');
   });

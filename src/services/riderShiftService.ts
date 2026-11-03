@@ -5,7 +5,7 @@
 // ==============================================================================
 
 import { supabase } from '../config/supabaseClient';
-import { normalizeRiderName } from './activeRiderService';
+import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService';
 
 export type ShiftType = 'Morning Shift' | '2nd Shift' | 'Split Shift' | 'Custom';
 
@@ -276,7 +276,9 @@ export async function getRiderShiftsForStore(
         joining_date?: string | null;
         onboarded_by?: string | null;
       })[]) {
-        const norm = row.normalized_name || normalizeRiderName(row.rider_name);
+        const cleanName = cleanRiderDisplayName(row.rider_name);
+        const norm = normalizeRiderName(cleanName || row.normalized_name);
+        if (!norm) continue;
         const s1Start = Number(row.slot1_start_hour ?? 6);
         const s1End = Number(row.slot1_end_hour ?? 14);
         const s2Start = row.slot2_start_hour != null ? Number(row.slot2_start_hour) : null;
@@ -299,7 +301,7 @@ export async function getRiderShiftsForStore(
         });
 
         shiftMap.set(norm, {
-          riderName: row.rider_name,
+          riderName: cleanName || row.rider_name,
           normalizedName: norm,
           shiftType: effectiveShift,
           slot1StartHour: s1Start,
@@ -330,7 +332,9 @@ export async function getRiderShiftsForStore(
       const parsed = JSON.parse(raw) as RiderShiftConfig[];
       if (Array.isArray(parsed)) {
         for (const item of parsed) {
-          const norm = item.normalizedName || normalizeRiderName(item.riderName);
+          const cleanName = cleanRiderDisplayName(item.riderName);
+          const norm = normalizeRiderName(cleanName || item.normalizedName);
+          if (!norm) continue;
           const calcHours = calculatePlannedHours(item);
           const totalPlanned = item.totalPlannedHours != null && Number(item.totalPlannedHours) > 0
             ? Math.max(Number(item.totalPlannedHours), calcHours)
@@ -338,6 +342,8 @@ export async function getRiderShiftsForStore(
           const effectiveShift = classifyShiftType(item);
           shiftMap.set(norm, {
             ...item,
+            riderName: cleanName || item.riderName,
+            normalizedName: norm,
             shiftType: effectiveShift,
             totalPlannedHours: totalPlanned,
             onboardedBy: item.onboardedBy ? String(item.onboardedBy).trim() : null,

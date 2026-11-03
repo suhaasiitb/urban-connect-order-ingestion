@@ -6,7 +6,7 @@
 
 import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
-import { normalizeRiderName } from './activeRiderService';
+import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService';
 
 export type DnrAbuseFlag = 'Non_abusive' | 'Potential_abuse';
 
@@ -767,7 +767,7 @@ export function getDnrResolutionsMapForStore(
     if (normSite && res.siteCode && res.siteCode.toUpperCase() !== normSite) {
       continue;
     }
-    const key = res.normalizedName;
+    const key = normalizeRiderName(res.riderName || res.normalizedName) || res.normalizedName;
     let list = map.get(key);
     if (!list) {
       list = [];
@@ -876,12 +876,13 @@ export function getDnrSummaryForStore(siteCode: string): StoreDnrSummary {
       totalPotentialAbuse++;
     }
 
-    const key = rec.normalizedRiderName || (rec.dpId ? `dp:${rec.dpId}` : rec.orderId);
+    const cleanName = cleanRiderDisplayName(rec.riderName) || rec.riderName;
+    const key = normalizeRiderName(cleanName || rec.normalizedRiderName) || (rec.dpId ? `dp:${rec.dpId}` : rec.orderId);
     let summary = riderSummariesMap.get(key);
     if (!summary) {
       const history = resolutionsMap.get(key) || [];
       summary = {
-        riderName: rec.riderName,
+        riderName: cleanName,
         normalizedRiderName: key,
         dpId: rec.dpId,
         siteCode: rec.siteCode,

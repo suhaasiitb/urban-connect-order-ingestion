@@ -7,7 +7,7 @@
 
 import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
-import { normalizeRiderName } from './activeRiderService';
+import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService';
 import { type RiderShiftConfig, formatShiftTimings, classifyShiftType } from './riderShiftService';
 
 export interface RiderDayMetric {
@@ -170,11 +170,14 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
       if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
         for (const row of rpcData) {
           const rawName = String(row.rider_name || '').trim();
-          if (!rawName) continue;
-          const norm = normalizeRiderName(rawName);
+          const cleanName = cleanRiderDisplayName(rawName);
+          if (!cleanName) continue;
+          const norm = normalizeRiderName(cleanName);
           if (!norm) continue;
 
-          candidateRiderNames.set(norm, rawName);
+          if (!candidateRiderNames.has(norm) || !rawName.includes('*')) {
+            candidateRiderNames.set(norm, cleanName);
+          }
 
           let dateMap = riderDailyMap.get(norm);
           if (!dateMap) {
@@ -183,10 +186,18 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
           }
 
           const dateStr = String(row.order_date).slice(0, 10);
-          dateMap.set(dateStr, {
-            hours: Number(row.hours || 0),
-            orders: Number(row.orders || 0),
-          });
+          const existingDay = dateMap.get(dateStr);
+          if (existingDay) {
+            dateMap.set(dateStr, {
+              hours: Math.min(24, existingDay.hours + Number(row.hours || 0)),
+              orders: existingDay.orders + Number(row.orders || 0),
+            });
+          } else {
+            dateMap.set(dateStr, {
+              hours: Number(row.hours || 0),
+              orders: Number(row.orders || 0),
+            });
+          }
         }
         dailyMetricsLoaded = true;
       }
@@ -220,10 +231,14 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
         if (Array.isArray(pageRows) && pageRows.length > 0) {
           for (const row of pageRows) {
             if (!row.rider_name) continue;
-            const norm = normalizeRiderName(row.rider_name);
+            const cleanName = cleanRiderDisplayName(row.rider_name);
+            if (!cleanName) continue;
+            const norm = normalizeRiderName(cleanName);
             if (!norm) continue;
 
-            candidateRiderNames.set(norm, row.rider_name);
+            if (!candidateRiderNames.has(norm) || !row.rider_name.includes('*')) {
+              candidateRiderNames.set(norm, cleanName);
+            }
 
             let dateMap = rawHourSets.get(norm);
             if (!dateMap) {
@@ -278,7 +293,11 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
         for (const r of rpcRows) {
           const norm = normalizeRiderName(r.rider_name);
           if (norm && r.first_active_date) {
-            riderFirstDates.set(norm, String(r.first_active_date).slice(0, 10));
+            const dStr = String(r.first_active_date).slice(0, 10);
+            const existingFirst = riderFirstDates.get(norm);
+            if (!existingFirst || dStr < existingFirst) {
+              riderFirstDates.set(norm, dStr);
+            }
           }
         }
         firstDatesLoaded = true;
