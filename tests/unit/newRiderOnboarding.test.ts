@@ -3,6 +3,7 @@ import {
   formatDayHeader,
   getDayOfWeekName,
   getFirst7CalendarDates,
+  resolveRiderEffectiveJoiningDate,
 } from '../../src/services/newRiderOnboardingService';
 
 describe('New Rider Onboarding Service Unit Tests', () => {
@@ -63,5 +64,53 @@ describe('New Rider Onboarding Service Unit Tests', () => {
     // Riders starting before 2026-10-17 are outside the 7-day window
     expect('2026-10-16' >= cutoffStr).toBe(false);
     expect('2026-10-09' >= cutoffStr).toBe(false);
+  });
+
+  it('excludes veteran riders (like ABHAY GORE active since Oct 14) even if a later manual joiningDate was set', () => {
+    const res = resolveRiderEffectiveJoiningDate({
+      firstOrderDate: '2026-10-14',
+      manualJoiningDate: '2026-11-03',
+      cutoffStr: '2026-10-27',
+      todayStr: '2026-11-03',
+    });
+
+    expect(res.isEligibleNewRider).toBe(false);
+    expect(res.effectiveStartDate).toBe('2026-10-14');
+    expect(res.isManualJoiningDate).toBe(false);
+  });
+
+  it('includes genuinely new riders whose first order date falls within the cohort window and caps manual joiningDate at firstOrderDate', () => {
+    // 1. Auto-detected new rider starting 2026-10-29
+    const autoNew = resolveRiderEffectiveJoiningDate({
+      firstOrderDate: '2026-10-29',
+      manualJoiningDate: null,
+      cutoffStr: '2026-10-27',
+      todayStr: '2026-11-03',
+    });
+    expect(autoNew.isEligibleNewRider).toBe(true);
+    expect(autoNew.effectiveStartDate).toBe('2026-10-29');
+    expect(autoNew.isManualJoiningDate).toBe(false);
+
+    // 2. Manual onboarding date (2026-10-28) one day before first order (2026-10-29)
+    const manualEarlier = resolveRiderEffectiveJoiningDate({
+      firstOrderDate: '2026-10-29',
+      manualJoiningDate: '2026-10-28',
+      cutoffStr: '2026-10-27',
+      todayStr: '2026-11-03',
+    });
+    expect(manualEarlier.isEligibleNewRider).toBe(true);
+    expect(manualEarlier.effectiveStartDate).toBe('2026-10-28');
+    expect(manualEarlier.isManualJoiningDate).toBe(true);
+
+    // 3. Manual date (2026-11-03) accidentally set AFTER first order (2026-10-29) is capped to 2026-10-29
+    const manualLater = resolveRiderEffectiveJoiningDate({
+      firstOrderDate: '2026-10-29',
+      manualJoiningDate: '2026-11-03',
+      cutoffStr: '2026-10-27',
+      todayStr: '2026-11-03',
+    });
+    expect(manualLater.isEligibleNewRider).toBe(true);
+    expect(manualLater.effectiveStartDate).toBe('2026-10-29');
+    expect(manualLater.isManualJoiningDate).toBe(false);
   });
 });

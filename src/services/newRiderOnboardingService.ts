@@ -116,6 +116,80 @@ export function getTodayDateString(timeZone: string = 'Asia/Kolkata'): string {
 }
 
 /**
+ * Resolves a rider's true Day 1 (Joining Date) and whether they qualify as a new rider
+ * within the selected cohort window [cutoffStr, todayStr].
+ * - A rider with historical orders prior to cutoffStr (firstOrderDate < cutoffStr) is a
+ *   veteran rider and is never classified as a new rider, even if a manual joiningDate was set.
+ * - A manual joiningDate can never be later than the rider's first actual completed order date.
+ */
+export function resolveRiderEffectiveJoiningDate(params: {
+  firstOrderDate?: string | null;
+  manualJoiningDate?: string | null;
+  cutoffStr: string;
+  todayStr: string;
+}): {
+  isEligibleNewRider: boolean;
+  effectiveStartDate: string | null;
+  isManualJoiningDate: boolean;
+} {
+  const { firstOrderDate, manualJoiningDate, cutoffStr, todayStr } = params;
+  const cleanFirstOrder = firstOrderDate ? firstOrderDate.slice(0, 10) : null;
+  const cleanManual = manualJoiningDate ? manualJoiningDate.slice(0, 10) : null;
+
+  // 1. If the rider has completed orders before cutoffStr, they are a veteran rider
+  if (cleanFirstOrder && cleanFirstOrder < cutoffStr) {
+    return {
+      isEligibleNewRider: false,
+      effectiveStartDate: cleanFirstOrder,
+      isManualJoiningDate: false,
+    };
+  }
+
+  // 2. If the rider has orders starting within the cohort window
+  if (cleanFirstOrder) {
+    if (cleanManual) {
+      // If manual joining date is before cutoffStr, they joined prior to the cohort window
+      if (cleanManual < cutoffStr) {
+        return {
+          isEligibleNewRider: false,
+          effectiveStartDate: cleanManual,
+          isManualJoiningDate: true,
+        };
+      }
+      // Manual joining date can only precede or match firstOrderDate (never after they already started delivering)
+      if (cleanManual <= cleanFirstOrder) {
+        return {
+          isEligibleNewRider: cleanManual >= cutoffStr && cleanManual <= todayStr,
+          effectiveStartDate: cleanManual,
+          isManualJoiningDate: true,
+        };
+      }
+    }
+
+    return {
+      isEligibleNewRider: cleanFirstOrder >= cutoffStr && cleanFirstOrder <= todayStr,
+      effectiveStartDate: cleanFirstOrder,
+      isManualJoiningDate: false,
+    };
+  }
+
+  // 3. Rider has no order history yet, but has an explicit manual joiningDate in the cohort window
+  if (cleanManual && cleanManual >= cutoffStr && cleanManual <= todayStr) {
+    return {
+      isEligibleNewRider: true,
+      effectiveStartDate: cleanManual,
+      isManualJoiningDate: true,
+    };
+  }
+
+  return {
+    isEligibleNewRider: false,
+    effectiveStartDate: null,
+    isManualJoiningDate: false,
+  };
+}
+
+/**
  * Fetches and builds the 7-day onboarding analytics for new riders of a store.
  */
 export async function fetchNewRiderOnboardingAnalytics(params: {
@@ -143,69 +217,125 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
   try {
     const todayStr = getTodayDateString(timeZone);
 
-    // 1. Calculate cohort cutoff date (e.g. 14 days ago)
+    // 1. Calculate cohort cutoff date
     const [tY, tM, tD] = todayStr.split('-').map(Number);
     const todayUtc = Date.UTC(tY, tM - 1, tD, 12, 0, 0);
     const cutoffUtc = todayUtc - cohortWindowDays * 86400000;
     const cDate = new Date(cutoffUtc);
     const cutoffStr = `${cDate.getUTCFullYear()}-${String(cDate.getUTCMonth() + 1).padStart(2, '0')}-${String(cDate.getUTCDate()).padStart(2, '0')}`;
 
-    // 2. Fast Aggregation: Fetch daily performance ONLY for the last 14 days (cutoffStr to todayStr)
-    // normName -> dateStr -> { hours, orders }
+    // 2. Full Historical Daily Aggregation:
+    // Fetch all-time daily performance via paginated get_rider_daily_performance
+    // so we know every rider's true earliest order date (across both 'NAME' and 'NAME*')
+    // as well as their complete 7-day daily hours & orders.
     const riderDailyMap = new Map<string, Map<string, { hours: number; orders: number }>>();
-    const candidateRiderNames = new Map<string, string>(); // normName -> originalDisplayName
+    const candidateRiderNames = new Map<string, string>(); // normName -> cleanDisplayName
+    const riderFirstDates = new Map<string, string>();     // normName -> earliest YYYY-MM-DD
     let dailyMetricsLoaded = false;
+    let firstDatesLoaded = false;
 
-    // Try fast server-side RPC get_rider_daily_performance (already installed in Postgres)
     try {
-      const { data: rpcData, error: rpcErr } = await supabase.rpc(
-        'get_rider_daily_performance',
-        {
-          p_store_id: storeId,
-          p_start_date: cutoffStr,
-          p_end_date: todayStr,
+      const RPC_PAGE_SIZE = 1000;
+      let rpcFrom = 0;
+      let rpcHasMore = true;
+      let rpcSucceeded = false;
+
+      while (rpcHasMore) {
+        const { data: rpcData, error: rpcErr } = await supabase
+          .rpc('get_rider_daily_performance', {
+            p_store_id: storeId,
+            p_start_date: '2020-01-01',
+            p_end_date: todayStr,
+          })
+          .range(rpcFrom, rpcFrom + RPC_PAGE_SIZE - 1);
+
+        if (rpcErr) {
+          break;
         }
-      );
 
-      if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
-        for (const row of rpcData) {
-          const rawName = String(row.rider_name || '').trim();
-          const cleanName = cleanRiderDisplayName(rawName);
-          if (!cleanName) continue;
-          const norm = normalizeRiderName(cleanName);
-          if (!norm) continue;
+        rpcSucceeded = true;
 
-          if (!candidateRiderNames.has(norm) || !rawName.includes('*')) {
-            candidateRiderNames.set(norm, cleanName);
+        if (Array.isArray(rpcData) && rpcData.length > 0) {
+          for (const row of rpcData) {
+            const rawName = String(row.rider_name || '').trim();
+            const cleanName = cleanRiderDisplayName(rawName);
+            if (!cleanName) continue;
+            const norm = normalizeRiderName(cleanName);
+            if (!norm) continue;
+
+            if (!candidateRiderNames.has(norm) || !rawName.includes('*')) {
+              candidateRiderNames.set(norm, cleanName);
+            }
+
+            const dateStr = String(row.order_date).slice(0, 10);
+            const existingFirst = riderFirstDates.get(norm);
+            if (!existingFirst || dateStr < existingFirst) {
+              riderFirstDates.set(norm, dateStr);
+            }
+
+            let dateMap = riderDailyMap.get(norm);
+            if (!dateMap) {
+              dateMap = new Map();
+              riderDailyMap.set(norm, dateMap);
+            }
+
+            const existingDay = dateMap.get(dateStr);
+            if (existingDay) {
+              dateMap.set(dateStr, {
+                hours: Math.min(24, existingDay.hours + Number(row.hours || 0)),
+                orders: existingDay.orders + Number(row.orders || 0),
+              });
+            } else {
+              dateMap.set(dateStr, {
+                hours: Number(row.hours || 0),
+                orders: Number(row.orders || 0),
+              });
+            }
           }
 
-          let dateMap = riderDailyMap.get(norm);
-          if (!dateMap) {
-            dateMap = new Map();
-            riderDailyMap.set(norm, dateMap);
-          }
-
-          const dateStr = String(row.order_date).slice(0, 10);
-          const existingDay = dateMap.get(dateStr);
-          if (existingDay) {
-            dateMap.set(dateStr, {
-              hours: Math.min(24, existingDay.hours + Number(row.hours || 0)),
-              orders: existingDay.orders + Number(row.orders || 0),
-            });
+          if (rpcData.length < RPC_PAGE_SIZE) {
+            rpcHasMore = false;
           } else {
-            dateMap.set(dateStr, {
-              hours: Number(row.hours || 0),
-              orders: Number(row.orders || 0),
-            });
+            rpcFrom += RPC_PAGE_SIZE;
           }
+        } else {
+          rpcHasMore = false;
         }
+      }
+
+      if (rpcSucceeded) {
         dailyMetricsLoaded = true;
+        firstDatesLoaded = true;
       }
     } catch {
       dailyMetricsLoaded = false;
     }
 
-    // Fallback: If RPC not present, query orders table with strict index filter (.gte('order_date', cutoffStr))
+    // Also check get_store_riders_first_dates RPC to ensure earliest active dates are captured
+    try {
+      const { data: rpcRows, error: rpcErr } = await supabase.rpc(
+        'get_store_riders_first_dates',
+        { p_store_id: storeId }
+      );
+      if (!rpcErr && Array.isArray(rpcRows) && rpcRows.length > 0) {
+        for (const r of rpcRows) {
+          const cleanName = cleanRiderDisplayName(r.rider_name);
+          const norm = normalizeRiderName(cleanName || r.rider_name);
+          if (norm && r.first_active_date) {
+            const dStr = String(r.first_active_date).slice(0, 10);
+            const existingFirst = riderFirstDates.get(norm);
+            if (!existingFirst || dStr < existingFirst) {
+              riderFirstDates.set(norm, dStr);
+            }
+          }
+        }
+        firstDatesLoaded = true;
+      }
+    } catch {
+      // Ignore if RPC not installed
+    }
+
+    // Fallback: If get_rider_daily_performance RPC is not present, query orders table with full pagination
     if (!dailyMetricsLoaded) {
       const PAGE_SIZE = 1000;
       let from = 0;
@@ -217,7 +347,6 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
           .from('orders')
           .select('rider_name, slot_hour, order_date, order_id')
           .eq('store_id', storeId)
-          .gte('order_date', cutoffStr)
           .lte('order_date', todayStr)
           .range(from, from + PAGE_SIZE - 1);
 
@@ -240,16 +369,22 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
               candidateRiderNames.set(norm, cleanName);
             }
 
+            const dStr = String(row.order_date).slice(0, 10);
+            const existingFirst = riderFirstDates.get(norm);
+            if (!existingFirst || dStr < existingFirst) {
+              riderFirstDates.set(norm, dStr);
+            }
+
             let dateMap = rawHourSets.get(norm);
             if (!dateMap) {
               dateMap = new Map();
               rawHourSets.set(norm, dateMap);
             }
 
-            let metric = dateMap.get(row.order_date);
+            let metric = dateMap.get(dStr);
             if (!metric) {
               metric = { hours: new Set<number>(), orders: 0 };
-              dateMap.set(row.order_date, metric);
+              dateMap.set(dStr, metric);
             }
 
             metric.hours.add(Number(row.slot_hour));
@@ -277,79 +412,7 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
         }
         riderDailyMap.set(norm, converted);
       }
-    }
-
-    // 3. Fast Verification: Check which candidates are genuinely NEW (started >= cutoffStr)
-    // Step A: Check RPC get_store_riders_first_dates if installed
-    const riderFirstDates = new Map<string, string>();
-    let firstDatesLoaded = false;
-
-    try {
-      const { data: rpcRows, error: rpcErr } = await supabase.rpc(
-        'get_store_riders_first_dates',
-        { p_store_id: storeId }
-      );
-      if (!rpcErr && Array.isArray(rpcRows) && rpcRows.length > 0) {
-        for (const r of rpcRows) {
-          const norm = normalizeRiderName(r.rider_name);
-          if (norm && r.first_active_date) {
-            const dStr = String(r.first_active_date).slice(0, 10);
-            const existingFirst = riderFirstDates.get(norm);
-            if (!existingFirst || dStr < existingFirst) {
-              riderFirstDates.set(norm, dStr);
-            }
-          }
-        }
-        firstDatesLoaded = true;
-      }
-    } catch {
-      firstDatesLoaded = false;
-    }
-
-    // Step B: If first_dates RPC is not installed, verify candidates by querying if they had prior orders (< cutoffStr)
-    // Any candidate who had an order before cutoffStr is an existing/veteran rider.
-    const veteranRiders = new Set<string>();
-
-    if (!firstDatesLoaded) {
-      const candidatesToCheck: string[] = [];
-      for (const norm of candidateRiderNames.keys()) {
-        const manualJoin = shiftsMap?.get(norm)?.joiningDate;
-        if (!manualJoin) {
-          const origName = candidateRiderNames.get(norm);
-          if (origName) candidatesToCheck.push(origName);
-        }
-      }
-
-      if (candidatesToCheck.length > 0) {
-        // Query in concurrent chunks of 40 to avoid postgREST URL limits
-        const CHUNK_SIZE = 40;
-        const chunks: string[][] = [];
-        for (let i = 0; i < candidatesToCheck.length; i += CHUNK_SIZE) {
-          chunks.push(candidatesToCheck.slice(i, i + CHUNK_SIZE));
-        }
-
-        const priorChecks = await Promise.all(
-          chunks.map((chunk) =>
-            supabase
-              .from('orders')
-              .select('rider_name')
-              .eq('store_id', storeId)
-              .lt('order_date', cutoffStr)
-              .in('rider_name', chunk)
-              .limit(500)
-          )
-        );
-
-        for (const res of priorChecks) {
-          if (Array.isArray(res.data)) {
-            for (const row of res.data) {
-              if (row.rider_name) {
-                veteranRiders.add(normalizeRiderName(row.rider_name));
-              }
-            }
-          }
-        }
-      }
+      firstDatesLoaded = true;
     }
 
     // Collect all candidate rider norms
@@ -369,35 +432,21 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
 
     for (const norm of allRiderNorms) {
       const shiftConfig = shiftsMap?.get(norm);
-      const isManual = Boolean(shiftConfig?.joiningDate);
+      const firstOrderDate = firstDatesLoaded ? (riderFirstDates.get(norm) ?? null) : null;
 
-      let effectiveStartDate: string | undefined;
+      const resolved = resolveRiderEffectiveJoiningDate({
+        firstOrderDate,
+        manualJoiningDate: shiftConfig?.joiningDate ?? null,
+        cutoffStr,
+        todayStr,
+      });
 
-      if (isManual) {
-        effectiveStartDate = shiftConfig?.joiningDate || undefined;
-      } else if (firstDatesLoaded) {
-        effectiveStartDate = riderFirstDates.get(norm);
-      } else {
-        // If they had orders before cutoffStr, they are a veteran rider, so skip!
-        if (veteranRiders.has(norm)) {
-          continue;
-        }
-        // Otherwise, their first date is the earliest order date in the last 14 days
-        const dateMap = riderDailyMap.get(norm);
-        if (dateMap && dateMap.size > 0) {
-          const sortedDates = Array.from(dateMap.keys()).sort();
-          effectiveStartDate = sortedDates[0];
-        }
-      }
-
-      if (!effectiveStartDate) continue;
-      effectiveStartDate = effectiveStartDate.slice(0, 10);
-
-      // Only include riders who joined new in the selected cohort window (last 14 days)
-      const isWithinCohortWindow = effectiveStartDate >= cutoffStr;
-      if (!isWithinCohortWindow) {
+      if (!resolved.isEligibleNewRider || !resolved.effectiveStartDate) {
         continue;
       }
+
+      const effectiveStartDate = resolved.effectiveStartDate;
+      const isManual = resolved.isManualJoiningDate;
 
       // Compute first 7 calendar dates
       const sevenDates = getFirst7CalendarDates(effectiveStartDate);
@@ -478,11 +527,21 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
         });
       }
 
-      // Calculate calendar days elapsed so far (1 to 7)
+      // Calculate calendar days elapsed so far (1 to 7).
+      // Only count today if today already has ingested order activity (or if Day 1 is today),
+      // so an ongoing today before ingestion does not artificially penalize averages & compliance.
       let calendarDaysElapsed = 0;
       for (const d of sevenDates) {
-        if (d <= todayStr) {
+        if (d < todayStr) {
           calendarDaysElapsed += 1;
+        } else if (d === todayStr) {
+          const todayMetric = riderDateMap?.get(todayStr);
+          if (
+            (todayMetric && (todayMetric.hours > 0 || todayMetric.orders > 0)) ||
+            calendarDaysElapsed === 0
+          ) {
+            calendarDaysElapsed += 1;
+          }
         }
       }
       calendarDaysElapsed = Math.max(1, Math.min(7, calendarDaysElapsed));
