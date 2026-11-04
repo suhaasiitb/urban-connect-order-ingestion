@@ -140,4 +140,45 @@ describe('New Rider Onboarding Service Unit Tests', () => {
 
     expect(mockRecord.onboardedBy).toBe('Sunil');
   });
+
+  it('supports explicit custom cohort date range selection (cohortStartDate and cohortEndDate)', () => {
+    // 1. Rider joining within custom date window [2026-10-10, 2026-10-16]
+    const riderInCohort = resolveRiderEffectiveJoiningDate({
+      firstOrderDate: '2026-10-14',
+      manualJoiningDate: null,
+      cohortStartDate: '2026-10-10',
+      cohortEndDate: '2026-10-16',
+    });
+    expect(riderInCohort.isEligibleNewRider).toBe(true);
+    expect(riderInCohort.effectiveStartDate).toBe('2026-10-14');
+
+    // 2. Rider joining before custom date window is classified as veteran
+    const riderBeforeCohort = resolveRiderEffectiveJoiningDate({
+      firstOrderDate: '2026-10-08',
+      manualJoiningDate: null,
+      cohortStartDate: '2026-10-10',
+      cohortEndDate: '2026-10-16',
+    });
+    expect(riderBeforeCohort.isEligibleNewRider).toBe(false);
+
+    // 3. Rider joining after custom date window
+    const riderAfterCohort = resolveRiderEffectiveJoiningDate({
+      firstOrderDate: '2026-10-20',
+      manualJoiningDate: null,
+      cohortStartDate: '2026-10-10',
+      cohortEndDate: '2026-10-16',
+    });
+    expect(riderAfterCohort.isEligibleNewRider).toBe(false);
+
+    // 4. Manual joining date within custom cohort window
+    const manualInCohort = resolveRiderEffectiveJoiningDate({
+      firstOrderDate: '2026-10-15',
+      manualJoiningDate: '2026-10-12',
+      cohortStartDate: '2026-10-10',
+      cohortEndDate: '2026-10-16',
+    });
+    expect(manualInCohort.isEligibleNewRider).toBe(true);
+    expect(manualInCohort.effectiveStartDate).toBe('2026-10-12');
+    expect(manualInCohort.isManualJoiningDate).toBe(true);
+  });
 });

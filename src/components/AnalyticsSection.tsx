@@ -104,9 +104,27 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
 
   // New Rider Onboarding State (Last 7 Days)
   const [onboardingCohortDays, setOnboardingCohortDays] = useState<number>(7);
+  const [onboardingStartDate, setOnboardingStartDate] = useState<string>('');
+  const [onboardingEndDate, setOnboardingEndDate] = useState<string>('');
+  const [isOnboardingCustomRange, setIsOnboardingCustomRange] = useState<boolean>(false);
   const [onboardingSummary, setOnboardingSummary] = useState<NewRiderOnboardingSummary | null>(null);
   const [loadingOnboarding, setLoadingOnboarding] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
+
+  const handleSelectOnboardingCohortDays = (days: number) => {
+    setOnboardingCohortDays(days);
+    setIsOnboardingCustomRange(false);
+  };
+
+  const handleSelectOnboardingDateRange = (start: string, end: string) => {
+    setIsOnboardingCustomRange(true);
+    setOnboardingStartDate(start);
+    setOnboardingEndDate(end);
+    const s = new Date(start).getTime();
+    const e = new Date(end).getTime();
+    const diff = Math.max(1, Math.round((e - s) / 86400000) + 1);
+    setOnboardingCohortDays(diff);
+  };
 
   // Load Active Riders Roster
   const loadRoster = useCallback(async () => {
@@ -197,6 +215,8 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
       storeCode: selectedStore.store_code,
       storeName: selectedStore.store_name,
       cohortWindowDays: onboardingCohortDays,
+      startDate: isOnboardingCustomRange ? onboardingStartDate : undefined,
+      endDate: isOnboardingCustomRange ? onboardingEndDate : undefined,
       timeZone: selectedStore.timezone || 'Asia/Kolkata',
       shiftsMap: riderShiftsMap,
       phoneByNameMap: activeRoster?.phoneByNameMap,
@@ -208,7 +228,15 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     } else if (res.data) {
       setOnboardingSummary(res.data);
     }
-  }, [selectedStore, onboardingCohortDays, riderShiftsMap, activeRoster]);
+  }, [
+    selectedStore,
+    onboardingCohortDays,
+    isOnboardingCustomRange,
+    onboardingStartDate,
+    onboardingEndDate,
+    riderShiftsMap,
+    activeRoster,
+  ]);
 
   // Load onboarding data when active tab is selected or parameters change
   useEffect(() => {
@@ -583,7 +611,10 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
               void loadRoster();
             }}
             cohortDays={onboardingCohortDays}
-            onSelectCohortDays={setOnboardingCohortDays}
+            onSelectCohortDays={handleSelectOnboardingCohortDays}
+            startDate={isOnboardingCustomRange ? onboardingStartDate : undefined}
+            endDate={isOnboardingCustomRange ? onboardingEndDate : undefined}
+            onSelectDateRange={handleSelectOnboardingDateRange}
             onOpenShiftModal={() => handleOpenShiftModal()}
             onUpdateJoiningDate={handleUpdateJoiningDate}
           />

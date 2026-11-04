@@ -1656,6 +1656,28 @@ select {
   background: #1e293b;
 }
 
+.cohort-active-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.cohort-badge-icon {
+  font-size: 0.85rem;
+}
+
+.cohort-badge-text {
+  letter-spacing: -0.01em;
+}
+
 /* Right Action Buttons & Search Box */
 .perf-actions-right {
   display: flex;

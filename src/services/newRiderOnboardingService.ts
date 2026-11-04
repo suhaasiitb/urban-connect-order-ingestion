@@ -54,6 +54,8 @@ export interface NewRiderOnboardingSummary {
   storeCode: string;
   storeName: string;
   cohortWindowDays: number;
+  cohortStartDate?: string;
+  cohortEndDate?: string;
   totalNewRiders: number;
   activeWeek1Count: number;
   completedWeek1Count: number;
@@ -123,27 +125,41 @@ export function getTodayDateString(timeZone: string = 'Asia/Kolkata'): string {
 
 /**
  * Resolves a rider's true Day 1 (Joining Date) and whether they qualify as a new rider
- * within the selected cohort window [cutoffStr, todayStr].
- * - A rider with historical orders prior to cutoffStr (firstOrderDate < cutoffStr) is a
- *   veteran rider and is never classified as a new rider, even if a manual joiningDate was set.
+ * within the selected cohort window [startDate, endDate].
+ * - A rider with historical orders prior to the cohort start date is a veteran rider
+ *   and is never classified as a new rider in this window.
  * - A manual joiningDate can never be later than the rider's first actual completed order date.
  */
 export function resolveRiderEffectiveJoiningDate(params: {
   firstOrderDate?: string | null;
   manualJoiningDate?: string | null;
-  cutoffStr: string;
-  todayStr: string;
+  cutoffStr?: string;
+  todayStr?: string;
+  cohortStartDate?: string;
+  cohortEndDate?: string;
 }): {
   isEligibleNewRider: boolean;
   effectiveStartDate: string | null;
   isManualJoiningDate: boolean;
 } {
-  const { firstOrderDate, manualJoiningDate, cutoffStr, todayStr } = params;
+  const {
+    firstOrderDate,
+    manualJoiningDate,
+    cutoffStr,
+    todayStr,
+    cohortStartDate,
+    cohortEndDate,
+  } = params;
+
+  // Window bounds: prefer explicit cohortStartDate/cohortEndDate, falling back to cutoffStr/todayStr
+  const winStart = cohortStartDate || cutoffStr || '2000-01-01';
+  const winEnd = cohortEndDate || todayStr || '2099-12-31';
+
   const cleanFirstOrder = firstOrderDate ? firstOrderDate.slice(0, 10) : null;
   const cleanManual = manualJoiningDate ? manualJoiningDate.slice(0, 10) : null;
 
-  // 1. If the rider has completed orders before cutoffStr, they are a veteran rider
-  if (cleanFirstOrder && cleanFirstOrder < cutoffStr) {
+  // 1. If the rider has completed orders before winStart, they are a veteran rider
+  if (cleanFirstOrder && cleanFirstOrder < winStart) {
     return {
       isEligibleNewRider: false,
       effectiveStartDate: cleanFirstOrder,
@@ -154,8 +170,8 @@ export function resolveRiderEffectiveJoiningDate(params: {
   // 2. If the rider has orders starting within the cohort window
   if (cleanFirstOrder) {
     if (cleanManual) {
-      // If manual joining date is before cutoffStr, they joined prior to the cohort window
-      if (cleanManual < cutoffStr) {
+      // If manual joining date is before winStart, they joined prior to the cohort window
+      if (cleanManual < winStart) {
         return {
           isEligibleNewRider: false,
           effectiveStartDate: cleanManual,
@@ -165,7 +181,7 @@ export function resolveRiderEffectiveJoiningDate(params: {
       // Manual joining date can only precede or match firstOrderDate (never after they already started delivering)
       if (cleanManual <= cleanFirstOrder) {
         return {
-          isEligibleNewRider: cleanManual >= cutoffStr && cleanManual <= todayStr,
+          isEligibleNewRider: cleanManual >= winStart && cleanManual <= winEnd,
           effectiveStartDate: cleanManual,
           isManualJoiningDate: true,
         };
@@ -173,14 +189,14 @@ export function resolveRiderEffectiveJoiningDate(params: {
     }
 
     return {
-      isEligibleNewRider: cleanFirstOrder >= cutoffStr && cleanFirstOrder <= todayStr,
+      isEligibleNewRider: cleanFirstOrder >= winStart && cleanFirstOrder <= winEnd,
       effectiveStartDate: cleanFirstOrder,
       isManualJoiningDate: false,
     };
   }
 
   // 3. Rider has no order history yet, but has an explicit manual joiningDate in the cohort window
-  if (cleanManual && cleanManual >= cutoffStr && cleanManual <= todayStr) {
+  if (cleanManual && cleanManual >= winStart && cleanManual <= winEnd) {
     return {
       isEligibleNewRider: true,
       effectiveStartDate: cleanManual,
@@ -197,12 +213,15 @@ export function resolveRiderEffectiveJoiningDate(params: {
 
 /**
  * Fetches and builds the 7-day onboarding analytics for new riders of a store.
+ * Supports either preset cohortWindowDays or explicit [startDate, endDate] range.
  */
 export async function fetchNewRiderOnboardingAnalytics(params: {
   storeId: string;
   storeCode: string;
   storeName: string;
   cohortWindowDays?: number; // default 7 days
+  startDate?: string;        // explicit cohort window start date 'YYYY-MM-DD'
+  endDate?: string;          // explicit cohort window end date 'YYYY-MM-DD'
   timeZone?: string;
   shiftsMap?: Map<string, RiderShiftConfig>;
   phoneByNameMap?: Map<string, string>;
@@ -215,6 +234,8 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
     storeCode,
     storeName,
     cohortWindowDays = 7,
+    startDate,
+    endDate,
     timeZone = 'Asia/Kolkata',
     shiftsMap,
     phoneByNameMap,
@@ -223,12 +244,30 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
   try {
     const todayStr = getTodayDateString(timeZone);
 
-    // 1. Calculate cohort cutoff date
-    const [tY, tM, tD] = todayStr.split('-').map(Number);
-    const todayUtc = Date.UTC(tY, tM - 1, tD, 12, 0, 0);
-    const cutoffUtc = todayUtc - cohortWindowDays * 86400000;
-    const cDate = new Date(cutoffUtc);
-    const cutoffStr = `${cDate.getUTCFullYear()}-${String(cDate.getUTCMonth() + 1).padStart(2, '0')}-${String(cDate.getUTCDate()).padStart(2, '0')}`;
+    let cohortStartDate: string;
+    let cohortEndDate: string;
+    let actualWindowDays: number;
+
+    if (startDate && endDate) {
+      cohortStartDate = startDate.slice(0, 10);
+      cohortEndDate = endDate.slice(0, 10);
+      const [sY, sM, sD] = cohortStartDate.split('-').map(Number);
+      const [eY, eM, eD] = cohortEndDate.split('-').map(Number);
+      const sUtc = Date.UTC(sY, sM - 1, sD, 12, 0, 0);
+      const eUtc = Date.UTC(eY, eM - 1, eD, 12, 0, 0);
+      actualWindowDays = Math.max(1, Math.round((eUtc - sUtc) / 86400000) + 1);
+    } else {
+      // 1. Calculate cohort cutoff date using cohortWindowDays backward from today
+      const [tY, tM, tD] = todayStr.split('-').map(Number);
+      const todayUtc = Date.UTC(tY, tM - 1, tD, 12, 0, 0);
+      const cutoffUtc = todayUtc - cohortWindowDays * 86400000;
+      const cDate = new Date(cutoffUtc);
+      cohortStartDate = `${cDate.getUTCFullYear()}-${String(cDate.getUTCMonth() + 1).padStart(2, '0')}-${String(cDate.getUTCDate()).padStart(2, '0')}`;
+      cohortEndDate = todayStr;
+      actualWindowDays = cohortWindowDays;
+    }
+
+    const queryEndDate = todayStr > cohortEndDate ? todayStr : cohortEndDate;
 
     // 2. Full Historical Daily Aggregation:
     // Fetch all-time daily performance via paginated get_rider_daily_performance
@@ -251,7 +290,7 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
           .rpc('get_rider_daily_performance', {
             p_store_id: storeId,
             p_start_date: '2020-01-01',
-            p_end_date: todayStr,
+            p_end_date: queryEndDate,
           })
           .range(rpcFrom, rpcFrom + RPC_PAGE_SIZE - 1);
 
@@ -353,7 +392,7 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
           .from('orders')
           .select('rider_name, slot_hour, order_date, order_id')
           .eq('store_id', storeId)
-          .lte('order_date', todayStr)
+          .lte('order_date', queryEndDate)
           .range(from, from + PAGE_SIZE - 1);
 
         if (ordersErr) {
@@ -438,7 +477,11 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
     }
     if (effectiveShiftsMap) {
       for (const [norm, cfg] of effectiveShiftsMap.entries()) {
-        if (cfg.joiningDate && cfg.joiningDate >= cutoffStr) {
+        if (
+          cfg.joiningDate &&
+          cfg.joiningDate >= cohortStartDate &&
+          cfg.joiningDate <= cohortEndDate
+        ) {
           allRiderNorms.add(norm);
         }
       }
@@ -453,8 +496,10 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
       const resolved = resolveRiderEffectiveJoiningDate({
         firstOrderDate,
         manualJoiningDate: shiftConfig?.joiningDate ?? null,
-        cutoffStr,
-        todayStr,
+        cutoffStr: cohortStartDate,
+        todayStr: cohortEndDate,
+        cohortStartDate,
+        cohortEndDate,
       });
 
       if (!resolved.isEligibleNewRider || !resolved.effectiveStartDate) {
@@ -665,7 +710,9 @@ export async function fetchNewRiderOnboardingAnalytics(params: {
         storeId,
         storeCode,
         storeName,
-        cohortWindowDays,
+        cohortWindowDays: actualWindowDays,
+        cohortStartDate,
+        cohortEndDate,
         totalNewRiders,
         activeWeek1Count,
         completedWeek1Count,
@@ -791,6 +838,9 @@ export function exportNewRidersToExcel(
 
   XLSX.utils.book_append_sheet(wb, ws, 'New Rider Onboarding');
 
-  const filename = `${filenamePrefix}_${summary.storeCode}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const rangePart = summary.cohortStartDate && summary.cohortEndDate
+    ? `_${summary.cohortStartDate}_to_${summary.cohortEndDate}`
+    : `_${new Date().toISOString().slice(0, 10)}`;
+  const filename = `${filenamePrefix}_${summary.storeCode}${rangePart}.xlsx`;
   XLSX.writeFile(wb, filename);
 }

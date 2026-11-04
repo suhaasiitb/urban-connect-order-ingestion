@@ -12,6 +12,9 @@ interface NewRiderOnboardingSectionProps {
   onRefresh: () => void;
   cohortDays: number;
   onSelectCohortDays: (days: number) => void;
+  startDate?: string;
+  endDate?: string;
+  onSelectDateRange?: (startDate: string, endDate: string) => void;
   onOpenShiftModal?: () => void;
   onUpdateJoiningDate?: (riderName: string, newDate: string) => Promise<void>;
 }
@@ -23,6 +26,9 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
   onRefresh,
   cohortDays,
   onSelectCohortDays,
+  startDate,
+  endDate,
+  onSelectDateRange,
   onOpenShiftModal,
   onUpdateJoiningDate,
 }) => {
@@ -32,12 +38,56 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
   const [editDateValue, setEditDateValue] = useState<string>('');
   const [savingDate, setSavingDate] = useState(false);
 
+  const [isCustomRange, setIsCustomRange] = useState<boolean>(Boolean(startDate && endDate));
+  const [customStart, setCustomStart] = useState<string>(
+    startDate || summary?.cohortStartDate || ''
+  );
+  const [customEnd, setCustomEnd] = useState<string>(
+    endDate || summary?.cohortEndDate || ''
+  );
+
+  React.useEffect(() => {
+    if (startDate) {
+      setCustomStart(startDate);
+      setIsCustomRange(true);
+    } else if (summary?.cohortStartDate) {
+      setCustomStart((prev) => prev || summary.cohortStartDate || '');
+    }
+    if (endDate) {
+      setCustomEnd(endDate);
+    } else if (summary?.cohortEndDate) {
+      setCustomEnd((prev) => prev || summary.cohortEndDate || '');
+    }
+  }, [startDate, endDate, summary?.cohortStartDate, summary?.cohortEndDate]);
+
   const cohortOptions = [
     { label: 'Last 7 Days (Default)', value: 7 },
     { label: 'Last 14 Days', value: 14 },
     { label: 'Last 21 Days', value: 21 },
     { label: 'Last 30 Days', value: 30 },
   ];
+
+  const handleCohortDropdownChange = (val: string) => {
+    if (val === 'custom') {
+      setIsCustomRange(true);
+      if (!customStart && summary?.cohortStartDate) setCustomStart(summary.cohortStartDate);
+      if (!customEnd && summary?.cohortEndDate) setCustomEnd(summary.cohortEndDate);
+    } else {
+      setIsCustomRange(false);
+      onSelectCohortDays(Number(val));
+    }
+  };
+
+  const handleApplyCustomRange = () => {
+    if (!customStart || !customEnd) return;
+    if (customStart > customEnd) {
+      alert('Start date cannot be after end date.');
+      return;
+    }
+    if (onSelectDateRange) {
+      onSelectDateRange(customStart, customEnd);
+    }
+  };
 
   const filteredRiders = useMemo(() => {
     if (!summary?.riders) return [];
@@ -176,7 +226,11 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
           <strong className="kpi-value text-blue">
             {loading ? '...' : summary?.totalNewRiders ?? 0}
           </strong>
-          <span className="kpi-sub">Joined in last {cohortDays} days</span>
+          <span className="kpi-sub">
+            {summary?.cohortStartDate && summary?.cohortEndDate
+              ? `Joined: ${summary.cohortStartDate} to ${summary.cohortEndDate}`
+              : `Joined in last ${cohortDays} days`}
+          </span>
         </div>
 
         <div className="kpi-card onboarding-kpi-card">
@@ -225,7 +279,7 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
       {/* Controls & Filters Bar */}
       <div className="perf-controls-bar">
         <div className="perf-controls-left">
-          {/* Cohort Selector */}
+          {/* Cohort Selector with Custom Date Range */}
           <div className="perf-filter-group">
             <label htmlFor="cohort-select" className="perf-control-label">
               Cohort Window:
@@ -234,8 +288,8 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
               <select
                 id="cohort-select"
                 className="perf-dropdown-select"
-                value={cohortDays}
-                onChange={(e) => onSelectCohortDays(Number(e.target.value))}
+                value={isCustomRange ? 'custom' : cohortDays}
+                onChange={(e) => handleCohortDropdownChange(e.target.value)}
                 disabled={loading}
               >
                 {cohortOptions.map((opt) => (
@@ -243,6 +297,7 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
                     {opt.label}
                   </option>
                 ))}
+                <option value="custom">Custom Date Range...</option>
               </select>
               <span className="select-chevron" aria-hidden="true">
                 <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -251,6 +306,53 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
               </span>
             </div>
           </div>
+
+          {/* Inline Custom Date Range Picker */}
+          {isCustomRange && (
+            <div className="custom-range-inline-picker">
+              <div className="custom-range-field">
+                <span className="custom-range-label">From:</span>
+                <input
+                  type="date"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="custom-range-date-input"
+                  aria-label="Cohort start date"
+                />
+              </div>
+              <div className="custom-range-field">
+                <span className="custom-range-label">To:</span>
+                <input
+                  type="date"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="custom-range-date-input"
+                  aria-label="Cohort end date"
+                />
+              </div>
+              <button
+                type="button"
+                className="btn-apply-custom"
+                onClick={handleApplyCustomRange}
+                disabled={loading || !customStart || !customEnd}
+              >
+                Apply
+              </button>
+            </div>
+          )}
+
+          {/* Active Cohort Date Range Pill */}
+          {summary?.cohortStartDate && summary?.cohortEndDate && (
+            <div
+              className="cohort-active-badge-pill"
+              title={`New riders with Day 1 between ${summary.cohortStartDate} and ${summary.cohortEndDate}`}
+            >
+              <span className="cohort-badge-icon">📅</span>
+              <span className="cohort-badge-text">
+                {summary.cohortStartDate} to {summary.cohortEndDate} ({summary.cohortWindowDays}d)
+              </span>
+            </div>
+          )}
 
           {/* Status Filter */}
           <div className="perf-filter-group">
@@ -610,8 +712,13 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
       <div className="perf-footer-caption">
         <div className="caption-summary-pill">
           <span>
-            Tracking <strong>{filteredRiders.length}</strong> new delivery partners across their first 7 calendar days for{' '}
-            <strong>{summary?.storeCode}</strong> ({summary?.storeName}).
+            Tracking <strong>{filteredRiders.length}</strong> new delivery partners across their first 7 calendar days
+            {summary?.cohortStartDate && summary?.cohortEndDate ? (
+              <> (cohort window: <strong>{summary.cohortStartDate}</strong> to <strong>{summary.cohortEndDate}</strong>)</>
+            ) : (
+              <> (cohort window: last {cohortDays} days)</>
+            )}{' '}
+            for <strong>{summary?.storeCode}</strong> ({summary?.storeName}).
           </span>
         </div>
         <div className="caption-summary-pill pill-compliance-summary">
