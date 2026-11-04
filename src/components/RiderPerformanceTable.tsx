@@ -10,11 +10,10 @@ import {
   formatShiftTimings,
   calculatePlannedHours,
   classifyShiftType,
-  SHIFT_PRESETS,
   saveSingleRiderShift,
   deleteSingleRiderShift,
 } from '../services/riderShiftService';
-import { formatDnrTimestamp, type RiderDnrSummary, type StoreDnrSummary } from '../services/dnrService';
+import { type RiderDnrSummary, type StoreDnrSummary } from '../services/dnrService';
 import { RiderDnrResolutionModal } from './RiderDnrResolutionModal';
 import { IndividualRiderShiftModal } from './IndividualRiderShiftModal';
 
@@ -79,7 +78,6 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const [selectedDnrRider, setSelectedDnrRider] = useState<RiderDnrSummary | null>(null);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<boolean>(false);
   const [individualModalRider, setIndividualModalRider] = useState<string | null>(null);
-  const [savingShiftRider, setSavingShiftRider] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<
     'name' | 'phone' | 'shift' | 'compliance' | 'activeDays' | 'avgOrders' | 'avgHours' | 'totalOrders'
   >('name');
@@ -110,111 +108,6 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     } else {
       setSortBy(field);
       setSortAsc(field === 'name' || field === 'phone' || field === 'shift'); // default asc for text
-    }
-  };
-
-  // Quick Preset Helper Checkers
-  const isPresetMorning = (s: RiderShiftConfig) =>
-    s.slot1StartHour === 6 &&
-    s.slot1EndHour === 15 &&
-    (s.slot2StartHour == null || s.slot2EndHour == null);
-
-  const isPreset2nd = (s: RiderShiftConfig) =>
-    s.slot1StartHour === 15 &&
-    s.slot1EndHour === 24 &&
-    (s.slot2StartHour == null || s.slot2EndHour == null);
-
-  const isPresetSplit = (s: RiderShiftConfig) =>
-    s.slot1StartHour === 14 &&
-    s.slot1EndHour === 22 &&
-    (s.slot2StartHour == null || s.slot2EndHour == null);
-
-  const isStandardPreset = (s: RiderShiftConfig) =>
-    isPresetMorning(s) || isPreset2nd(s) || isPresetSplit(s);
-
-  // Handle Quick Inline Shift Selection
-  const handleInlineShiftSelect = async (riderName: string, selectedAction: string) => {
-    if (selectedAction === 'ACTION_EDIT') {
-      setIndividualModalRider(riderName);
-      return;
-    }
-
-    if (selectedAction === 'ACTION_UNASSIGN') {
-      if (!window.confirm(`Unassign shift for ${riderName}?`)) return;
-      setSavingShiftRider(riderName);
-      try {
-        if (onDeleteSingleShift) {
-          await onDeleteSingleShift(riderName);
-        } else if (storeId) {
-          await deleteSingleRiderShift({ storeId, riderName });
-          onRefresh();
-        }
-      } finally {
-        setSavingShiftRider(null);
-      }
-      return;
-    }
-
-    const norm = normalizeRiderName(riderName);
-    const existing = riderShiftsMap?.get(norm);
-    let newShift: RiderShiftConfig | null = null;
-
-    if (selectedAction === 'PRESET_MORNING') {
-      const p = SHIFT_PRESETS['Morning Shift'];
-      newShift = {
-        riderName,
-        normalizedName: norm,
-        shiftType: 'Morning Shift',
-        slot1StartHour: p.slot1Start,
-        slot1EndHour: p.slot1End,
-        slot2StartHour: null,
-        slot2EndHour: null,
-        totalPlannedHours: p.hours,
-        joiningDate: existing?.joiningDate || null,
-        onboardedBy: existing?.onboardedBy || null,
-      };
-    } else if (selectedAction === 'PRESET_2ND') {
-      const p = SHIFT_PRESETS['2nd Shift'];
-      newShift = {
-        riderName,
-        normalizedName: norm,
-        shiftType: '2nd Shift',
-        slot1StartHour: p.slot1Start,
-        slot1EndHour: p.slot1End,
-        slot2StartHour: null,
-        slot2EndHour: null,
-        totalPlannedHours: p.hours,
-        joiningDate: existing?.joiningDate || null,
-        onboardedBy: existing?.onboardedBy || null,
-      };
-    } else if (selectedAction === 'PRESET_SPLIT') {
-      const p = SHIFT_PRESETS['Split Shift'];
-      newShift = {
-        riderName,
-        normalizedName: norm,
-        shiftType: 'Split Shift',
-        slot1StartHour: p.slot1Start,
-        slot1EndHour: p.slot1End,
-        slot2StartHour: p.slot2Start ?? null,
-        slot2EndHour: p.slot2End ?? null,
-        totalPlannedHours: p.hours,
-        joiningDate: existing?.joiningDate || null,
-        onboardedBy: existing?.onboardedBy || null,
-      };
-    }
-
-    if (newShift) {
-      setSavingShiftRider(riderName);
-      try {
-        if (onSaveSingleShift) {
-          await onSaveSingleShift(newShift);
-        } else if (storeId) {
-          await saveSingleRiderShift({ storeId, shift: newShift });
-          onRefresh();
-        }
-      } finally {
-        setSavingShiftRider(null);
-      }
     }
   };
 
@@ -443,7 +336,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     return filteredRows.reduce((sum, r) => sum + r.workingDays, 0) / filteredRows.length;
   }, [filteredRows]);
 
-  const totalColSpan = showDailyBreakdown ? displayedDateColumns.length * 2 + 8 : 8;
+  const totalColSpan = showDailyBreakdown ? displayedDateColumns.length * 2 + 7 : 7;
 
   const handleApplyCustomDate = () => {
     if (customStart && customEnd && onCustomDateChange) {
@@ -772,23 +665,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
             </div>
           </div>
 
-          {/* Right Actions: Shifts, Refresh, Export */}
+          {/* Right Actions: Refresh, Export */}
           <div className="perf-actions-right">
-            {onOpenShiftModal && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm perf-btn-shifts"
-                onClick={() => onOpenShiftModal()}
-                title="Configure rider shifts and 8h timings"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
-                <span>Shifts</span>
-              </button>
-            )}
-
             <button
               type="button"
               className="btn btn-secondary btn-sm perf-btn-refresh"
@@ -931,15 +809,13 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   </div>
                 </th>
 
-                <th className="th-active-status text-center">Active</th>
-
                 <th
-                  className="th-shift text-center"
+                  className="th-active-shift text-center"
                   onClick={() => handleSort('shift')}
                   title="Click to sort by assigned shift"
                 >
                   <div className="th-content th-content-center">
-                    <span>Assigned Shift</span>
+                    <span>Active &amp; Shift</span>
                     <span className="sort-arrow">
                       {sortBy === 'shift' ? (sortAsc ? '▲' : '▼') : '↕'}
                     </span>
@@ -1029,18 +905,14 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     </div>
                   </th>
 
-                  <th rowSpan={2} className="th-active-status text-center">
-                    Active
-                  </th>
-
                   <th
                     rowSpan={2}
-                    className="th-shift text-center"
+                    className="th-active-shift text-center"
                     onClick={() => handleSort('shift')}
                     title="Click to sort by assigned shift"
                   >
                     <div className="th-content th-content-center">
-                      <span>Assigned Shift</span>
+                      <span>Active &amp; Shift</span>
                       <span className="sort-arrow">
                         {sortBy === 'shift' ? (sortAsc ? '▲' : '▼') : '↕'}
                       </span>
@@ -1250,20 +1122,54 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                       </div>
                     </td>
 
-                    {/* Active Status & DNR Resolution */}
-                    <td className="td-active text-center">
-                      <div className="active-cell-stacked flex-col items-center gap-xs">
-                        {isRiderActive ? (
-                          <span className="badge-active-yes" title="Verified in Active Riders Roster">
-                            Active
-                          </span>
-                        ) : (
-                          <span className="badge-active-no" title="Not found in Active Riders Roster">
-                            Inactive
-                          </span>
-                        )}
+                    {/* Active Status & Assigned Shift in ONE Column */}
+                    <td className="td-active-shift text-center">
+                      <div className="active-shift-combo-cell flex-col items-center justify-center gap-xs">
+                        <div className="active-badge-row flex-row items-center justify-center gap-xs">
+                          {isRiderActive ? (
+                            <span className="badge-active-yes" title="Verified in Active Riders Roster">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="badge-active-no" title="Not found in Active Riders Roster">
+                              Inactive
+                            </span>
+                          )}
+                        </div>
 
-                        {/* DNR Resolution Tag or Action Button */}
+                        {/* Assigned Shift Pill with Timings */}
+                        <div
+                          className="shift-display-group flex-col items-center cursor-pointer"
+                          onClick={() => setIndividualModalRider(row.riderName)}
+                          title="Click to view/edit full shift details"
+                        >
+                          {riderShift ? (
+                            <>
+                              <span
+                                className={`badge-shift ${
+                                  effectiveShiftType === 'Morning Shift'
+                                    ? 'badge-morning'
+                                    : effectiveShiftType === '2nd Shift'
+                                    ? 'badge-second'
+                                    : effectiveShiftType === 'Split Shift'
+                                    ? 'badge-split'
+                                    : 'badge-custom'
+                                }`}
+                              >
+                                {effectiveShiftType === 'Split Shift' ? 'Split' : (effectiveShiftType ?? '').replace(' Shift', '')}
+                              </span>
+                              <span className="shift-timings-caption muted">
+                                {formatShiftTimings(riderShift)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className={`badge-shift ${isRiderActive ? 'badge-shift-warning' : 'badge-shift-unassigned'}`}>
+                              {isRiderActive ? '⚠️ No Shift' : 'Unassigned'}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* DNR Resolution Tag or Action Button if applicable */}
                         {riderDnr && riderDnr.totalDnrCount > 0 && (
                           riderDnr.latestResolution ? (
                             <button
@@ -1272,15 +1178,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                               onClick={() => setSelectedDnrRider(riderDnr)}
                               title={`✓ DNR Resolved: ${riderDnr.latestResolution.resolution}${
                                 riderDnr.latestResolution.notes ? `\n"${riderDnr.latestResolution.notes}"` : ''
-                              }\nResolved by ${riderDnr.latestResolution.resolvedBy || 'Admin'} on ${
-                                formatDnrTimestamp(riderDnr.latestResolution.resolvedAt) ||
-                                new Date(riderDnr.latestResolution.resolvedAt).toLocaleDateString()
                               }\nClick to view full resolution details & history.`}
                             >
                               <span className="dnr-resolved-title-green">✓ DNR Resolved</span>
-                              <span className="dnr-resolved-outcome-text">
-                                {riderDnr.latestResolution.resolution}
-                              </span>
                             </button>
                           ) : (
                             <button
@@ -1293,106 +1193,6 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             </button>
                           )
                         )}
-                      </div>
-                    </td>
-
-                    {/* Assigned Shift */}
-                    <td className="td-shift text-center">
-                      <div className="table-shift-cell-wrapper">
-                        <div className="table-shift-control-row">
-                          <div
-                            className={`inline-shift-pill-select-wrapper inline-shift-${
-                              riderShift
-                                ? (effectiveShiftType || riderShift.shiftType)
-                                    .toLowerCase()
-                                    .replace(/\s+/g, '-')
-                                : isRiderActive
-                                ? 'unassigned-warn'
-                                : 'unassigned'
-                            }`}
-                          >
-                            <select
-                              className="inline-shift-select"
-                              value={
-                                savingShiftRider === row.riderName
-                                  ? 'SAVING'
-                                  : riderShift
-                                  ? isPresetMorning(riderShift)
-                                    ? 'PRESET_MORNING'
-                                    : isPreset2nd(riderShift)
-                                    ? 'PRESET_2ND'
-                                    : isPresetSplit(riderShift)
-                                    ? 'PRESET_SPLIT'
-                                    : 'CUSTOM'
-                                  : 'UNASSIGNED'
-                              }
-                              onChange={(e) =>
-                                handleInlineShiftSelect(row.riderName, e.target.value)
-                              }
-                              disabled={savingShiftRider === row.riderName}
-                              title="Assign or edit shift for this rider"
-                              aria-label={`Assigned Shift for ${row.riderName}`}
-                            >
-                              {savingShiftRider === row.riderName ? (
-                                <option value="SAVING" disabled>
-                                  Saving...
-                                </option>
-                              ) : riderShift ? (
-                                <>
-                                  <option value="PRESET_MORNING">Morning Shift (6 AM – 3 PM)</option>
-                                  <option value="PRESET_2ND">2nd Shift (3 PM – 12 AM)</option>
-                                  <option value="PRESET_SPLIT">Split Shift (2 PM – 10 PM)</option>
-                                  {!isStandardPreset(riderShift) && (
-                                    <option value="CUSTOM">
-                                      Custom: {formatShiftTimings(riderShift)}
-                                    </option>
-                                  )}
-                                  <option value="ACTION_EDIT">✏️ Edit Timings & Details...</option>
-                                  <option value="ACTION_UNASSIGN">🗑️ Unassign (Clear Shift)</option>
-                                </>
-                              ) : (
-                                <>
-                                  <option value="UNASSIGNED" disabled>
-                                    {isRiderActive ? '⚠️ Shift Empty — Assign' : '— Assign Shift —'}
-                                  </option>
-                                  <option value="PRESET_MORNING">☀️ Morning Shift (6 AM – 3 PM)</option>
-                                  <option value="PRESET_2ND">🌙 2nd Shift (3 PM – 12 AM)</option>
-                                  <option value="PRESET_SPLIT">⚡ Split Shift (2 PM – 10 PM)</option>
-                                  <option value="ACTION_EDIT">✏️ Custom Hours / Details...</option>
-                                </>
-                              )}
-                            </select>
-                            <span className="inline-shift-chevron" aria-hidden="true">▾</span>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="btn-edit-shift-pencil"
-                            onClick={() => setIndividualModalRider(row.riderName)}
-                            title={`Edit shift hours & onboarder for ${row.riderName}`}
-                            aria-label={`Edit shift for ${row.riderName}`}
-                          >
-                            ✏️
-                          </button>
-                        </div>
-
-                        <div className="table-shift-caption-row">
-                          {savingShiftRider === row.riderName ? (
-                            <span className="shift-saving-caption">Saving shift...</span>
-                          ) : riderShift ? (
-                            <span className="shift-timings-caption">
-                              {formatShiftTimings(riderShift)} ({shiftPlannedHours}h)
-                            </span>
-                          ) : isRiderActive ? (
-                            <span className="shift-warn-caption font-semibold">
-                              ⚠️ Action required
-                            </span>
-                          ) : (
-                            <span className="shift-timings-caption text-muted">
-                              Not configured
-                            </span>
-                          )}
-                        </div>
                       </div>
                     </td>
 
@@ -1515,10 +1315,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           {filteredRows.length > 0 && !loading && (
             <tfoot>
               <tr className="perf-footer-row">
-                <td className="sticky-col text-left">
-                  <strong>Total Active: {filteredRows.length}</strong>
+                <td className="sticky-col text-center">
+                  <strong>Total: {filteredRows.length}</strong>
                 </td>
-                <td className="text-center">—</td>
                 <td className="text-center">—</td>
                 <td className="text-center">
                   <strong className="summary-compliance-rate">

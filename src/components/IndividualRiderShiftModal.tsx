@@ -55,6 +55,15 @@ export const IndividualRiderShiftModal: React.FC<IndividualRiderShiftModalProps>
   const [onboardedBy, setOnboardedBy] = useState<string>(
     currentShift?.onboardedBy || ''
   );
+  const [joiningDate, setJoiningDate] = useState<string>(
+    currentShift?.joiningDate || ''
+  );
+  const [referredBy, setReferredBy] = useState<string>(
+    currentShift?.referredBy || ''
+  );
+  const [referredPhone, setReferredPhone] = useState<string>(
+    currentShift?.referredPhone || ''
+  );
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -73,6 +82,9 @@ export const IndividualRiderShiftModal: React.FC<IndividualRiderShiftModalProps>
     setSlot2StartHour(currentShift?.slot2StartHour ?? 15);
     setSlot2EndHour(currentShift?.slot2EndHour ?? 24);
     setOnboardedBy(currentShift?.onboardedBy || '');
+    setJoiningDate(currentShift?.joiningDate || '');
+    setReferredBy(currentShift?.referredBy || '');
+    setReferredPhone(currentShift?.referredPhone || '');
     setErrorMsg(null);
     setSaving(false);
     setDeleting(false);
@@ -139,8 +151,10 @@ export const IndividualRiderShiftModal: React.FC<IndividualRiderShiftModalProps>
       slot2StartHour: hasSplitSlot ? slot2StartHour : null,
       slot2EndHour: hasSplitSlot ? slot2EndHour : null,
       totalPlannedHours: plannedHours,
-      joiningDate: currentShift?.joiningDate || null,
+      joiningDate: joiningDate ? joiningDate.trim() : null,
       onboardedBy: onboardedBy ? onboardedBy.trim() : null,
+      referredBy: referredBy ? referredBy.trim() : null,
+      referredPhone: referredPhone ? referredPhone.trim() : null,
     };
 
     try {
@@ -375,28 +389,89 @@ export const IndividualRiderShiftModal: React.FC<IndividualRiderShiftModalProps>
             </div>
           </div>
 
-          {/* Onboarded By Selection */}
+          {/* Onboarding & Referral Details */}
           <div className="individual-shift-section">
-            <label htmlFor="onboarded-by-select" className="individual-shift-label">
-              Onboarded By:
-            </label>
-            <div className="onboarder-field-wrapper">
-              <select
-                id="onboarded-by-select"
-                className="hour-dropdown-select onboarder-dropdown"
-                value={onboardedBy}
-                onChange={(e) => setOnboardedBy(e.target.value)}
-              >
-                <option value="">— Select Onboarder —</option>
-                {ONBOARDED_BY_OPTIONS.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-              <span className="field-hint-text">
-                Logs which Fleet Manager / Onboarder introduced this rider
-              </span>
+            <h4 className="section-subheading-text">Onboarding &amp; Referral Details</h4>
+            
+            <div className="modal-two-col-grid">
+              {/* Joining Date */}
+              <div className="field-block">
+                <label htmlFor="joining-date-input" className="individual-shift-label">
+                  Joining Date (Day 1):
+                </label>
+                <input
+                  id="joining-date-input"
+                  type="date"
+                  className="hour-dropdown-select input-joining-date"
+                  value={joiningDate}
+                  onChange={(e) => setJoiningDate(e.target.value)}
+                  placeholder="YYYY-MM-DD"
+                />
+                <span className="field-hint-text">
+                  Sets Day 1 for new rider 7-day onboarding tracking
+                </span>
+              </div>
+
+              {/* Onboarded By */}
+              <div className="field-block">
+                <label htmlFor="onboarded-by-select" className="individual-shift-label">
+                  Onboarded By:
+                </label>
+                <select
+                  id="onboarded-by-select"
+                  className="hour-dropdown-select onboarder-dropdown"
+                  value={onboardedBy}
+                  onChange={(e) => setOnboardedBy(e.target.value)}
+                >
+                  <option value="">— Select Onboarder —</option>
+                  {ONBOARDED_BY_OPTIONS.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <span className="field-hint-text">
+                  Fleet Manager / Onboarder who enrolled rider
+                </span>
+              </div>
+            </div>
+
+            <div className="modal-two-col-grid mt-sm">
+              {/* Referred By */}
+              <div className="field-block">
+                <label htmlFor="referred-by-input" className="individual-shift-label">
+                  Referred By:
+                </label>
+                <input
+                  id="referred-by-input"
+                  type="text"
+                  className="hour-dropdown-select input-referred-by"
+                  value={referredBy}
+                  onChange={(e) => setReferredBy(e.target.value)}
+                  placeholder="e.g. Krushna, Sachin..."
+                />
+                <span className="field-hint-text">
+                  Name of person who referred this rider
+                </span>
+              </div>
+
+              {/* Referred Mobile No */}
+              <div className="field-block">
+                <label htmlFor="referred-phone-input" className="individual-shift-label">
+                  Referred Mobile No:
+                </label>
+                <input
+                  id="referred-phone-input"
+                  type="tel"
+                  className="hour-dropdown-select input-referred-phone"
+                  value={referredPhone}
+                  onChange={(e) => setReferredPhone(e.target.value)}
+                  placeholder="e.g. 9876543210"
+                />
+                <span className="field-hint-text">
+                  10-digit mobile number of the referrer
+                </span>
+              </div>
             </div>
           </div>
 

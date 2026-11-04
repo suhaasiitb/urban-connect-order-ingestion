@@ -357,6 +357,8 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
         slot1EndHour: 24,
         totalPlannedHours: 9,
         onboardedBy: 'Sunil',
+        referredBy: 'Krushna',
+        referredPhone: '9876543210',
       };
       const resA = await saveSingleRiderShift({ storeId: testStoreId, shift: riderA });
       expect(resA.ok).toBe(true);
@@ -366,6 +368,8 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
       expect(map.has('abhay gore')).toBe(true);
       expect(map.get('abhay gore')?.shiftType).toBe('2nd Shift');
       expect(map.get('abhay gore')?.onboardedBy).toBe('Sunil');
+      expect(map.get('abhay gore')?.referredBy).toBe('Krushna');
+      expect(map.get('abhay gore')?.referredPhone).toBe('9876543210');
 
       // 2. Assign second rider shift
       const riderB: RiderShiftConfig = {

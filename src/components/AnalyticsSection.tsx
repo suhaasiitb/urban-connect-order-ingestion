@@ -28,6 +28,7 @@ import {
   fetchNewRiderOnboardingAnalytics,
 } from '../services/newRiderOnboardingService';
 import { RiderPerformanceTable } from './RiderPerformanceTable';
+import { RiderManagementSection } from './RiderManagementSection';
 import { NewRiderOnboardingSection } from './NewRiderOnboardingSection';
 import { RiderShiftModal } from './RiderShiftModal';
 
@@ -63,7 +64,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     overallAvgHours: 0,
     overallAvgOrders: 0,
   });
-  const [activeTab, setActiveTab] = useState<'all-riders' | 'new-riders'>('all-riders');
+  const [activeTab, setActiveTab] = useState<'performance' | 'management' | 'new-riders'>('performance');
   const [tableShiftFilter, setTableShiftFilter] = useState<string>('ALL');
   const [shiftModalFilter, setShiftModalFilter] = useState<string | undefined>(undefined);
   const [shiftModalSearchQuery, setShiftModalSearchQuery] = useState<string | undefined>(undefined);
@@ -291,15 +292,34 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
           <div className="analytics-tab-pill-group">
             <button
               type="button"
-              className={`analytics-tab-pill ${activeTab === 'all-riders' ? 'active' : ''}`}
-              onClick={() => setActiveTab('all-riders')}
+              className={`analytics-tab-pill ${activeTab === 'performance' ? 'active' : ''}`}
+              onClick={() => setActiveTab('performance')}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <line x1="3" y1="9" x2="21" y2="9" />
                 <line x1="9" y1="21" x2="9" y2="9" />
               </svg>
-              <span>All Riders Pivot Table</span>
+              <span>Rider Performance</span>
+            </button>
+
+            <button
+              type="button"
+              className={`analytics-tab-pill ${activeTab === 'management' ? 'active' : ''}`}
+              onClick={() => setActiveTab('management')}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              <span>Rider Management</span>
+              {activeWithoutShiftCount > 0 && (
+                <span className="tab-live-badge tab-live-badge-warn">
+                  {activeWithoutShiftCount} Missing Shift
+                </span>
+              )}
             </button>
 
             <button
@@ -347,8 +367,8 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
         </div>
       </div>
 
-      {/* VIEW 1: All Riders Pivot Table View */}
-      {activeTab === 'all-riders' && (
+      {/* VIEW 1: Rider Performance Table View */}
+      {activeTab === 'performance' && (
         <>
           {/* Top Quick KPI Metric Cards */}
           <div className="kpi-grid">
@@ -471,27 +491,15 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
             </div>
           )}
 
-          {/* Primary Rider Hours & Orders Pivot Section */}
+          {/* Primary Rider Performance Section */}
           <div className="section-card perf-card">
             <div className="perf-section-header perf-section-header-row">
               <div>
-                <h3 className="section-title">Rider Hours & Orders Pivot Table</h3>
+                <h3 className="section-title">Rider Performance</h3>
                 <p className="section-subtitle">
                   Daily working hours (unique slot count) and order volume per rider with working-day cumulative average.
                 </p>
               </div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-manage-shifts"
-                onClick={() => handleOpenShiftModal()}
-                title="Configure recurring rider shifts and 8h timings"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
-                <span>Manage Shifts</span>
-              </button>
             </div>
 
             {selectedStore && (
@@ -530,7 +538,39 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
         </>
       )}
 
-      {/* VIEW 2: New Rider Onboarding (First 7 Days) View */}
+      {/* VIEW 2: Rider Management View */}
+      {activeTab === 'management' && selectedStore && (
+        <RiderManagementSection
+          storeId={selectedStore.id}
+          storeCode={selectedStore.store_code}
+          storeName={selectedStore.store_name}
+          activeRoster={activeRoster}
+          riderShiftsMap={riderShiftsMap}
+          pivotRiderNames={pivotResult.rows.map((r) => r.riderName)}
+          loading={loadingPivot}
+          onRefresh={() => {
+            void loadRiderPivot();
+            void loadRoster();
+            void loadShifts();
+            void loadDnr();
+            void loadOnboarding();
+          }}
+          onSaveSingleShift={handleSaveSingleShift}
+          onSaveBatchShifts={async (shifts) => {
+            const res = await saveRiderShiftsForStore({
+              storeId: selectedStore.id,
+              shifts,
+            });
+            if (res.ok) {
+              void loadShifts();
+            }
+            return res;
+          }}
+          onDeleteSingleShift={handleDeleteSingleShift}
+        />
+      )}
+
+      {/* VIEW 3: New Rider Onboarding (First 7 Days) View */}
       {activeTab === 'new-riders' && (
         <div className="section-card perf-card onboarding-card">
           <NewRiderOnboardingSection

@@ -4,6 +4,7 @@
 // Supports dual-persistence: Supabase store_rider_shifts table + localStorage.
 // ==============================================================================
 
+import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
 import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService';
 
@@ -30,6 +31,8 @@ export interface RiderShiftConfig {
   totalPlannedHours: number;
   joiningDate?: string | null; // Optional manual joining date override ('YYYY-MM-DD')
   onboardedBy?: string | null; // Who onboarded the rider (Sunil, Atharva, Krushna, FM1, FM2)
+  referredBy?: string | null; // Name of person who referred the rider
+  referredPhone?: string | null; // Mobile number of referrer
   updatedAt?: string | null;
 }
 
@@ -352,6 +355,7 @@ function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F)
 }
 
 let remoteHasOnboardedByColumn = true;
+let remoteHasReferralColumns = true;
 
 /**
  * Loads rider shifts for a store from Supabase and merges with localStorage.
@@ -363,13 +367,27 @@ export async function getRiderShiftsForStore(
 
   // 1. Try Supabase
   try {
-    const selectCols = remoteHasOnboardedByColumn
-      ? 'rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date, onboarded_by, updated_at'
-      : 'rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date, updated_at';
+    const cols = [
+      'rider_name',
+      'normalized_name',
+      'shift_type',
+      'slot1_start_hour',
+      'slot1_end_hour',
+      'slot2_start_hour',
+      'slot2_end_hour',
+      'total_planned_hours',
+      'joining_date',
+      'updated_at',
+    ];
+    if (remoteHasOnboardedByColumn) cols.push('onboarded_by');
+    if (remoteHasReferralColumns) {
+      cols.push('referred_by');
+      cols.push('referred_phone');
+    }
 
     const query = supabase
       .from('store_rider_shifts')
-      .select(selectCols)
+      .select(cols.join(', '))
       .eq('store_id', storeId);
 
     let res = await withTimeout(query, 1500, {
@@ -377,12 +395,37 @@ export async function getRiderShiftsForStore(
       error: { message: 'Timeout loading store_rider_shifts', code: 'TIMEOUT' },
     } as unknown as { data: Record<string, unknown>[] | null; error: { code?: string; message?: string } | null });
 
-    // If onboarded_by column is not yet present on remote DB (PostgreSQL error 42703), retry without it
-    if (res.error && (res.error.code === '42703' || res.error.message?.includes('onboarded_by'))) {
-      remoteHasOnboardedByColumn = false;
+    // If referral or onboarded_by columns are not yet present on remote DB (PostgreSQL error 42703), retry without them
+    if (
+      res.error &&
+      (res.error.code === '42703' ||
+        res.error.message?.includes('referred_') ||
+        res.error.message?.includes('onboarded_by'))
+    ) {
+      if (res.error.code === '42703' || res.error.message?.includes('referred_')) {
+        remoteHasReferralColumns = false;
+      }
+      if (res.error.message?.includes('onboarded_by')) {
+        remoteHasOnboardedByColumn = false;
+      }
+
+      const fallbackCols = [
+        'rider_name',
+        'normalized_name',
+        'shift_type',
+        'slot1_start_hour',
+        'slot1_end_hour',
+        'slot2_start_hour',
+        'slot2_end_hour',
+        'total_planned_hours',
+        'joining_date',
+        'updated_at',
+      ];
+      if (remoteHasOnboardedByColumn) fallbackCols.push('onboarded_by');
+
       const fallbackQuery = supabase
         .from('store_rider_shifts')
-        .select('rider_name, normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours, joining_date, updated_at')
+        .select(fallbackCols.join(', '))
         .eq('store_id', storeId);
 
       res = await withTimeout(fallbackQuery, 1500, {
@@ -405,6 +448,8 @@ export async function getRiderShiftsForStore(
         total_planned_hours?: number;
         joining_date?: string | null;
         onboarded_by?: string | null;
+        referred_by?: string | null;
+        referred_phone?: string | null;
         updated_at?: string | null;
       })[]) {
         const rawHadAsterisk =
@@ -451,6 +496,8 @@ export async function getRiderShiftsForStore(
           totalPlannedHours: totalPlanned,
           joiningDate: row.joining_date ? String(row.joining_date).slice(0, 10) : null,
           onboardedBy: row.onboarded_by ? String(row.onboarded_by).trim() : null,
+          referredBy: row.referred_by ? String(row.referred_by).trim() : null,
+          referredPhone: row.referred_phone ? String(row.referred_phone).trim() : null,
           updatedAt: row.updated_at ? String(row.updated_at) : null,
         });
       }
@@ -490,6 +537,8 @@ export async function getRiderShiftsForStore(
               shiftType: effectiveShift,
               totalPlannedHours: totalPlanned,
               onboardedBy: item.onboardedBy ? String(item.onboardedBy).trim() : null,
+              referredBy: item.referredBy ? String(item.referredBy).trim() : null,
+              referredPhone: item.referredPhone ? String(item.referredPhone).trim() : null,
             });
           } else {
             const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
@@ -504,13 +553,32 @@ export async function getRiderShiftsForStore(
                 onboardedBy: item.onboardedBy
                   ? String(item.onboardedBy).trim()
                   : existing.onboardedBy || null,
+                referredBy: item.referredBy
+                  ? String(item.referredBy).trim()
+                  : existing.referredBy || null,
+                referredPhone: item.referredPhone
+                  ? String(item.referredPhone).trim()
+                  : existing.referredPhone || null,
                 updatedAt: item.updatedAt,
               });
-            } else if (item.onboardedBy && !existing.onboardedBy) {
-              shiftMap.set(norm, {
-                ...existing,
-                onboardedBy: String(item.onboardedBy).trim(),
-              });
+            } else {
+              const patched = { ...existing };
+              let changed = false;
+              if (item.onboardedBy && !existing.onboardedBy) {
+                patched.onboardedBy = String(item.onboardedBy).trim();
+                changed = true;
+              }
+              if (item.referredBy && !existing.referredBy) {
+                patched.referredBy = String(item.referredBy).trim();
+                changed = true;
+              }
+              if (item.referredPhone && !existing.referredPhone) {
+                patched.referredPhone = String(item.referredPhone).trim();
+                changed = true;
+              }
+              if (changed) {
+                shiftMap.set(norm, patched);
+              }
             }
           }
         }
@@ -621,6 +689,10 @@ export async function saveRiderShiftsForStore(params: {
       if (remoteHasOnboardedByColumn) {
         baseRow.onboarded_by = s.onboardedBy ? s.onboardedBy : null;
       }
+      if (remoteHasReferralColumns) {
+        baseRow.referred_by = s.referredBy ? s.referredBy : null;
+        baseRow.referred_phone = s.referredPhone ? s.referredPhone : null;
+      }
       return baseRow;
     });
 
@@ -633,18 +705,28 @@ export async function saveRiderShiftsForStore(params: {
       error: { message: 'Timeout saving store_rider_shifts', code: 'TIMEOUT' },
     } as unknown as { error: { code?: string; message?: string } | null });
 
-    // Fallback if remote DB doesn't have onboarded_by column yet
+    // Fallback if remote DB doesn't have referral or onboarded_by columns yet
     if (
       upsertErr &&
       (upsertErr.code === '42703' ||
         upsertErr.code === 'PGRST204' ||
+        upsertErr.message?.includes('referred_') ||
         upsertErr.message?.includes('onboarded_by'))
     ) {
-      remoteHasOnboardedByColumn = false;
-      const rowsWithoutOnboarded = rows.map(({ onboarded_by: _, ...rest }) => rest);
+      if (upsertErr.code === '42703' || upsertErr.message?.includes('referred_')) {
+        remoteHasReferralColumns = false;
+      }
+      if (upsertErr.message?.includes('onboarded_by')) {
+        remoteHasOnboardedByColumn = false;
+      }
+      const rowsFallback = rows.map(({ referred_by: _r1, referred_phone: _r2, onboarded_by: _o, ...rest }) => {
+        const rowClean: Record<string, unknown> = { ...rest };
+        if (remoteHasOnboardedByColumn && _o !== undefined) rowClean.onboarded_by = _o;
+        return rowClean;
+      });
       const retryPromise = supabase
         .from('store_rider_shifts')
-        .upsert(rowsWithoutOnboarded, { onConflict: 'store_id,normalized_name' });
+        .upsert(rowsFallback, { onConflict: 'store_id,normalized_name' });
       const retry = await withTimeout(retryPromise, 2500, {
         error: { message: 'Timeout saving store_rider_shifts fallback', code: 'TIMEOUT' },
       } as unknown as { error: { code?: string; message?: string } | null });
@@ -759,6 +841,10 @@ export async function saveSingleRiderShift(params: {
     if (remoteHasOnboardedByColumn) {
       row.onboarded_by = normalizedShift.onboardedBy ? normalizedShift.onboardedBy : null;
     }
+    if (remoteHasReferralColumns) {
+      row.referred_by = normalizedShift.referredBy ? normalizedShift.referredBy : null;
+      row.referred_phone = normalizedShift.referredPhone ? normalizedShift.referredPhone : null;
+    }
 
     const upsertPromise = supabase
       .from('store_rider_shifts')
@@ -769,19 +855,31 @@ export async function saveSingleRiderShift(params: {
       error: { message: 'Timeout saving store_rider_shifts', code: 'TIMEOUT' },
     } as unknown as { error: { code?: string; message?: string } | null });
 
-    // Fallback if remote DB doesn't have onboarded_by column yet
+    // Fallback if remote DB doesn't have referral or onboarded_by columns yet
     if (
       upsertErr &&
       (upsertErr.code === '42703' ||
         upsertErr.code === 'PGRST204' ||
+        upsertErr.message?.includes('referred_') ||
         upsertErr.message?.includes('onboarded_by'))
     ) {
-      remoteHasOnboardedByColumn = false;
-      const rowWithoutOnboarded = { ...row };
-      delete rowWithoutOnboarded.onboarded_by;
+      if (upsertErr.code === '42703' || upsertErr.message?.includes('referred_')) {
+        remoteHasReferralColumns = false;
+      }
+      if (upsertErr.message?.includes('onboarded_by')) {
+        remoteHasOnboardedByColumn = false;
+      }
+      const rowClean = { ...row };
+      if (!remoteHasReferralColumns) {
+        delete rowClean.referred_by;
+        delete rowClean.referred_phone;
+      }
+      if (!remoteHasOnboardedByColumn) {
+        delete rowClean.onboarded_by;
+      }
       const retryPromise = supabase
         .from('store_rider_shifts')
-        .upsert([rowWithoutOnboarded], { onConflict: 'store_id,normalized_name' });
+        .upsert([rowClean], { onConflict: 'store_id,normalized_name' });
       const retry = await withTimeout(retryPromise, 2500, {
         error: { message: 'Timeout saving store_rider_shifts fallback', code: 'TIMEOUT' },
       } as unknown as { error: { code?: string; message?: string } | null });
@@ -894,4 +992,70 @@ export function getActiveRidersWithoutShift(
     }
   }
   return missing;
+}
+
+/**
+ * Exports the Rider Management Roster to an Excel workbook.
+ */
+export function exportRiderManagementToExcel(params: {
+  riders: Array<{
+    riderName: string;
+    phone?: string | null;
+    isActive: boolean;
+    shiftType: string;
+    shiftTimings: string;
+    totalPlannedHours: number;
+    joiningDate?: string | null;
+    onboardedBy?: string | null;
+    referredBy?: string | null;
+    referredPhone?: string | null;
+  }>;
+  storeCode: string;
+}): void {
+  const wb = XLSX.utils.book_new();
+
+  const headers = [
+    'Rider Name',
+    'Rider Mobile Number',
+    'Active Status',
+    'Assigned Shift',
+    'Shift Timings',
+    'Planned Hours',
+    'Joining Date (Day 1)',
+    'Onboarded By',
+    'Referred By',
+    'Referred Mobile No',
+  ];
+
+  const rows = params.riders.map((r) => [
+    r.riderName,
+    r.phone || '—',
+    r.isActive ? 'Active' : 'Inactive',
+    r.shiftType,
+    r.shiftTimings,
+    r.totalPlannedHours,
+    r.joiningDate || '—',
+    r.onboardedBy || '—',
+    r.referredBy || '—',
+    r.referredPhone || '—',
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+  ws['!cols'] = [
+    { wch: 24 }, // Rider Name
+    { wch: 16 }, // Mobile Number
+    { wch: 14 }, // Active Status
+    { wch: 16 }, // Shift
+    { wch: 20 }, // Shift Timings
+    { wch: 14 }, // Planned Hours
+    { wch: 16 }, // Joining Date
+    { wch: 16 }, // Onboarded By
+    { wch: 20 }, // Referred By
+    { wch: 18 }, // Referred Mobile No
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Rider Management');
+  const filename = `Rider_Management_${params.storeCode}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  XLSX.writeFile(wb, filename);
 }
