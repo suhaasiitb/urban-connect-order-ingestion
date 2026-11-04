@@ -2477,8 +2477,25 @@ input[type='text'].perf-search-input:focus {
 .td-orders {
   color: #0d9488;
   font-weight: 600;
+  border-right: 1px solid #f8fafc;
+  text-align: center !important;
+}
+
+.td-distance {
+  color: #334155;
   border-right: 1px solid #cbd5e1;
   text-align: center !important;
+  font-size: 0.8rem;
+}
+
+.daily-km-text {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.th-sub-km {
+  border-right: 1px solid #cbd5e1 !important;
 }
 
 .cell-dash {
@@ -2563,10 +2580,24 @@ input[type='text'].perf-search-input:focus {
   font-size: 0.86rem;
 }
 
+/* Modern Avg Distance Column */
+.td-avg-distance {
+  background-color: #ffffff;
+  border-right: 1px solid #f1f5f9;
+  font-weight: 700;
+  text-align: center !important;
+}
+
+.avg-distance-accent {
+  color: #0369a1;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
 /* Modern Total Orders Column */
 .td-total-orders {
   background-color: #ffffff;
-  border-right: none;
+  border-right: 1px solid #f1f5f9;
   text-align: center !important;
 }
 
@@ -2579,6 +2610,29 @@ input[type='text'].perf-search-input:focus {
   padding: 0.15rem 0.5rem;
   border-radius: 6px;
   border: 1px solid #e2e8f0;
+}
+
+/* Modern Total Distance Column */
+.td-total-distance {
+  background-color: #ffffff;
+  border-right: none;
+  text-align: center !important;
+}
+
+.total-km-pill {
+  display: inline-block;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #bfdbfe;
+}
+
+.total-km-pill strong {
+  font-weight: 700;
+  color: #1e40af;
 }
 
 /* Hover States */
@@ -2611,7 +2665,9 @@ input[type='text'].perf-search-input:focus {
 }
 
 .perf-footer-row .td-avg-orders,
-.perf-footer-row .td-total-orders {
+.perf-footer-row .td-avg-distance,
+.perf-footer-row .td-total-orders,
+.perf-footer-row .td-total-distance {
   background-color: #f1f5f9 !important;
   color: #0f172a;
   font-weight: 700;

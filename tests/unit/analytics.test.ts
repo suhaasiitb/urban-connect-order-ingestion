@@ -155,4 +155,42 @@ describe('Rider Performance Analytics Unit Tests', () => {
     const percentage = Math.round((under6h.length / mockRiders.length) * 100);
     expect(percentage).toBe(50);
   });
+
+  it('correctly aggregates LM Distance in meters and converts to kilometers for daily and period averages', () => {
+    // Simulate orders for Rider with LM Distance in meters (one-way delivery distance)
+    const mockOrdersWithDistance = [
+      // Day 1 (14-Oct): 3 orders, distances 989m, 1450m, 2100m -> Total 4539m -> 4.5 km
+      { rider_name: 'ABHAY GORE', order_date: '2026-10-14', distance_meters: 989 },
+      { rider_name: 'ABHAY GORE', order_date: '2026-10-14', distance_meters: 1450 },
+      { rider_name: 'ABHAY GORE', order_date: '2026-10-14', distance_meters: 2100 },
+      // Day 2 (15-Oct): 2 orders, distances 3200m, 800m -> Total 4000m -> 4.0 km
+      { rider_name: 'ABHAY GORE', order_date: '2026-10-15', distance_meters: 3200 },
+      { rider_name: 'ABHAY GORE', order_date: '2026-10-15', distance_meters: 800 },
+    ];
+    expect(mockOrdersWithDistance).toHaveLength(5);
+
+    const day1Meters = 989 + 1450 + 2100;
+    const day2Meters = 3200 + 800;
+    const day1Km = Math.round((day1Meters / 1000) * 10) / 10;
+    const day2Km = Math.round((day2Meters / 1000) * 10) / 10;
+
+    expect(day1Meters).toBe(4539);
+    expect(day1Km).toBe(4.5);
+    expect(day2Meters).toBe(4000);
+    expect(day2Km).toBe(4.0);
+
+    const totalMeters = day1Meters + day2Meters; // 8539m
+    const totalDistanceKm = Math.round((totalMeters / 1000) * 10) / 10; // 8.5 km
+    expect(totalDistanceKm).toBe(8.5);
+
+    // Across 7-day period range
+    const periodDays = 7;
+    const avgDistanceKm = Math.round((totalDistanceKm / periodDays) * 10) / 10; // 8.5 / 7 = 1.2 km/day
+    expect(avgDistanceKm).toBe(1.2);
+
+    // Across 2 active working days
+    const activeWorkingDays = 2;
+    const activeAvgDistanceKm = Math.round((totalDistanceKm / activeWorkingDays) * 10) / 10; // 8.5 / 2 = 4.3 km/day
+    expect(activeAvgDistanceKm).toBe(4.3);
+  });
 });

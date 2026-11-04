@@ -11,18 +11,23 @@ import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService'
 export interface RiderDailyMetric {
   hours: number;
   orders: number;
+  distanceKm: number; // One-way distance in km (LM Distance in meters / 1000)
+  distanceMeters?: number; // Exact sum of distance in meters
 }
 
 export interface RiderPivotRow {
   riderName: string;
-  dailyMetrics: Record<string, RiderDailyMetric>; // dateStr -> { hours, orders }
+  dailyMetrics: Record<string, RiderDailyMetric>; // dateStr -> { hours, orders, distanceKm, distanceMeters }
   workingDays: number;
   totalHours: number;
   totalOrders: number;
+  totalDistanceKm: number; // Total km delivered in period
   avgHours: number; // Period average (totalHours / periodDays)
   avgOrders: number; // Period average (totalOrders / periodDays)
+  avgDistanceKm: number; // Period average daily distance (totalDistanceKm / periodDays)
   activeAvgHours: number; // Active-working-days average (totalHours / workingDays)
   activeAvgOrders: number; // Active-working-days average (totalOrders / workingDays)
+  activeAvgDistanceKm: number; // Active-working-days average (totalDistanceKm / workingDays)
 }
 
 export interface RiderPerformancePivotResult {
@@ -38,6 +43,8 @@ export interface RiderPerformancePivotResult {
   totalRiders: number;
   overallAvgHours: number;
   overallAvgOrders: number;
+  overallAvgDistanceKm?: number;
+  overallTotalDistanceKm?: number;
   ridersUnder6HoursCount?: number;
 }
 
@@ -179,6 +186,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
       order_date: string;
       hours: number;
       orders: number;
+      distance_meters: number;
     }> = [];
     let rpcSucceeded = false;
 
@@ -192,6 +200,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
         order_date: string;
         hours: number;
         orders: number;
+        distance_meters: number;
       }> = [];
 
       let rpcRanSuccessfully = false;
@@ -209,15 +218,23 @@ export async function fetchRiderPerformanceAnalytics(params: {
           break;
         }
 
-        rpcRanSuccessfully = true;
-
         if (Array.isArray(rpcData) && rpcData.length > 0) {
+          // If the RPC returned data but does NOT yet have the distance_meters field (pre-migration),
+          // fallback to client-side aggregation from public.orders to guarantee distance is populated
+          if ((rpcData[0] as Record<string, unknown>).distance_meters === undefined) {
+            rpcRanSuccessfully = false;
+            break;
+          }
+
+          rpcRanSuccessfully = true;
+
           for (const item of rpcData) {
             rpcRows.push({
               rider_name: String(item.rider_name || '').trim(),
               order_date: String(item.order_date),
               hours: Number(item.hours || 0),
               orders: Number(item.orders || 0),
+              distance_meters: Number(item.distance_meters || 0),
             });
           }
           if (rpcData.length < RPC_PAGE_SIZE) {
@@ -226,6 +243,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
             rpcFrom += RPC_PAGE_SIZE;
           }
         } else {
+          rpcRanSuccessfully = true;
           rpcHasMore = false;
         }
       }
@@ -248,12 +266,14 @@ export async function fetchRiderPerformanceAnalytics(params: {
         slot_hour: number;
         order_date: string;
         order_id: string;
+        distance_meters?: number | null;
+        lm_distance?: number | null;
       }> = [];
 
       while (hasMore) {
         const { data: pageRows, error: ordersError } = await supabase
           .from('orders')
-          .select('rider_name, slot_hour, order_date, order_id')
+          .select('rider_name, slot_hour, order_date, order_id, distance_meters, lm_distance')
           .eq('store_id', storeId)
           .gte('order_date', startDate)
           .lte('order_date', endDate)
@@ -278,9 +298,10 @@ export async function fetchRiderPerformanceAnalytics(params: {
         }
       }
 
-      // Group by (normalized rider_name, order_date) and compute COUNTUNIQUE(slot_hour) & COUNT(order_id)
+      // Group by (normalized rider_name, order_date) and compute COUNTUNIQUE(slot_hour), COUNT(order_id), and SUM(distance_meters)
       const riderDateSlots = new Map<string, Set<number>>();
       const riderDateOrders = new Map<string, number>();
+      const riderDateDistanceMeters = new Map<string, number>();
       const canonicalDisplayByNorm = new Map<string, string>();
 
       for (const row of orderRows) {
@@ -307,17 +328,24 @@ export async function fetchRiderPerformanceAnalytics(params: {
         }
 
         riderDateOrders.set(key, (riderDateOrders.get(key) ?? 0) + 1);
+
+        const dist = Number(row.distance_meters ?? row.lm_distance ?? 0);
+        if (Number.isFinite(dist) && dist > 0) {
+          riderDateDistanceMeters.set(key, (riderDateDistanceMeters.get(key) ?? 0) + dist);
+        }
       }
 
       for (const [key, slots] of riderDateSlots.entries()) {
         const [normName, order_date] = key.split(':::');
         const rider_name = canonicalDisplayByNorm.get(normName) || normName;
         const orders = riderDateOrders.get(key) ?? 0;
+        const distance_meters = riderDateDistanceMeters.get(key) ?? 0;
         rawAggregated.push({
           rider_name,
           order_date,
           hours: slots.size,
           orders,
+          distance_meters,
         });
       }
     }
@@ -358,16 +386,22 @@ export async function fetchRiderPerformanceAnalytics(params: {
         entry.displayName = cleanName;
       }
 
+      const distMeters = item.distance_meters || 0;
       const existingMetric = entry.dailyMetrics[item.order_date];
       if (existingMetric) {
+        const newMeters = (existingMetric.distanceMeters || 0) + distMeters;
         entry.dailyMetrics[item.order_date] = {
           hours: Math.min(24, existingMetric.hours + item.hours),
           orders: existingMetric.orders + item.orders,
+          distanceMeters: newMeters,
+          distanceKm: Math.round((newMeters / 1000) * 10) / 10,
         };
       } else {
         entry.dailyMetrics[item.order_date] = {
           hours: item.hours,
           orders: item.orders,
+          distanceMeters: distMeters,
+          distanceKm: Math.round((distMeters / 1000) * 10) / 10,
         };
       }
     }
@@ -376,26 +410,33 @@ export async function fetchRiderPerformanceAnalytics(params: {
     const rows: RiderPivotRow[] = [];
     let cumulativeSumHours = 0;
     let cumulativeSumOrders = 0;
+    let cumulativeSumDistanceKm = 0;
 
     for (const entry of riderMap.values()) {
       const riderName = entry.displayName;
       let workingDays = 0;
       let totalHours = 0;
       let totalOrders = 0;
+      let totalDistanceMeters = 0;
 
       for (const m of Object.values(entry.dailyMetrics)) {
-        if (m.orders > 0 || m.hours > 0) {
+        if (m.orders > 0 || m.hours > 0 || (m.distanceKm && m.distanceKm > 0)) {
           workingDays += 1;
           totalHours += m.hours;
           totalOrders += m.orders;
+          totalDistanceMeters += (m.distanceMeters ?? (m.distanceKm * 1000));
         }
       }
 
-      // Period average: total hours/orders divided by the selected range days (e.g. 7 days)
+      // Period average: total hours/orders/km divided by the selected range days (e.g. 7 days)
       const avgHours =
         Math.round((totalHours / totalPeriodDays) * 10) / 10;
       const avgOrders =
         Math.round((totalOrders / totalPeriodDays) * 10) / 10;
+      const totalDistanceKm =
+        Math.round((totalDistanceMeters / 1000) * 10) / 10;
+      const avgDistanceKm =
+        Math.round((totalDistanceKm / totalPeriodDays) * 10) / 10;
 
       // Active working-days average: total divided by working days
       const activeAvgHours =
@@ -406,6 +447,10 @@ export async function fetchRiderPerformanceAnalytics(params: {
         workingDays > 0
           ? Math.round((totalOrders / workingDays) * 10) / 10
           : 0;
+      const activeAvgDistanceKm =
+        workingDays > 0
+          ? Math.round((totalDistanceKm / workingDays) * 10) / 10
+          : 0;
 
       rows.push({
         riderName,
@@ -413,14 +458,18 @@ export async function fetchRiderPerformanceAnalytics(params: {
         workingDays,
         totalHours,
         totalOrders,
+        totalDistanceKm,
         avgHours,
         avgOrders,
+        avgDistanceKm,
         activeAvgHours,
         activeAvgOrders,
+        activeAvgDistanceKm,
       });
 
       cumulativeSumHours += totalHours;
       cumulativeSumOrders += totalOrders;
+      cumulativeSumDistanceKm += totalDistanceKm;
     }
 
     // Sort riders alphabetically
@@ -434,6 +483,11 @@ export async function fetchRiderPerformanceAnalytics(params: {
       rows.length > 0
         ? Math.round((cumulativeSumOrders / (rows.length * totalPeriodDays)) * 10) / 10
         : 0;
+    const overallAvgDistanceKm =
+      rows.length > 0
+        ? Math.round((cumulativeSumDistanceKm / (rows.length * totalPeriodDays)) * 10) / 10
+        : 0;
+    const overallTotalDistanceKm = Math.round(cumulativeSumDistanceKm * 10) / 10;
 
     const ridersUnder6HoursCount = rows.filter((r) => r.activeAvgHours < 6.0).length;
 
@@ -448,6 +502,8 @@ export async function fetchRiderPerformanceAnalytics(params: {
         totalRiders: rows.length,
         overallAvgHours,
         overallAvgOrders,
+        overallAvgDistanceKm,
+        overallTotalDistanceKm,
         ridersUnder6HoursCount,
       },
     };
@@ -474,18 +530,18 @@ export function exportRiderPerformanceToExcel(
   const wb = XLSX.utils.book_new();
 
   // Row 1: Group headers
-  // [Rider Name, Rider Number, Active, Shift, Timings, Onboarded By, Date1, '', Date2, '', ... Avg, '']
+  // [Rider Name, Rider Number, Active, Shift, Timings, Onboarded By, Date1, '', '', Date2, '', '', ... Avg, '', '', Totals, '']
   const row1: string[] = ['Rider Name', 'Rider Number', 'Active', 'Shift', 'Timings', 'Onboarded By'];
   const row2: string[] = ['', '', '', '', '', ''];
 
   for (const col of pivot.dateColumns) {
-    row1.push(col.formattedHeader, '');
-    row2.push('Hours', 'Orders');
+    row1.push(col.formattedHeader, '', '');
+    row2.push('Hours', 'Orders', 'KM');
   }
 
   const periodLabel = useActiveAvg ? 'Active Days Avg' : `${pivot.dateColumns.length} Days Avg`;
-  row1.push(periodLabel, '');
-  row2.push('Hours', 'Orders');
+  row1.push(periodLabel, '', '', 'Totals', '');
+  row2.push('Hours', 'Orders', 'KM', 'Total Orders', 'Total KM');
 
   const sheetData: Array<Array<string | number>> = [row1, row2];
 
@@ -508,16 +564,17 @@ export function exportRiderPerformanceToExcel(
 
     for (const col of pivot.dateColumns) {
       const metric = row.dailyMetrics[col.dateStr];
-      if (metric && (metric.orders > 0 || metric.hours > 0)) {
-        rowVals.push(metric.hours, metric.orders);
+      if (metric && (metric.orders > 0 || metric.hours > 0 || metric.distanceKm > 0)) {
+        rowVals.push(metric.hours, metric.orders, metric.distanceKm > 0 ? metric.distanceKm : 0);
       } else {
-        rowVals.push('', '');
+        rowVals.push('', '', '');
       }
     }
 
     const avgH = useActiveAvg ? row.activeAvgHours : row.avgHours;
     const avgO = useActiveAvg ? row.activeAvgOrders : row.avgOrders;
-    rowVals.push(avgH, avgO);
+    const avgD = useActiveAvg ? row.activeAvgDistanceKm : row.avgDistanceKm;
+    rowVals.push(avgH, avgO, avgD, row.totalOrders, row.totalDistanceKm);
     sheetData.push(rowVals);
   }
 
@@ -529,11 +586,17 @@ export function exportRiderPerformanceToExcel(
   for (let i = 0; i < pivot.dateColumns.length; i++) {
     merges.push({
       s: { r: 0, c: colIdx },
-      e: { r: 0, c: colIdx + 1 },
+      e: { r: 0, c: colIdx + 2 },
     });
-    colIdx += 2;
+    colIdx += 3;
   }
-  // Merge for the Avg column
+  // Merge for the Avg column (3 sub-columns: Hours, Orders, KM)
+  merges.push({
+    s: { r: 0, c: colIdx },
+    e: { r: 0, c: colIdx + 2 },
+  });
+  colIdx += 3;
+  // Merge for Totals column (2 sub-columns: Total Orders, Total KM)
   merges.push({
     s: { r: 0, c: colIdx },
     e: { r: 0, c: colIdx + 1 },

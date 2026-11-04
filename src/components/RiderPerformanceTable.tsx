@@ -79,7 +79,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<boolean>(false);
   const [individualModalRider, setIndividualModalRider] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<
-    'name' | 'phone' | 'shift' | 'compliance' | 'activeDays' | 'avgOrders' | 'avgHours' | 'totalOrders'
+    'name' | 'phone' | 'shift' | 'compliance' | 'activeDays' | 'avgOrders' | 'avgHours' | 'totalOrders' | 'avgDistance' | 'totalDistance'
   >('name');
   const [sortAsc, setSortAsc] = useState(true);
   const [showCustomRange, setShowCustomRange] = useState(false);
@@ -101,7 +101,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   }, [data.dateColumns, dateOrder]);
 
   const handleSort = (
-    field: 'name' | 'phone' | 'shift' | 'compliance' | 'activeDays' | 'avgOrders' | 'avgHours' | 'totalOrders'
+    field: 'name' | 'phone' | 'shift' | 'compliance' | 'activeDays' | 'avgOrders' | 'avgHours' | 'totalOrders' | 'avgDistance' | 'totalDistance'
   ) => {
     if (sortBy === field) {
       setSortAsc(!sortAsc);
@@ -263,6 +263,15 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
         case 'totalOrders':
           comparison = a.totalOrders - b.totalOrders;
           break;
+        case 'avgDistance': {
+          const valA = avgMode === 'period' ? a.avgDistanceKm : a.activeAvgDistanceKm;
+          const valB = avgMode === 'period' ? b.avgDistanceKm : b.activeAvgDistanceKm;
+          comparison = valA - valB;
+          break;
+        }
+        case 'totalDistance':
+          comparison = a.totalDistanceKm - b.totalDistanceKm;
+          break;
       }
       return sortAsc ? comparison : -comparison;
     });
@@ -331,12 +340,16 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     return filteredRows.reduce((sum, r) => sum + r.totalOrders, 0);
   }, [filteredRows]);
 
+  const totalDistanceSum = useMemo(() => {
+    return filteredRows.reduce((sum, r) => sum + r.totalDistanceKm, 0);
+  }, [filteredRows]);
+
   const avgWorkingDays = useMemo(() => {
     if (filteredRows.length === 0) return 0;
     return filteredRows.reduce((sum, r) => sum + r.workingDays, 0) / filteredRows.length;
   }, [filteredRows]);
 
-  const totalColSpan = showDailyBreakdown ? displayedDateColumns.length * 2 + 7 : 7;
+  const totalColSpan = showDailyBreakdown ? displayedDateColumns.length * 3 + 9 : 9;
 
   const handleApplyCustomDate = () => {
     if (customStart && customEnd && onCustomDateChange) {
@@ -875,6 +888,19 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 </th>
 
                 <th
+                  className="th-avg-group th-sub-avg-distance text-center"
+                  onClick={() => handleSort('avgDistance')}
+                  title={`Click to sort by ${periodLabel} KM`}
+                >
+                  <div className="th-content th-content-center">
+                    <span>{periodLabel} KM</span>
+                    <span className="sort-arrow">
+                      {sortBy === 'avgDistance' ? (sortAsc ? '▲' : '▼') : '↕'}
+                    </span>
+                  </div>
+                </th>
+
+                <th
                   className="th-avg-group th-sub-total-orders text-center"
                   onClick={() => handleSort('totalOrders')}
                   title="Click to sort by Total Orders"
@@ -883,6 +909,19 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     <span>Total Orders</span>
                     <span className="sort-arrow">
                       {sortBy === 'totalOrders' ? (sortAsc ? '▲' : '▼') : '↕'}
+                    </span>
+                  </div>
+                </th>
+
+                <th
+                  className="th-avg-group th-sub-total-distance text-center"
+                  onClick={() => handleSort('totalDistance')}
+                  title="Click to sort by Total KM"
+                >
+                  <div className="th-content th-content-center">
+                    <span>Total KM</span>
+                    <span className="sort-arrow">
+                      {sortBy === 'totalDistance' ? (sortAsc ? '▲' : '▼') : '↕'}
                     </span>
                   </div>
                 </th>
@@ -948,12 +987,12 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   </th>
 
                   {displayedDateColumns.map((col) => (
-                    <th key={col.dateStr} colSpan={2} className="th-date-group text-center">
+                    <th key={col.dateStr} colSpan={3} className="th-date-group text-center">
                       {col.formattedHeader}
                     </th>
                   ))}
 
-                  <th colSpan={3} className="th-avg-group text-center">
+                  <th colSpan={5} className="th-avg-group text-center">
                     {periodLabel} Summary
                   </th>
                 </tr>
@@ -964,6 +1003,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     <React.Fragment key={`sub-${col.dateStr}`}>
                       <th className="th-sub-hours text-center">Hours</th>
                       <th className="th-sub-orders text-center">Orders</th>
+                      <th className="th-sub-km text-center">KM</th>
                     </React.Fragment>
                   ))}
 
@@ -994,14 +1034,40 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   </th>
 
                   <th
+                    className="th-sub-avg-distance text-center"
+                    onClick={() => handleSort('avgDistance')}
+                    title="Sort by Average Daily KM"
+                  >
+                    <div className="th-content th-content-center">
+                      <span>Avg KM</span>
+                      <span className="sort-arrow">
+                        {sortBy === 'avgDistance' ? (sortAsc ? '▲' : '▼') : '↕'}
+                      </span>
+                    </div>
+                  </th>
+
+                  <th
                     className="th-sub-total-orders text-center"
                     onClick={() => handleSort('totalOrders')}
                     title="Sort by Total Orders"
                   >
                     <div className="th-content th-content-center">
-                      <span>Total</span>
+                      <span>Total Ords</span>
                       <span className="sort-arrow">
                         {sortBy === 'totalOrders' ? (sortAsc ? '▲' : '▼') : '↕'}
+                      </span>
+                    </div>
+                  </th>
+
+                  <th
+                    className="th-sub-total-distance text-center"
+                    onClick={() => handleSort('totalDistance')}
+                    title="Sort by Total KM"
+                  >
+                    <div className="th-content th-content-center">
+                      <span>Total KM</span>
+                      <span className="sort-arrow">
+                        {sortBy === 'totalDistance' ? (sortAsc ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
@@ -1032,7 +1098,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               filteredRows.map((row) => {
                 const displayHours = avgMode === 'period' ? row.avgHours : row.activeAvgHours;
                 const displayOrders = avgMode === 'period' ? row.avgOrders : row.activeAvgOrders;
-                const tooltipText = `Period Avg: ${row.avgHours.toFixed(1)} hrs / ${row.avgOrders.toFixed(1)} orders (divided by ${periodDays} days) • Active Avg: ${row.activeAvgHours.toFixed(1)} hrs / ${row.activeAvgOrders.toFixed(1)} orders (across ${row.workingDays} working days) • Total: ${row.totalOrders} orders`;
+                const displayDistance = avgMode === 'period' ? row.avgDistanceKm : row.activeAvgDistanceKm;
+                const tooltipText = `Period Avg: ${row.avgHours.toFixed(1)} hrs / ${row.avgOrders.toFixed(1)} orders / ${row.avgDistanceKm.toFixed(1)} km (divided by ${periodDays} days) • Active Avg: ${row.activeAvgHours.toFixed(1)} hrs / ${row.activeAvgOrders.toFixed(1)} orders / ${row.activeAvgDistanceKm.toFixed(1)} km (across ${row.workingDays} working days) • Total: ${row.totalOrders} orders / ${row.totalDistanceKm.toFixed(1)} km`;
                 const normName = normalizeRiderName(row.riderName);
                 const riderPhone = phoneByNameMap?.get(normName);
                 const isRiderActive = activeNamesSet
@@ -1234,7 +1301,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     {showDailyBreakdown &&
                       displayedDateColumns.map((col) => {
                         const metric = row.dailyMetrics[col.dateStr];
-                        const hasData = metric && (metric.orders > 0 || metric.hours > 0);
+                        const hasData = metric && (metric.orders > 0 || metric.hours > 0 || (metric.distanceKm && metric.distanceKm > 0));
                         const clocked8hToday = hasData && metric.hours >= 8;
                         return (
                           <React.Fragment key={`${row.riderName}-${col.dateStr}`}>
@@ -1264,6 +1331,22 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                               }`}
                             >
                               {hasData ? metric.orders : <span className="cell-dash">—</span>}
+                            </td>
+                            <td
+                              className={`td-metric td-distance text-center ${
+                                !hasData ? 'td-blank' : ''
+                              }`}
+                              title={
+                                hasData && metric.distanceKm > 0
+                                  ? `${metric.distanceKm.toFixed(1)} km (${metric.distanceMeters ?? Math.round(metric.distanceKm * 1000)}m one-way)`
+                                  : undefined
+                              }
+                            >
+                              {hasData && metric.distanceKm > 0 ? (
+                                <span className="daily-km-text">{metric.distanceKm.toFixed(1)} km</span>
+                              ) : (
+                                <span className="cell-dash">—</span>
+                              )}
                             </td>
                           </React.Fragment>
                         );
@@ -1301,9 +1384,23 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                       </strong>
                     </td>
 
+                    {/* Avg KM */}
+                    <td className="td-metric td-avg-distance text-center" title={tooltipText}>
+                      <strong className="avg-num-text avg-distance-accent">
+                        {displayDistance > 0 ? `${displayDistance.toFixed(1)} km` : '—'}
+                      </strong>
+                    </td>
+
                     {/* Total Orders */}
                     <td className="td-metric td-total-orders text-center" title={`Total orders in period: ${row.totalOrders}`}>
                       <span className="total-orders-pill">{row.totalOrders}</span>
+                    </td>
+
+                    {/* Total KM */}
+                    <td className="td-metric td-total-distance text-center" title={`Total distance in period: ${row.totalDistanceKm.toFixed(1)} km`}>
+                      <span className="total-km-pill">
+                        <strong>{row.totalDistanceKm.toFixed(1)}</strong> km
+                      </span>
                     </td>
                   </tr>
                 );
@@ -1338,6 +1435,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     <React.Fragment key={`foot-${col.dateStr}`}>
                       <td className="td-foot-blank text-center">—</td>
                       <td className="td-foot-blank text-center">—</td>
+                      <td className="td-foot-blank text-center">—</td>
                     </React.Fragment>
                   ))}
                 <td className="td-metric td-avg-hours text-center">
@@ -1346,8 +1444,14 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 <td className="td-metric td-avg-orders text-center">
                   <strong>{data.overallAvgOrders.toFixed(1)}</strong>
                 </td>
+                <td className="td-metric td-avg-distance text-center">
+                  <strong>{(data.overallAvgDistanceKm ?? 0).toFixed(1)} km</strong>
+                </td>
                 <td className="td-metric td-total-orders text-center">
                   <strong>{totalOrdersSum.toLocaleString()}</strong>
+                </td>
+                <td className="td-metric td-total-distance text-center">
+                  <strong>{totalDistanceSum.toFixed(1)} km</strong>
                 </td>
               </tr>
             </tfoot>
