@@ -32,6 +32,7 @@ import {
 import { STORE_RIDER_SHIFTS_CHANGED_EVENT } from '../services/riderShiftService';
 import { RiderAttendanceModal } from './RiderAttendanceModal';
 import { PlannedTurnUpRidersModal } from './PlannedTurnUpRidersModal';
+import { PlanVsActualAuditView } from './PlanVsActualAuditView';
 
 interface PlanningSectionProps {
   stores: StoreMaster[];
@@ -80,6 +81,9 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
   // Turn-Up Riders popup modal state
   const [selectedTurnUpSlot, setSelectedTurnUpSlot] = useState<SlotPlanningRow | null>(null);
   const [isTurnUpModalOpen, setIsTurnUpModalOpen] = useState(false);
+
+  // Tab mode: Forward Slot Plan vs Plan vs Actual Audit
+  const [planningMode, setPlanningMode] = useState<'FORWARD_PLAN' | 'PLAN_VS_ACTUAL_AUDIT'>('FORWARD_PLAN');
 
   // Load available forecast dates whenever store changes
   useEffect(() => {
@@ -349,7 +353,11 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       <div className="section-card">
         <div className="flex-row items-center justify-between gap-md flex-wrap">
           <div className="analytics-tab-pill-group">
-            <div className="analytics-tab-pill active">
+            <button
+              type="button"
+              className={`analytics-tab-pill ${planningMode === 'FORWARD_PLAN' ? 'active' : ''}`}
+              onClick={() => setPlanningMode('FORWARD_PLAN')}
+            >
               <svg
                 width="15"
                 height="15"
@@ -362,8 +370,33 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                 <line x1="3" y1="9" x2="21" y2="9" />
                 <line x1="9" y1="21" x2="9" y2="9" />
               </svg>
-              <span>Hourly Slot Planning</span>
-            </div>
+              <span>Forward Slot Plan</span>
+            </button>
+
+            <button
+              type="button"
+              className={`analytics-tab-pill ${planningMode === 'PLAN_VS_ACTUAL_AUDIT' ? 'active' : ''}`}
+              onClick={() => setPlanningMode('PLAN_VS_ACTUAL_AUDIT')}
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+              <span>Plan vs Actual Audit</span>
+              <span className="badge badge-info" style={{ fontSize: '0.62rem', padding: '1px 5px', marginLeft: '4px' }}>
+                Historical
+              </span>
+            </button>
           </div>
 
           <div className="store-selector-group">
@@ -392,8 +425,16 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
         </div>
       </div>
 
-      {/* 2. Top Quick KPI Metric Cards (Replicating Rider Analytics kpi-grid & kpi-card) */}
-      <div className="kpi-grid planning-compact-kpi">
+      {/* Conditional View: Plan vs Actual Audit vs Forward Slot Plan */}
+      {planningMode === 'PLAN_VS_ACTUAL_AUDIT' && selectedStore ? (
+        <PlanVsActualAuditView
+          selectedStore={selectedStore}
+          onNavigateToForwardPlan={() => setPlanningMode('FORWARD_PLAN')}
+        />
+      ) : (
+        <>
+          {/* 2. Top Quick KPI Metric Cards (Replicating Rider Analytics kpi-grid & kpi-card) */}
+          <div className="kpi-grid planning-compact-kpi">
         {/* Card 1: Total Projected Orders */}
         <div className="kpi-card">
           <div className="kpi-header-row">
@@ -1038,6 +1079,8 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
           riders={selectedTurnUpSlot.slotRiders || []}
           isTurnUpFromRoster={summary?.isTurnUpFromRoster}
         />
+      )}
+        </>
       )}
     </div>
   );
