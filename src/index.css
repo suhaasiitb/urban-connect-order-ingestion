@@ -10394,50 +10394,6 @@ html[data-theme="dark"] .audit-chip-unplanned {
 /* ==============================================================================
    Auto-Retractable Side Navigation Panel (Light & Basedash Midnight Modes)
    ============================================================================== */
-.topbar-sidebar-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #475569;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.topbar-sidebar-toggle-btn:hover {
-  background: #f8fafc;
-  color: #0f172a;
-  border-color: #94a3b8;
-}
-
-.topbar-sidebar-toggle-btn.active {
-  background: #eff6ff;
-  border-color: #2563eb;
-  color: #2563eb;
-}
-
-html[data-theme="dark"] .topbar-sidebar-toggle-btn {
-  background: var(--color-carbon-card);
-  border-color: var(--color-steel-gray);
-  color: var(--color-ash-gray);
-}
-
-html[data-theme="dark"] .topbar-sidebar-toggle-btn:hover {
-  border-color: var(--color-ghost-white);
-  color: var(--color-ghost-white);
-}
-
-html[data-theme="dark"] .topbar-sidebar-toggle-btn.active {
-  background: var(--color-ghost-white);
-  border-color: var(--color-ghost-white);
-  color: var(--color-void-black);
-}
-
 .app-body-layout {
   display: flex;
   flex: 1;
