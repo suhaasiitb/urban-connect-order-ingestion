@@ -506,7 +506,7 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
       <div className="section-card perf-card">
         <div className="perf-section-header">
           <div>
-            <h3 className="section-title">Rider Shift Adherence &amp; Turn-Up Audit</h3>
+            <h3 className="section-title editorial-serif-heading">Rider Shift Adherence &amp; Turn-Up Audit</h3>
             <p className="section-subtitle">
               Evaluating marked attendance &amp; scheduled shift slots vs actual delivered orders for{' '}
               <strong>{summary?.formattedDate || selectedDate}</strong> ({filteredRiders.length} riders shown).
@@ -775,7 +775,7 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
                     {inspectedSlot.missingRiders.map((name) => {
                       const rObj = summary?.riders.find((r) => r.riderName === name);
                       return (
-                        <div key={name} className="p-xs bg-red-50 rounded border border-red-200 text-xs">
+                        <div key={name} className="audit-slot-chip audit-chip-missing p-xs rounded text-xs">
                           <strong>{name}</strong>
                           <span className="text-muted ml-xs">
                             ({rObj ? rObj.adherenceBadgeText : 'Missing'})
@@ -796,7 +796,7 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
                 </h4>
                 <div className="grid grid-cols-3 gap-xs">
                   {inspectedSlot.actualRiders.map((name) => (
-                    <div key={name} className="p-xs bg-slate-50 rounded border border-slate-200 text-xs">
+                    <div key={name} className="audit-slot-chip audit-chip-active p-xs rounded text-xs">
                       {name}
                     </div>
                   ))}
@@ -811,7 +811,7 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
                   </h4>
                   <div className="grid grid-cols-3 gap-xs">
                     {inspectedSlot.unplannedRiders.map((name) => (
-                      <div key={name} className="p-xs bg-blue-50 rounded border border-blue-200 text-xs text-blue">
+                      <div key={name} className="audit-slot-chip audit-chip-unplanned p-xs rounded text-xs text-blue">
                         {name}
                       </div>
                     ))}

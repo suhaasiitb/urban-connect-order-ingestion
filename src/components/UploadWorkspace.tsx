@@ -621,7 +621,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           <div className="store-title-group">
             <span className="section-step">{isStoreUser ? 'Store' : 'Step 1'}</span>
             <div>
-              <h2 className="section-title">
+              <h2 className="section-title editorial-serif-heading">
                 {isStoreUser ? 'Assigned Store' : 'Select Store'}
               </h2>
               <p className="section-subtitle">
@@ -677,7 +677,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           <div className="upload-header">
             <span className="section-step">Step 2</span>
             <div>
-              <h2 className="section-title">
+              <h2 className="section-title editorial-serif-heading">
                 {uploadType === 'orders'
                   ? 'Upload Daily Orders'
                   : uploadType === 'riders'

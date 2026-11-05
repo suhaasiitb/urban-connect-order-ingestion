@@ -9301,6 +9301,1082 @@ html[data-theme="dark"] .btn-edit-joining:hover {
   color: var(--color-ghost-white);
 }
 
+/* ==============================================================================
+   Light Mode Defaults for Newly Extracted Semantic Classes
+   ============================================================================== */
+.ongoing-orders-banner {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+  padding: 10px 16px;
+  border-radius: 8px;
+}
+
+.dph-active-pill {
+  color: #166534;
+  min-width: 70px;
+  text-align: center;
+}
+
+.th-required-riders {
+  background-color: #eff6ff !important;
+  color: #1e40af !important;
+}
+
+.td-required-riders {
+  background-color: #f0f7ff !important;
+}
+
+.dph-heat-critical {
+  background-color: #fecdd3;
+  color: #9f1239;
+  font-weight: 700;
+}
+
+.dph-heat-high {
+  background-color: #ffe4e6;
+  color: #be123c;
+  font-weight: 600;
+}
+
+.dph-heat-elevated {
+  background-color: #fff1f2;
+  color: #e11d48;
+}
+
+.dph-heat-normal {
+  background-color: #f8fafc;
+  color: #475569;
+}
+
+/* ==============================================================================
+   Complete Portal Dark Mode Rollout — Basedash Midnight Design System
+   Covers:
+   1. Global Cards, Buttons, Badges, Alerts, Inputs, Modals & Login Screen
+   2. Data Ingestion / Upload Workspace & 30-Day Coverage Calendar
+   3. S2P, OTP & DPH Analytics Section & Expandable Pivot Matrices
+   4. Planning & Capacity (Forward Slot Plan & Plan vs Actual Audit)
+   5. Rider Attendance, Planned Turn-Up, DNR Resolution & Store Logins Modals
+   ============================================================================== */
+
+/* 1. Global Cards, Forms, Buttons, Badges, Alerts & Login Screen */
+html[data-theme="dark"] .login-card,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .section-card {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-cards);
+  box-shadow: none;
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .login-header h1 {
+  color: var(--color-ghost-white);
+  font-size: 1.75rem;
+}
+
+html[data-theme="dark"] .section-title {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .section-subtitle,
+html[data-theme="dark"] .subtitle {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .section-step {
+  background: rgba(153, 132, 216, 0.14);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.45);
+  border-radius: var(--radius-badges);
+}
+
+html[data-theme="dark"] input[type='email'],
+html[data-theme="dark"] input[type='password'],
+html[data-theme="dark"] input[type='text'],
+html[data-theme="dark"] input[type='number'],
+html[data-theme="dark"] input[type='date'],
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background: var(--color-void-black);
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-inputs);
+}
+
+html[data-theme="dark"] input[type='email']:focus,
+html[data-theme="dark"] input[type='password']:focus,
+html[data-theme="dark"] input[type='text']:focus,
+html[data-theme="dark"] input[type='number']:focus,
+html[data-theme="dark"] input[type='date']:focus,
+html[data-theme="dark"] select:focus,
+html[data-theme="dark"] textarea:focus {
+  outline: none;
+  border-color: var(--color-lavender-pulse);
+  box-shadow: 0 0 0 2px rgba(153, 132, 216, 0.25);
+}
+
+/* Global Basedash Buttons */
+html[data-theme="dark"] .btn-primary {
+  background: var(--color-ghost-white);
+  color: var(--color-void-black);
+  border: 1px solid var(--color-ghost-white);
+  border-radius: var(--radius-buttons);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .btn-primary:hover:not(:disabled) {
+  background: var(--color-bone-white);
+  border-color: var(--color-bone-white);
+}
+
+html[data-theme="dark"] .btn-secondary {
+  background: transparent;
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-steel-gray);
+  border-radius: var(--radius-buttons);
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+html[data-theme="dark"] .btn-danger {
+  background: rgba(255, 92, 92, 0.14);
+  color: var(--color-crimson-signal);
+  border: 1px solid rgba(255, 92, 92, 0.5);
+  border-radius: var(--radius-buttons);
+}
+
+html[data-theme="dark"] .btn-danger:hover:not(:disabled) {
+  background: rgba(255, 92, 92, 0.24);
+  border-color: var(--color-crimson-signal);
+}
+
+/* Global Badges & Text Utilities */
+html[data-theme="dark"] .badge-primary {
+  background: rgba(153, 132, 216, 0.16);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.5);
+}
+
+html[data-theme="dark"] .badge-secondary,
+html[data-theme="dark"] .badge-neutral {
+  background: rgba(128, 128, 128, 0.14);
+  color: var(--color-ash-gray);
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .badge-info {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--color-sky-signal);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+}
+
+html[data-theme="dark"] .badge-success {
+  background: rgba(63, 203, 127, 0.12);
+  color: var(--color-mint-signal);
+  border: 1px solid rgba(63, 203, 127, 0.45);
+}
+
+html[data-theme="dark"] .badge-warning {
+  background: rgba(245, 166, 35, 0.12);
+  color: var(--color-amber-signal);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+}
+
+html[data-theme="dark"] .badge-error,
+html[data-theme="dark"] .badge-danger {
+  background: rgba(255, 92, 92, 0.12);
+  color: var(--color-crimson-signal);
+  border: 1px solid rgba(255, 92, 92, 0.45);
+}
+
+html[data-theme="dark"] .text-green {
+  color: var(--color-mint-signal) !important;
+}
+
+html[data-theme="dark"] .text-amber {
+  color: var(--color-amber-signal) !important;
+}
+
+html[data-theme="dark"] .text-red,
+html[data-theme="dark"] .text-danger {
+  color: var(--color-crimson-signal) !important;
+}
+
+html[data-theme="dark"] .text-blue {
+  color: var(--color-sky-signal) !important;
+}
+
+html[data-theme="dark"] .text-slate,
+html[data-theme="dark"] .text-slate-800 {
+  color: var(--color-ghost-white) !important;
+}
+
+html[data-theme="dark"] .store-badge-locked,
+html[data-theme="dark"] .bg-surface-subtle {
+  background: var(--color-void-black);
+  border-color: var(--color-graphite);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .user-pill-store {
+  background: rgba(153, 132, 216, 0.14);
+  border-color: rgba(153, 132, 216, 0.45);
+  color: var(--color-lavender-pulse);
+}
+
+/* Global Alerts */
+html[data-theme="dark"] .alert-box-warning,
+html[data-theme="dark"] .alert-warning {
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  color: var(--color-amber-signal);
+}
+
+html[data-theme="dark"] .alert-error {
+  background: rgba(255, 92, 92, 0.1);
+  border: 1px solid rgba(255, 92, 92, 0.45);
+  color: var(--color-crimson-signal);
+}
+
+html[data-theme="dark"] .alert-info {
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: var(--color-sky-signal);
+}
+
+html[data-theme="dark"] .ongoing-orders-banner {
+  background: rgba(63, 203, 127, 0.1);
+  border: 1px solid rgba(63, 203, 127, 0.45);
+  color: var(--color-mint-signal);
+}
+
+/* 2. Data Ingestion / Upload Workspace & 30-Day Coverage Calendar */
+html[data-theme="dark"] .store-dropdown {
+  background: var(--color-void-black);
+  border: 1px solid var(--color-steel-gray);
+  color: var(--color-ghost-white);
+  border-radius: var(--radius-inputs);
+}
+
+html[data-theme="dark"] .store-dropdown:focus {
+  border-color: var(--color-lavender-pulse);
+  background: var(--color-void-black);
+  box-shadow: 0 0 0 2px rgba(153, 132, 216, 0.25);
+}
+
+html[data-theme="dark"] .calendar-card {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-cards);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .calendar-compact-header {
+  border-bottom-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .calendar-dot-label {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .calendar-mini-legend {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .mini-dot-green {
+  background-color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .mini-dot-orange {
+  background-color: var(--color-amber-signal);
+}
+
+html[data-theme="dark"] .mini-day-chip {
+  background: var(--color-void-black);
+  border-color: var(--color-graphite);
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .mini-day-uploaded {
+  background: rgba(63, 203, 127, 0.1);
+  border-color: rgba(63, 203, 127, 0.45);
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .mini-day-uploaded:hover {
+  background: rgba(63, 203, 127, 0.18);
+  border-color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .mini-day-missing {
+  background: rgba(245, 166, 35, 0.08);
+  border-color: rgba(245, 166, 35, 0.4);
+  color: var(--color-amber-signal);
+}
+
+html[data-theme="dark"] .mini-day-missing:hover {
+  background: rgba(245, 166, 35, 0.16);
+  border-color: var(--color-amber-signal);
+}
+
+html[data-theme="dark"] .mini-day-selected {
+  box-shadow: 0 0 0 2px var(--color-lavender-pulse) !important;
+}
+
+html[data-theme="dark"] .upload-header-row {
+  border-bottom-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .upload-mode-toggle {
+  background: var(--color-void-black);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-inputs);
+}
+
+html[data-theme="dark"] .mode-toggle-btn {
+  color: var(--color-ash-gray);
+  border-radius: 5px;
+}
+
+html[data-theme="dark"] .mode-toggle-btn:hover:not(.mode-toggle-btn-active) {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .mode-toggle-btn-active {
+  background: var(--color-ghost-white) !important;
+  color: var(--color-void-black) !important;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .mode-pill-badge {
+  background: rgba(63, 203, 127, 0.16);
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .roster-status-banner {
+  background: rgba(63, 203, 127, 0.07);
+  border: 1px solid rgba(63, 203, 127, 0.4);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .roster-status-icon-box {
+  background: rgba(63, 203, 127, 0.16);
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .roster-status-heading {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .roster-status-info {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .roster-status-info strong {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .dnr-status-banner {
+  background: rgba(245, 166, 35, 0.08) !important;
+  border: 1px solid rgba(245, 166, 35, 0.45) !important;
+  border-left: 4px solid var(--color-amber-signal) !important;
+}
+
+html[data-theme="dark"] .dnr-icon-box {
+  background: rgba(245, 166, 35, 0.16) !important;
+  color: var(--color-amber-signal) !important;
+  border-color: rgba(245, 166, 35, 0.45) !important;
+}
+
+html[data-theme="dark"] .dnr-exploiter-alert {
+  color: var(--color-crimson-signal);
+}
+
+html[data-theme="dark"] .snop-status-banner {
+  background: rgba(56, 189, 248, 0.07) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
+}
+
+html[data-theme="dark"] .snop-icon-box {
+  background: rgba(56, 189, 248, 0.16) !important;
+  color: var(--color-sky-signal) !important;
+}
+
+html[data-theme="dark"] .snop-banner-meta {
+  border-top-color: rgba(56, 189, 248, 0.3);
+}
+
+html[data-theme="dark"] .clean-dropzone {
+  background: var(--color-void-black);
+  border: 1.5px dashed var(--color-graphite);
+  border-radius: 12px;
+}
+
+html[data-theme="dark"] .clean-dropzone:hover,
+html[data-theme="dark"] .dropzone-active {
+  background: rgba(153, 132, 216, 0.06);
+  border-color: var(--color-lavender-pulse);
+}
+
+html[data-theme="dark"] .dropzone-icon {
+  color: var(--color-lavender-pulse);
+}
+
+html[data-theme="dark"] .dropzone-text strong {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .dropzone-text p {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .dropzone-text code {
+  background: #12151c;
+  color: var(--color-lavender-pulse);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+/* 3. S2P, OTP & DPH Analytics Section & Expandable Pivot Matrices */
+html[data-theme="dark"] .s2p-daily-table-container {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: 12px;
+}
+
+html[data-theme="dark"] .s2p-daily-table th {
+  background: var(--surface-table-header);
+  color: var(--color-ash-gray);
+  border-bottom: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .s2p-day-row {
+  border-bottom: 1px solid #191c22;
+}
+
+html[data-theme="dark"] .s2p-day-row td {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .s2p-day-row:hover {
+  background: var(--surface-row-hover);
+}
+
+html[data-theme="dark"] .s2p-day-row-expanded {
+  background: #0d1016 !important;
+  border-bottom: 1px solid var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .s2p-expand-toggle-btn {
+  background: var(--color-void-black);
+  border-color: var(--color-graphite);
+  color: var(--color-lavender-pulse);
+}
+
+html[data-theme="dark"] .s2p-expand-toggle-btn:hover {
+  background: var(--color-lavender-pulse);
+  color: var(--color-void-black);
+  border-color: var(--color-lavender-pulse);
+}
+
+html[data-theme="dark"] .s2p-expanded-cell,
+html[data-theme="dark"] .s2p-slot-breakdown-card {
+  background: var(--color-void-black) !important;
+  border-bottom-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .s2p-slot-title {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .excel-pivot-table-container {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .excel-pivot-table th {
+  background: var(--surface-table-header);
+  color: var(--color-ash-gray);
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .excel-pivot-table td {
+  background: var(--color-carbon-card);
+  color: var(--color-ash-gray);
+  border: 1px solid #191c22;
+}
+
+html[data-theme="dark"] .excel-pivot-table tbody tr:nth-child(even) td {
+  background: #07090c;
+}
+
+html[data-theme="dark"] .excel-pivot-table tbody tr:hover td {
+  background: var(--surface-row-hover);
+}
+
+html[data-theme="dark"] .excel-pivot-grand-total,
+html[data-theme="dark"] .excel-pivot-grand-total td,
+html[data-theme="dark"] .s2p-overall-grand-total,
+html[data-theme="dark"] .s2p-overall-grand-total td {
+  background: var(--surface-table-header) !important;
+  color: var(--color-ghost-white) !important;
+  border-top: 2px solid var(--color-graphite) !important;
+  border-bottom: 1px solid var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .dph-heat-critical {
+  background-color: rgba(255, 92, 92, 0.22) !important;
+  color: var(--color-crimson-signal) !important;
+  border: 1px solid rgba(255, 92, 92, 0.5);
+}
+
+html[data-theme="dark"] .dph-heat-high {
+  background-color: rgba(255, 92, 92, 0.14) !important;
+  color: #ff8080 !important;
+  border: 1px solid rgba(255, 92, 92, 0.35);
+}
+
+html[data-theme="dark"] .dph-heat-elevated {
+  background-color: rgba(245, 166, 35, 0.14) !important;
+  color: var(--color-amber-signal) !important;
+  border: 1px solid rgba(245, 166, 35, 0.4);
+}
+
+html[data-theme="dark"] .dph-heat-normal {
+  background-color: #0d1015 !important;
+  color: var(--color-ash-gray) !important;
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .dph-impacted-slots {
+  background-color: rgba(255, 92, 92, 0.12);
+  color: var(--color-crimson-signal);
+  border-color: rgba(255, 92, 92, 0.45);
+}
+
+html[data-theme="dark"] .s2p-loading-bar {
+  background: rgba(63, 203, 127, 0.1);
+  color: var(--color-mint-signal);
+  border-bottom-color: rgba(63, 203, 127, 0.35);
+}
+
+/* 4. Planning & Capacity (Forward Slot Plan & Plan vs Actual Audit) */
+html[data-theme="dark"] .dph-active-pill {
+  color: var(--color-void-black) !important;
+}
+
+html[data-theme="dark"] .th-required-riders {
+  background-color: rgba(153, 132, 216, 0.14) !important;
+  color: var(--color-lavender-pulse) !important;
+}
+
+html[data-theme="dark"] .td-required-riders {
+  background-color: rgba(153, 132, 216, 0.06) !important;
+}
+
+html[data-theme="dark"] .td-required-riders .text-blue {
+  color: var(--color-lavender-pulse) !important;
+}
+
+html[data-theme="dark"] .td-active {
+  background-color: var(--color-carbon-card);
+  border-color: #191c22;
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .btn-slot-turnup-trigger {
+  background: var(--color-void-black);
+  border: 1px solid var(--color-graphite);
+  color: var(--color-ghost-white);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .btn-slot-turnup-trigger:hover {
+  background: rgba(153, 132, 216, 0.14);
+  border-color: var(--color-lavender-pulse);
+  color: var(--color-lavender-pulse);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .btn-slot-turnup-trigger.turnup-zero {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-steel-gray);
+}
+
+html[data-theme="dark"] .btn-slot-turnup-trigger.turnup-zero:hover {
+  background: #0d1015;
+  border-color: var(--color-graphite);
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .status-pill-short {
+  background: rgba(255, 92, 92, 0.12);
+  border-color: rgba(255, 92, 92, 0.45);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .status-pill-short .status-symbol,
+html[data-theme="dark"] .status-gradient-short {
+  background: none;
+  -webkit-text-fill-color: var(--color-crimson-signal);
+  color: var(--color-crimson-signal);
+}
+
+html[data-theme="dark"] .status-pill-surplus {
+  background: rgba(63, 203, 127, 0.12);
+  border-color: rgba(63, 203, 127, 0.45);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .status-pill-surplus .status-symbol,
+html[data-theme="dark"] .status-gradient-surplus {
+  background: none;
+  -webkit-text-fill-color: var(--color-mint-signal);
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .status-pill-balanced {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .status-pill-balanced .status-symbol,
+html[data-theme="dark"] .status-gradient-balanced {
+  background: none;
+  -webkit-text-fill-color: var(--color-ash-gray);
+  color: var(--color-ash-gray);
+}
+
+/* Mark Attendance Button in Planning Toolbar */
+html[data-theme="dark"] .btn-mark-attendance {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-steel-gray);
+  color: var(--color-ghost-white);
+  border-radius: var(--radius-buttons);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .btn-mark-attendance:hover {
+  border-color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .btn-mark-attendance.has-attendance {
+  background: rgba(63, 203, 127, 0.1);
+  border-color: rgba(63, 203, 127, 0.45);
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .attendance-unmarked-badge {
+  background: rgba(245, 166, 35, 0.14);
+  color: var(--color-amber-signal);
+  border-color: rgba(245, 166, 35, 0.45);
+}
+
+html[data-theme="dark"] .attendance-badge-present {
+  background: rgba(63, 203, 127, 0.16);
+  color: var(--color-mint-signal);
+  border-color: rgba(63, 203, 127, 0.45);
+}
+
+/* Plan vs Actual Audit — Hourly Reconciliation Strip & Mini Timelines */
+html[data-theme="dark"] .hourly-slot-box {
+  background: var(--color-void-black);
+  border-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .hourly-slot-box.box-deficit {
+  background: rgba(255, 92, 92, 0.08);
+  border-color: rgba(255, 92, 92, 0.4);
+}
+
+html[data-theme="dark"] .hourly-slot-box.box-surplus {
+  background: rgba(63, 203, 127, 0.08);
+  border-color: rgba(63, 203, 127, 0.4);
+}
+
+html[data-theme="dark"] .hourly-slot-box.box-balanced {
+  background: var(--color-void-black);
+  border-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .slot-box-hour,
+html[data-theme="dark"] .slot-box-counts {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .slot-box-counts .muted {
+  color: var(--color-steel-gray);
+}
+
+html[data-theme="dark"] .tag-deficit {
+  background: rgba(255, 92, 92, 0.16);
+  color: var(--color-crimson-signal);
+}
+
+html[data-theme="dark"] .tag-surplus {
+  background: rgba(63, 203, 127, 0.16);
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .tag-balanced {
+  background: #141820;
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .rider-mini-timeline {
+  background: var(--color-void-black);
+  border-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .timeline-block.block-off {
+  background-color: #14171d;
+  color: #4b5563;
+}
+
+html[data-theme="dark"] .missed-slots-pill {
+  background: rgba(255, 92, 92, 0.12);
+  color: var(--color-crimson-signal);
+  border-color: rgba(255, 92, 92, 0.45);
+}
+
+html[data-theme="dark"] .adherence-danger {
+  background: rgba(255, 92, 92, 0.14);
+  color: var(--color-crimson-signal);
+  border-color: rgba(255, 92, 92, 0.45);
+}
+
+html[data-theme="dark"] .adherence-warning {
+  background: rgba(245, 166, 35, 0.14);
+  color: var(--color-amber-signal);
+  border-color: rgba(245, 166, 35, 0.45);
+}
+
+html[data-theme="dark"] .adherence-success {
+  background: rgba(63, 203, 127, 0.14);
+  color: var(--color-mint-signal);
+  border-color: rgba(63, 203, 127, 0.45);
+}
+
+html[data-theme="dark"] .adherence-info {
+  background: rgba(153, 132, 216, 0.14);
+  color: var(--color-lavender-pulse);
+  border-color: rgba(153, 132, 216, 0.45);
+}
+
+html[data-theme="dark"] .adherence-neutral {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-ash-gray);
+  border-color: var(--color-graphite);
+}
+
+/* 5. All Modals: Upload Confirm/Error/Success, Attendance, Planned Turn-Up, DNR, Store Logins */
+html[data-theme="dark"] .modal-card,
+html[data-theme="dark"] .rider-attendance-modal,
+html[data-theme="dark"] .turnup-modal-card {
+  background: var(--color-carbon-card) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: var(--radius-cards) !important;
+  color: var(--color-ghost-white) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85) !important;
+}
+
+html[data-theme="dark"] .modal-header,
+html[data-theme="dark"] .modal-footer,
+html[data-theme="dark"] .attendance-modal-header,
+html[data-theme="dark"] .attendance-modal-footer,
+html[data-theme="dark"] .turnup-modal-header,
+html[data-theme="dark"] .turnup-modal-footer {
+  background: var(--color-carbon-card) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .modal-title,
+html[data-theme="dark"] .attendance-modal-title,
+html[data-theme="dark"] .turnup-modal-title,
+html[data-theme="dark"] .success-title {
+  color: var(--color-ghost-white) !important;
+}
+
+html[data-theme="dark"] .modal-subtitle,
+html[data-theme="dark"] .attendance-modal-subtitle,
+html[data-theme="dark"] .turnup-modal-subtitle,
+html[data-theme="dark"] .success-subtitle {
+  color: var(--color-ash-gray) !important;
+}
+
+html[data-theme="dark"] .btn-close,
+html[data-theme="dark"] .attendance-modal-close-btn,
+html[data-theme="dark"] .turnup-modal-close-btn {
+  background: var(--color-void-black);
+  border: 1px solid var(--color-graphite);
+  color: var(--color-ash-gray);
+  border-radius: var(--radius-buttons);
+}
+
+html[data-theme="dark"] .btn-close:hover,
+html[data-theme="dark"] .attendance-modal-close-btn:hover,
+html[data-theme="dark"] .turnup-modal-close-btn:hover {
+  border-color: var(--color-ghost-white);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .confirm-stat-box,
+html[data-theme="dark"] .confirm-summary-box,
+html[data-theme="dark"] .roster-sample-preview,
+html[data-theme="dark"] .success-stat-chip,
+html[data-theme="dark"] .dnr-sample-row {
+  background: var(--color-void-black);
+  border-color: var(--color-graphite);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .stat-val,
+html[data-theme="dark"] .success-stat-chip strong,
+html[data-theme="dark"] .dnr-sample-rider {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .stat-label,
+html[data-theme="dark"] .stat-sub,
+html[data-theme="dark"] .sample-label,
+html[data-theme="dark"] .success-stat-chip span {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .rider-sample-chip {
+  background: var(--color-carbon-card);
+  border-color: var(--color-graphite);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .error-list {
+  background: rgba(255, 92, 92, 0.08);
+  border-color: rgba(255, 92, 92, 0.4);
+}
+
+html[data-theme="dark"] .error-intro,
+html[data-theme="dark"] .error-item,
+html[data-theme="dark"] .error-more-note {
+  color: var(--color-crimson-signal);
+}
+
+/* Rider Attendance Modal Internals */
+html[data-theme="dark"] .attendance-summary-kpis,
+html[data-theme="dark"] .attendance-controls-bar,
+html[data-theme="dark"] .turnup-modal-kpi-bar,
+html[data-theme="dark"] .turnup-modal-controls {
+  background: var(--color-void-black) !important;
+  border-bottom-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill,
+html[data-theme="dark"] .turnup-kpi-card {
+  background: var(--color-carbon-card) !important;
+  border-color: var(--color-graphite) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill .kpi-label,
+html[data-theme="dark"] .turnup-kpi-label,
+html[data-theme="dark"] .turnup-kpi-hint {
+  color: var(--color-ash-gray) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill .kpi-value,
+html[data-theme="dark"] .turnup-kpi-value {
+  color: var(--color-ghost-white) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill.kpi-present,
+html[data-theme="dark"] .turnup-kpi-card.card-surplus {
+  background: rgba(63, 203, 127, 0.1) !important;
+  border-color: rgba(63, 203, 127, 0.45) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill.kpi-present .kpi-value,
+html[data-theme="dark"] .turnup-kpi-card.card-surplus .turnup-kpi-value {
+  color: var(--color-mint-signal) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill.kpi-absent,
+html[data-theme="dark"] .turnup-kpi-card.card-deficit {
+  background: rgba(255, 92, 92, 0.1) !important;
+  border-color: rgba(255, 92, 92, 0.45) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill.kpi-absent .kpi-value,
+html[data-theme="dark"] .turnup-kpi-card.card-deficit .turnup-kpi-value {
+  color: var(--color-crimson-signal) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill.kpi-unmarked {
+  background: rgba(245, 166, 35, 0.1) !important;
+  border-color: rgba(245, 166, 35, 0.45) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill.kpi-unmarked .kpi-value {
+  color: var(--color-amber-signal) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill.kpi-peak,
+html[data-theme="dark"] .turnup-kpi-card.highlight-turnup {
+  background: rgba(153, 132, 216, 0.12) !important;
+  border-color: rgba(153, 132, 216, 0.45) !important;
+}
+
+html[data-theme="dark"] .attendance-kpi-pill.kpi-peak .kpi-value,
+html[data-theme="dark"] .turnup-kpi-card.highlight-turnup .turnup-kpi-value {
+  color: var(--color-lavender-pulse) !important;
+}
+
+html[data-theme="dark"] .attendance-status-segmented,
+html[data-theme="dark"] .attendance-toggle-group,
+html[data-theme="dark"] .turnup-category-tabs {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .attendance-status-segmented .segmented-btn.active,
+html[data-theme="dark"] .turnup-tab-btn.active {
+  background: var(--color-ghost-white);
+  color: var(--color-void-black);
+}
+
+html[data-theme="dark"] .attendance-table-container,
+html[data-theme="dark"] .attendance-roster-table,
+html[data-theme="dark"] .turnup-modal-table-container {
+  background: var(--color-carbon-card) !important;
+}
+
+html[data-theme="dark"] .attendance-roster-table th,
+html[data-theme="dark"] .turnup-riders-table th {
+  background: var(--surface-table-header) !important;
+  color: var(--color-ash-gray) !important;
+  border-bottom-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .attendance-row,
+html[data-theme="dark"] .turnup-row {
+  background: var(--color-carbon-card);
+  border-bottom-color: #191c22;
+}
+
+html[data-theme="dark"] .attendance-row:hover,
+html[data-theme="dark"] .turnup-row:hover {
+  background: var(--surface-row-hover) !important;
+}
+
+html[data-theme="dark"] .attendance-row .rider-name,
+html[data-theme="dark"] .turnup-rider-name {
+  color: var(--color-ghost-white) !important;
+}
+
+html[data-theme="dark"] .turnup-search-box {
+  background: var(--color-carbon-card);
+  border-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .turnup-search-input {
+  color: var(--color-ghost-white);
+}
+
+/* DNR Resolution Modal Internals */
+html[data-theme="dark"] .dnr-rider-overview-box,
+html[data-theme="dark"] .dnr-resolution-form,
+html[data-theme="dark"] .timeline-content,
+html[data-theme="dark"] .timing-picker-row,
+html[data-theme="dark"] .split-slot-section,
+html[data-theme="dark"] .individual-shift-kpi-strip {
+  background: var(--color-void-black) !important;
+  border-color: var(--color-graphite) !important;
+  color: var(--color-ghost-white) !important;
+}
+
+html[data-theme="dark"] .dnr-rider-name,
+html[data-theme="dark"] .history-section-title,
+html[data-theme="dark"] .timeline-resolution-text,
+html[data-theme="dark"] .kpi-hours-val {
+  color: var(--color-ghost-white) !important;
+}
+
+html[data-theme="dark"] .dnr-order-chip,
+html[data-theme="dark"] .timeline-notes-text {
+  background: var(--color-carbon-card) !important;
+  border-color: var(--color-graphite) !important;
+  color: var(--color-ash-gray) !important;
+}
+
+/* Store Logins Modal Table */
+html[data-theme="dark"] .table th {
+  background: var(--surface-table-header);
+  color: var(--color-ash-gray);
+  border-bottom: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .table td {
+  color: var(--color-ash-gray);
+  border-bottom: 1px solid #191c22;
+}
+
+html[data-theme="dark"] .table td strong {
+  color: var(--color-ghost-white);
+}
+
+/* Audit Slot Inspection Modal Chips */
+.audit-slot-chip {
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+}
+
+.audit-chip-missing {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.audit-chip-active {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+}
+
+.audit-chip-unplanned {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+}
+
+html[data-theme="dark"] .audit-chip-missing {
+  background: rgba(255, 92, 92, 0.12);
+  border-color: rgba(255, 92, 92, 0.45);
+  color: var(--color-crimson-signal);
+}
+
+html[data-theme="dark"] .audit-chip-active {
+  background: var(--color-void-black);
+  border-color: var(--color-graphite);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .audit-chip-unplanned {
+  background: rgba(153, 132, 216, 0.12);
+  border-color: rgba(153, 132, 216, 0.45);
+  color: var(--color-lavender-pulse) !important;
+}
+
+
+
 
 
 

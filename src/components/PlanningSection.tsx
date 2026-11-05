@@ -566,7 +566,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
         <div className="perf-section-header">
           <div className="flex-row items-center justify-between gap-md flex-wrap">
             <div>
-              <h3 className="section-title">Hourly Slot Planning Table</h3>
+              <h3 className="section-title editorial-serif-heading">Hourly Slot Planning Table</h3>
               <p className="section-subtitle">
                 Slot-wise projected demand and required rider workforce against historical turn-up for{' '}
                 <strong>{selectedStore?.store_code} — {selectedStore?.store_name}</strong>.
@@ -687,8 +687,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                     −
                   </button>
                   <span
-                    className="segmented-btn segmented-btn-active font-mono font-bold"
-                    style={{ color: '#166534', minWidth: '70px', textAlign: 'center' }}
+                    className="segmented-btn segmented-btn-active dph-active-pill font-mono font-bold"
                   >
                     {targetDph.toFixed(2)} DPH
                   </span>
@@ -889,8 +888,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                 </th>
 
                 <th
-                  className="th-avg-group text-center"
-                  style={{ backgroundColor: '#eff6ff', color: '#1e40af' }}
+                  className="th-avg-group th-required-riders text-center"
                 >
                   <div className="th-content th-content-center">
                     <span>Required Riders</span>
@@ -932,8 +930,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
 
                     {/* Required Riders */}
                     <td
-                      className="td-active text-center"
-                      style={{ backgroundColor: '#f0f7ff' }}
+                      className="td-active td-required-riders text-center"
                     >
                       <strong className="text-blue font-extrabold text-base">
                         {s.requiredRiders}
@@ -1008,8 +1005,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                   </td>
 
                   <td
-                    className="th-avg-group text-center font-bold"
-                    style={{ backgroundColor: '#eff6ff', color: '#1e40af' }}
+                    className="th-avg-group th-required-riders text-center font-bold"
                   >
                     Peak: {summary.peakRequiredRiders} | Avg: {summary.avgRequiredRiders.toFixed(1)}
                   </td>

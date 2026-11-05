@@ -207,19 +207,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
   const isTodayInRange = startDate <= todayStr && todayStr <= endDate;
 
-  // Helper to color-code DPH heatmap background (matching Excel pivot in Image 3)
-  const getDphHeatmapStyle = (dph: number): React.CSSProperties => {
-    if (dph <= 0) return {};
-    if (dph >= 2.6) {
-      return { backgroundColor: '#fecdd3', color: '#9f1239', fontWeight: 700 }; // intense rose/red
-    }
-    if (dph >= 2.3) {
-      return { backgroundColor: '#ffe4e6', color: '#be123c', fontWeight: 600 }; // light rose
-    }
-    if (dph >= 2.0) {
-      return { backgroundColor: '#fff1f2', color: '#e11d48' }; // soft pink
-    }
-    return { backgroundColor: '#f8fafc', color: '#475569' };
+  // Helper to color-code DPH heatmap badge class
+  const getDphHeatmapClass = (dph: number): string => {
+    if (dph <= 0) return 'dph-heat-none';
+    if (dph >= 2.6) return 'dph-heat-critical';
+    if (dph >= 2.3) return 'dph-heat-high';
+    if (dph >= 2.0) return 'dph-heat-elevated';
+    return 'dph-heat-normal';
   };
 
   // Helper for S2P duration color badge (Target: <= 0.60 min)
@@ -399,16 +393,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
       {/* Ongoing Today Orders Notification Banner */}
       {hasTodayOrders && !isTodayInRange && (
-        <div
-          className="alert alert-info flex-row items-center justify-between mt-md"
-          style={{
-            background: '#f0fdf4',
-            borderColor: '#86efac',
-            color: '#166534',
-            padding: '10px 16px',
-            borderRadius: '8px',
-          }}
-        >
+        <div className="alert ongoing-orders-banner flex-row items-center justify-between mt-md">
           <div className="flex-row items-center gap-sm">
             <span style={{ fontSize: '1.2rem' }}>🟢</span>
             <div>
@@ -524,7 +509,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         <div className="perf-section-header">
           <div className="flex-row items-center justify-between">
             <div>
-              <h3 className="section-title">Daily S2P, OTP, DPH &amp; DSR Summary</h3>
+              <h3 className="section-title editorial-serif-heading">Daily S2P, OTP, DPH &amp; DSR Summary</h3>
               <p className="section-subtitle">
                 Click on any calendar day row to expand its hourly/slot breakdown matching Excel pivots.
               </p>
@@ -639,7 +624,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                         </td>
                         <td className="text-right">{day.distinctRidersCount} riders</td>
                         <td className="text-right">
-                          <span className="dph-pill" style={getDphHeatmapStyle(day.avgDph)}>
+                          <span className={`dph-pill ${getDphHeatmapClass(day.avgDph)}`}>
                             {day.avgDph.toFixed(1)}
                           </span>
                         </td>
@@ -766,7 +751,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                           </td>
                                           <td className="text-center">{s.ridersCount}</td>
                                           <td className="text-center">
-                                            <span className="dph-pill" style={getDphHeatmapStyle(s.dph)}>
+                                            <span className={`dph-pill ${getDphHeatmapClass(s.dph)}`}>
                                               {s.dph.toFixed(1)}
                                             </span>
                                           </td>
@@ -793,7 +778,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                         </td>
                                         <td className="text-center font-bold">{day.distinctRidersCount}</td>
                                         <td className="text-center font-bold">
-                                          <span className="dph-pill" style={getDphHeatmapStyle(day.avgDph)}>
+                                          <span className={`dph-pill ${getDphHeatmapClass(day.avgDph)}`}>
                                             {day.avgDph.toFixed(1)}
                                           </span>
                                         </td>
@@ -919,7 +904,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                             <td className="text-center">{s.slotHour}</td>
                                             <td className="text-center">{s.ordersCount}</td>
                                             <td className="text-center">{s.ridersCount}</td>
-                                            <td className="text-center" style={getDphHeatmapStyle(s.dph)}>
+                                            <td className={`text-center ${getDphHeatmapClass(s.dph)}`}>
                                               {s.dph.toFixed(1)}
                                             </td>
                                           </tr>
@@ -930,7 +915,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                           <td className="text-center font-bold">Grand Total</td>
                                           <td className="text-center font-bold">{day.totalOrders}</td>
                                           <td className="text-center font-bold">{day.distinctRidersCount}</td>
-                                          <td className="text-center font-bold" style={getDphHeatmapStyle(day.avgDph)}>
+                                          <td className={`text-center font-bold ${getDphHeatmapClass(day.avgDph)}`}>
                                             {day.avgDph.toFixed(1)}
                                           </td>
                                         </tr>
@@ -960,7 +945,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                   <td className="text-right font-bold">{summary.overallTotalOrders.toLocaleString()}</td>
                   <td className="text-right font-bold">{summary.overallDistinctRiders} riders</td>
                   <td className="text-right font-bold">
-                    <span className="dph-pill" style={getDphHeatmapStyle(summary.overallAvgDph)}>
+                    <span className={`dph-pill ${getDphHeatmapClass(summary.overallAvgDph)}`}>
                       {summary.overallAvgDph.toFixed(1)}
                     </span>
                   </td>
