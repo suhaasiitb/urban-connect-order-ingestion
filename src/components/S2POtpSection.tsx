@@ -166,9 +166,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   );
 
   const renderBreachCellContent = (breach: number) => {
-    const isNegative = breach < 0;
+    const isBreach = breach > 0;
     return (
-      <span className={isNegative ? 'text-red font-bold' : 'text-green font-semibold'}>
+      <span className={isBreach ? 'text-red font-bold' : 'text-green font-semibold'}>
         {breach.toLocaleString()}
       </span>
     );
@@ -618,7 +618,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                 className={`snop-breach-toggle-btn ${showSnopBreach ? 'active' : ''}`}
                 onClick={() => setShowSnopBreach((prev) => !prev)}
                 aria-pressed={showSnopBreach}
-                title="Highlight SNOP Breach: adds SNOP Plan (left of Orders) and Breach = SNOP Plan − Orders (right of Orders)"
+                title="Highlight SNOP Breach: adds SNOP Plan (left of Orders) and Breach = Orders − SNOP Plan (right of Orders)"
               >
                 <span className="snop-breach-toggle-dot" aria-hidden="true" />
                 <span>Highlight SNOP Breach</span>
@@ -680,7 +680,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                   const activeView = slotViewModes[day.dateStr] || 'all';
                   const impactedSlots = getDphImpactedSlots(day.slots);
                   const daySnopPlan = getDaySnopPlan(day);
-                  const dayBreach = daySnopPlan - day.totalOrders;
+                  const dayBreach = day.totalOrders - daySnopPlan;
 
                   return (
                     <React.Fragment key={day.dateStr}>
@@ -861,7 +861,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                     <tbody>
                                       {day.slots.map((s) => {
                                         const slotSnop = getSlotSnopPlan(day.dateStr, day.dayOfWeek, s.slotHour);
-                                        const slotBreach = slotSnop - s.ordersCount;
+                                        const slotBreach = s.ordersCount - slotSnop;
                                         return (
                                           <tr key={s.slotHour}>
                                             <td className="text-center font-bold text-slate" title={s.slotLabel}>{s.slotHour}</td>
@@ -1041,7 +1041,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                       <tbody>
                                         {day.slots.map((s) => {
                                           const slotSnop = getSlotSnopPlan(day.dateStr, day.dayOfWeek, s.slotHour);
-                                          const slotBreach = slotSnop - s.ordersCount;
+                                          const slotBreach = s.ordersCount - slotSnop;
                                           return (
                                             <tr key={s.slotHour}>
                                               <td className="text-center">{s.slotHour}</td>
@@ -1096,7 +1096,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               <tfoot>
                 {(() => {
                   const periodSnopTotal = summary.days.reduce((sum, d) => sum + getDaySnopPlan(d), 0);
-                  const periodBreach = periodSnopTotal - summary.overallTotalOrders;
+                  const periodBreach = summary.overallTotalOrders - periodSnopTotal;
                   return (
                     <tr className="s2p-overall-grand-total">
                       <td colSpan={3} className="font-bold">
