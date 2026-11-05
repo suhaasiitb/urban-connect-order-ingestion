@@ -34,12 +34,14 @@ import { RiderAttendanceModal } from './RiderAttendanceModal';
 import { PlannedTurnUpRidersModal } from './PlannedTurnUpRidersModal';
 import { PlanVsActualAuditView } from './PlanVsActualAuditView';
 
-interface PlanningSectionProps {
+export interface PlanningSectionProps {
   stores: StoreMaster[];
   selectedStoreId: string;
   onSelectStoreId: (storeId: string) => void;
   currentUser?: UserProfile | null;
   onNavigateToUploadSnop?: () => void;
+  planningMode?: 'FORWARD_PLAN' | 'PLAN_VS_ACTUAL_AUDIT';
+  onChangePlanningMode?: (mode: 'FORWARD_PLAN' | 'PLAN_VS_ACTUAL_AUDIT') => void;
 }
 
 export const PlanningSection: React.FC<PlanningSectionProps> = ({
@@ -48,6 +50,8 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
   onSelectStoreId,
   currentUser,
   onNavigateToUploadSnop,
+  planningMode: controlledMode,
+  onChangePlanningMode,
 }) => {
   const selectedStore =
     stores.find((s) => s.id === selectedStoreId) ?? stores[0] ?? null;
@@ -83,7 +87,12 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
   const [isTurnUpModalOpen, setIsTurnUpModalOpen] = useState(false);
 
   // Tab mode: Forward Slot Plan vs Plan vs Actual Audit
-  const [planningMode, setPlanningMode] = useState<'FORWARD_PLAN' | 'PLAN_VS_ACTUAL_AUDIT'>('FORWARD_PLAN');
+  const [internalPlanningMode, setInternalPlanningMode] = useState<'FORWARD_PLAN' | 'PLAN_VS_ACTUAL_AUDIT'>('FORWARD_PLAN');
+  const planningMode = controlledMode ?? internalPlanningMode;
+  const setPlanningMode = (mode: 'FORWARD_PLAN' | 'PLAN_VS_ACTUAL_AUDIT') => {
+    setInternalPlanningMode(mode);
+    onChangePlanningMode?.(mode);
+  };
 
   // Load available forecast dates whenever store changes
   useEffect(() => {

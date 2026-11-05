@@ -46,13 +46,15 @@ import {
   UploadSuccessModal,
 } from './UploadModals';
 
-interface UploadWorkspaceProps {
+export interface UploadWorkspaceProps {
   stores: StoreMaster[];
   selectedStoreId: string;
   onSelectStoreId: (storeId: string) => void;
   onBatchCommitted?: () => void;
   onNavigateToPlanning?: () => void;
   currentUser?: UserProfile | null;
+  uploadType?: 'orders' | 'riders' | 'dnr' | 'snop';
+  onChangeUploadType?: (type: 'orders' | 'riders' | 'dnr' | 'snop') => void;
 }
 
 export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
@@ -62,6 +64,8 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   onBatchCommitted,
   onNavigateToPlanning,
   currentUser,
+  uploadType: controlledUploadType,
+  onChangeUploadType,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -69,7 +73,12 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [isUploading, setIsUploading] = useState(false);
 
   // Upload Mode: 'orders' (Daily Store Orders) vs 'riders' (Active Riders Roster) vs 'dnr' (DNR Reports) vs 'snop' (SNOP Forecast)
-  const [uploadType, setUploadType] = useState<'orders' | 'riders' | 'dnr' | 'snop'>('orders');
+  const [internalUploadType, setInternalUploadType] = useState<'orders' | 'riders' | 'dnr' | 'snop'>('orders');
+  const uploadType = controlledUploadType ?? internalUploadType;
+  const setUploadType = (type: 'orders' | 'riders' | 'dnr' | 'snop') => {
+    setInternalUploadType(type);
+    onChangeUploadType?.(type);
+  };
 
   // 30-Day Ingestion Coverage
   const [coverage, setCoverage] = useState<StoreCoverageSummary | null>(null);

@@ -32,11 +32,13 @@ import { RiderManagementSection } from './RiderManagementSection';
 import { NewRiderOnboardingSection } from './NewRiderOnboardingSection';
 import { RiderShiftModal } from './RiderShiftModal';
 
-interface AnalyticsSectionProps {
+export interface AnalyticsSectionProps {
   stores: StoreMaster[];
   selectedStoreId: string;
   onSelectStoreId: (id: string) => void;
   currentUser?: UserProfile | null;
+  activeTab?: 'performance' | 'management' | 'new-riders';
+  onChangeTab?: (tab: 'performance' | 'management' | 'new-riders') => void;
 }
 
 export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
@@ -44,6 +46,8 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   selectedStoreId,
   onSelectStoreId,
   currentUser,
+  activeTab: controlledTab,
+  onChangeTab,
 }) => {
   const selectedStore = stores.find((s) => s.id === selectedStoreId) ?? stores[0];
 
@@ -64,7 +68,12 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     overallAvgHours: 0,
     overallAvgOrders: 0,
   });
-  const [activeTab, setActiveTab] = useState<'performance' | 'management' | 'new-riders'>('performance');
+  const [internalActiveTab, setInternalActiveTab] = useState<'performance' | 'management' | 'new-riders'>('performance');
+  const activeTab = controlledTab ?? internalActiveTab;
+  const setActiveTab = (tab: 'performance' | 'management' | 'new-riders') => {
+    setInternalActiveTab(tab);
+    onChangeTab?.(tab);
+  };
   const [tableShiftFilter, setTableShiftFilter] = useState<string>('ALL');
   const [shiftModalFilter, setShiftModalFilter] = useState<string | undefined>(undefined);
   const [shiftModalSearchQuery, setShiftModalSearchQuery] = useState<string | undefined>(undefined);

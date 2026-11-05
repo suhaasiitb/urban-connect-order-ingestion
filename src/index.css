@@ -228,31 +228,47 @@ p {
 .topbar {
   background: var(--bg-card);
   border-bottom: 1px solid var(--border-color);
-  padding: 0.85rem 1.5rem;
+  padding: 0.7rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 900;
 }
 
 .topbar-brand {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  font-size: 1.05rem;
+  gap: 0.55rem;
+  font-size: 1rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .topbar-nav {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
 }
 
 .topbar-user {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  font-size: 0.9rem;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1120px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
 }
 
 .main-container {
@@ -7880,11 +7896,11 @@ html[data-theme="dark"] .app-shell {
 
 /* Top Navigation Bar — Basedash Spec */
 html[data-theme="dark"] .topbar {
-  background: rgba(0, 0, 0, 0.82);
+  background: rgba(0, 0, 0, 0.88);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--color-graphite);
-  padding: 0.85rem 1.75rem;
+  padding: 0.7rem 1.25rem;
 }
 
 html[data-theme="dark"] .basedash-brand-pill {
@@ -10374,6 +10390,370 @@ html[data-theme="dark"] .audit-chip-unplanned {
   border-color: rgba(153, 132, 216, 0.45);
   color: var(--color-lavender-pulse) !important;
 }
+
+/* ==============================================================================
+   Auto-Retractable Side Navigation Panel (Light & Basedash Midnight Modes)
+   ============================================================================== */
+.topbar-sidebar-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.topbar-sidebar-toggle-btn:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+.topbar-sidebar-toggle-btn.active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+html[data-theme="dark"] .topbar-sidebar-toggle-btn {
+  background: var(--color-carbon-card);
+  border-color: var(--color-steel-gray);
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .topbar-sidebar-toggle-btn:hover {
+  border-color: var(--color-ghost-white);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .topbar-sidebar-toggle-btn.active {
+  background: var(--color-ghost-white);
+  border-color: var(--color-ghost-white);
+  color: var(--color-void-black);
+}
+
+.app-body-layout {
+  display: flex;
+  flex: 1;
+  position: relative;
+  min-height: calc(100vh - 58px);
+}
+
+.app-body-layout .main-container {
+  flex: 1;
+  min-width: 0;
+  max-width: 1440px;
+  margin-left: 60px;
+  padding: 1.35rem 1.5rem;
+  transition: margin-left 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-side-panel.sidebar-pinned ~ .main-container {
+  margin-left: 256px;
+}
+
+.app-side-panel {
+  position: fixed;
+  top: 57px;
+  left: 0;
+  bottom: 0;
+  width: 60px;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  z-index: 850;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-side-panel:hover,
+.app-side-panel.sidebar-pinned {
+  width: 256px;
+  box-shadow: 12px 0 32px rgba(15, 23, 42, 0.12);
+}
+
+.app-side-panel.sidebar-pinned {
+  box-shadow: none;
+}
+
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 0.85rem;
+  border-bottom: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+
+.side-panel-heading-text {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  opacity: 0;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+
+.app-side-panel:hover .side-panel-heading-text,
+.app-side-panel.sidebar-pinned .side-panel-heading-text {
+  opacity: 1;
+}
+
+.side-panel-pin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: all 0.15s ease;
+}
+
+.side-panel-pin-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.side-panel-pin-btn.active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #2563eb;
+}
+
+.side-panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.65rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.side-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.side-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #475569;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.side-nav-item:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.side-nav-item.active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.side-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.side-nav-label {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.app-side-panel:hover .side-nav-label,
+.app-side-panel.sidebar-pinned .side-nav-label {
+  opacity: 1;
+}
+
+/* Sub-section links inside Auto-Retractable Side Panel */
+.side-subnav-list {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 1.3rem;
+  padding-left: 0.65rem;
+  border-left: 1px solid #e2e8f0;
+}
+
+.app-side-panel:hover .side-subnav-list,
+.app-side-panel.sidebar-pinned .side-subnav-list {
+  display: flex;
+}
+
+.side-subnav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.38rem 0.55rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.side-subnav-item:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.side-subnav-item.active {
+  background: #f1f5f9;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.subnav-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+
+.side-subnav-item.active .subnav-dot {
+  background: #2563eb;
+  box-shadow: 0 0 6px rgba(37, 99, 235, 0.5);
+}
+
+.side-subnav-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-subnav-tag {
+  font-size: 0.64rem;
+  font-weight: 700;
+  padding: 0.08rem 0.38rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+/* Dark Mode — Auto-Retractable Side Navigation Panel */
+html[data-theme="dark"] .app-side-panel {
+  background: var(--color-carbon-card);
+  border-right: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .app-side-panel:hover:not(.sidebar-pinned) {
+  box-shadow: 16px 0 42px rgba(0, 0, 0, 0.85);
+}
+
+html[data-theme="dark"] .side-panel-header {
+  border-bottom-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .side-panel-heading-text {
+  color: var(--color-steel-gray);
+}
+
+html[data-theme="dark"] .side-panel-pin-btn {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .side-panel-pin-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .side-panel-pin-btn.active {
+  background: rgba(153, 132, 216, 0.16);
+  border-color: rgba(153, 132, 216, 0.5);
+  color: var(--color-lavender-pulse);
+}
+
+html[data-theme="dark"] .side-nav-item {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .side-nav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .side-nav-item.active {
+  background: var(--color-ghost-white);
+  border-color: var(--color-ghost-white);
+  color: var(--color-void-black);
+}
+
+html[data-theme="dark"] .side-subnav-list {
+  border-left-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .side-subnav-item {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .side-subnav-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .side-subnav-item.active {
+  background: rgba(153, 132, 216, 0.14);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .subnav-dot {
+  background: var(--color-graphite);
+}
+
+html[data-theme="dark"] .side-subnav-item.active .subnav-dot {
+  background: var(--color-mint-signal);
+  box-shadow: 0 0 6px rgba(63, 203, 127, 0.8);
+}
+
+html[data-theme="dark"] .side-subnav-tag {
+  background: rgba(153, 132, 216, 0.16);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.4);
+}
+
 
 
 
