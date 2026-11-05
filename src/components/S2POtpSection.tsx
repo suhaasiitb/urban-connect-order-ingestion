@@ -355,32 +355,41 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               )}
             </div>
 
-            {/* Period Segmented Control */}
+            {/* Period Dropdown */}
             <div className="perf-filter-group flex-wrap items-center">
-              <span className="perf-control-label">Period:</span>
-              <div className="segmented-control">
-                {PRESET_ITEMS.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`segmented-btn ${selectedPreset === item.id && !showCustomRange ? 'segmented-btn-active' : ''}`}
-                    onClick={() => handleSelectPreset(item.id)}
-                    title={item.tooltip}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className={`segmented-btn ${showCustomRange ? 'segmented-btn-active' : ''}`}
-                  onClick={() => {
-                    setShowCustomRange((v) => !v);
-                    setSelectedPreset('custom');
+              <label htmlFor="s2p-period-select" className="perf-control-label">
+                Period:
+              </label>
+              <div className="custom-select-wrapper">
+                <select
+                  id="s2p-period-select"
+                  className="perf-dropdown-select"
+                  value={showCustomRange ? 'custom' : selectedPreset}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'custom') {
+                      setShowCustomRange(true);
+                      setSelectedPreset('custom');
+                    } else if (val === 'today') {
+                      handleSelectPreset('today');
+                    } else {
+                      handleSelectPreset(Number(val) as PresetValue);
+                    }
                   }}
-                  title="Select custom date range"
+                  disabled={loading}
                 >
-                  Custom
-                </button>
+                  {PRESET_ITEMS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                  <option value="custom">Custom Range...</option>
+                </select>
+                <span className="select-chevron" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
               </div>
 
               {/* Include Today Toggle for Multi-day Presets */}
