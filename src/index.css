@@ -10673,6 +10673,154 @@ html[data-theme="dark"] .topbar-sidebar-toggle-btn.active {
   color: #475569;
 }
 
+/* Side Panel Footer & User Card */
+.side-panel-footer {
+  padding: 0.65rem 0.5rem;
+  border-top: 1px solid #f1f5f9;
+  background: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  transition: padding 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    gap 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-side-panel:hover .side-panel-footer,
+.app-side-panel.sidebar-pinned .side-panel-footer {
+  padding: 0.75rem 0.85rem;
+  gap: 0.65rem;
+}
+
+.side-user-card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  width: 100%;
+  justify-content: center;
+}
+
+.app-side-panel:hover .side-user-card,
+.app-side-panel.sidebar-pinned .side-user-card {
+  padding: 0.4rem 0.55rem;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  justify-content: flex-start;
+}
+
+.side-user-avatar {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+  margin: 0 auto;
+  transition: margin 0.22s ease;
+  user-select: none;
+}
+
+.app-side-panel:hover .side-user-avatar,
+.app-side-panel.sidebar-pinned .side-user-avatar {
+  margin: 0;
+}
+
+.side-user-details {
+  display: none;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.app-side-panel:hover .side-user-details,
+.app-side-panel.sidebar-pinned .side-user-details {
+  display: flex;
+  opacity: 1;
+}
+
+.side-user-role-badge {
+  align-self: flex-start;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  line-height: 1.3;
+}
+
+.side-user-role-badge.role-admin {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.side-user-role-badge.role-store {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.side-user-email {
+  font-size: 0.73rem;
+  color: #334155;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.side-signout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: 100%;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0 0.5rem;
+  transition: all 0.15s ease;
+}
+
+.side-signout-btn:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #ef4444;
+}
+
+.side-signout-text {
+  display: none;
+  opacity: 0;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+
+.app-side-panel:hover .side-signout-text,
+.app-side-panel.sidebar-pinned .side-signout-text {
+  display: inline;
+  opacity: 1;
+}
+
 /* Dark Mode — Auto-Retractable Side Navigation Panel */
 html[data-theme="dark"] .app-side-panel {
   background: var(--color-carbon-card);
@@ -10753,6 +10901,58 @@ html[data-theme="dark"] .side-subnav-tag {
   color: var(--color-lavender-pulse);
   border: 1px solid rgba(153, 132, 216, 0.4);
 }
+
+/* Dark Mode — Side Panel Footer & User Card */
+html[data-theme="dark"] .side-panel-footer {
+  border-top-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .side-user-card {
+  background: transparent;
+  border-color: transparent;
+}
+
+html[data-theme="dark"] .app-side-panel:hover .side-user-card,
+html[data-theme="dark"] .app-side-panel.sidebar-pinned .side-user-card {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .side-user-avatar {
+  background: linear-gradient(135deg, rgba(153, 132, 216, 0.45), rgba(99, 102, 241, 0.55));
+  border: 1px solid rgba(153, 132, 216, 0.5);
+  color: var(--color-ghost-white);
+  box-shadow: 0 0 10px rgba(153, 132, 216, 0.25);
+}
+
+html[data-theme="dark"] .side-user-role-badge.role-admin {
+  background: rgba(153, 132, 216, 0.16);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.35);
+}
+
+html[data-theme="dark"] .side-user-role-badge.role-store {
+  background: rgba(63, 203, 127, 0.16);
+  color: var(--color-mint-signal);
+  border: 1px solid rgba(63, 203, 127, 0.35);
+}
+
+html[data-theme="dark"] .side-user-email {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .side-signout-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--color-graphite);
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .side-signout-btn:hover {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
 
 
 

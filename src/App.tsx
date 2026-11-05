@@ -206,32 +206,16 @@ export const App: React.FC = () => {
             )}
           </button>
 
-          {currentUser.role === 'admin' ? (
-            <>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setIsStoreLoginsModalOpen(true)}
-                title="Manage store user accounts and permissions"
-              >
-                Store Logins
-              </button>
-              <span className="user-pill" title={currentUser.email}>
-                Admin: <strong>{currentUser.email}</strong>
-              </span>
-            </>
-          ) : (
-            <span className="user-pill user-pill-store" title={currentUser.email}>
-              Store (<strong>{currentUser.store_code ?? 'Assigned'}</strong>): {currentUser.email}
-            </span>
+          {currentUser.role === 'admin' && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setIsStoreLoginsModalOpen(true)}
+              title="Manage store user accounts and permissions"
+            >
+              Store Logins
+            </button>
           )}
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => void handleSignOut()}
-          >
-            Sign Out
-          </button>
         </div>
       </header>
 
@@ -472,6 +456,48 @@ export const App: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Dedicated Side Panel Footer: User Info & Sign Out */}
+          <div className="side-panel-footer">
+            <div className="side-user-card" title={currentUser.email}>
+              <div className="side-user-avatar" aria-hidden="true">
+                {currentUser.email.slice(0, 1).toUpperCase()}
+              </div>
+              <div className="side-user-details">
+                <span className={`side-user-role-badge ${currentUser.role === 'admin' ? 'role-admin' : 'role-store'}`}>
+                  {currentUser.role === 'admin' ? 'Admin' : currentUser.store_code ?? 'Store'}
+                </span>
+                <span className="side-user-email" title={currentUser.email}>
+                  {currentUser.email}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="side-signout-btn"
+              onClick={() => void handleSignOut()}
+              title={`Sign out (${currentUser.email})`}
+              aria-label="Sign out"
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span className="side-signout-text">Sign Out</span>
+            </button>
           </div>
         </aside>
 
