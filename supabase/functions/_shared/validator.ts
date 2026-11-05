@@ -164,23 +164,33 @@ export function validateNormalizedOrder(
     });
   }
 
-  // 6. LM Distance is mandatory
+  // 6. LM Distance is mandatory (except for live ongoing orders without Delivery ETA)
+  const isLiveOrder = source.status === 'LIVE' || !source.arrive_at_delivery_eta;
   if (source.lm_distance === null && !hasParseErrorOn('LM Distance')) {
-    issues.push({
-      field: 'LM Distance',
-      severity: 'error',
-      code: 'REQUIRED_FIELD_MISSING',
-      message: 'LM Distance is required.',
-    });
+    if (isLiveOrder) {
+      issues.push({
+        field: 'LM Distance',
+        severity: 'warning',
+        code: 'MISSING_OPTIONAL_FIELD',
+        message: 'LM Distance is missing on a live order.',
+      });
+    } else {
+      issues.push({
+        field: 'LM Distance',
+        severity: 'error',
+        code: 'REQUIRED_FIELD_MISSING',
+        message: 'LM Distance is required.',
+      });
+    }
   }
 
-  // 7. Arrive at Delivery ETA is mandatory
+  // 7. Arrive at Delivery ETA — when missing, consider the order as live (non-blocking warning)
   if (!source.arrive_at_delivery_eta && !hasParseErrorOn('Arrive at Delivery ETA')) {
     issues.push({
       field: 'Arrive at Delivery ETA',
-      severity: 'error',
-      code: 'REQUIRED_FIELD_MISSING',
-      message: 'Arrive at Delivery ETA is required.',
+      severity: 'warning',
+      code: 'LIVE_ORDER_MISSING_ETA',
+      message: 'Arrive at Delivery ETA is missing — order considered as live.',
     });
   }
 

@@ -226,4 +226,44 @@ describe('Validator & Hash Unit Tests (Section 5 & Section 9)', () => {
       );
     }
   });
+
+  it('considers current-day orders missing Arrive at Delivery ETA as LIVE orders without failing validation', () => {
+    const result = processAndValidateOrderRows({
+      filename: 'live-orders.csv',
+      fileSizeBytes: 1024,
+      fileChecksumSha256: 'e'.repeat(64),
+      worksheetFound: true,
+      missingHeaders: [],
+      unexpectedHeaders: [],
+      rawRows: [
+        { sourceRowNumber: 2, rawRow: makeValidRawRow({ 'Order ID': 'QC_DONE_001' }) },
+        {
+          sourceRowNumber: 3,
+          rawRow: makeValidRawRow({
+            'Order ID': 'QC_LIVE_002',
+            'Status': 'ASSIGNED',
+            'Arrive at Delivery ETA': '-',
+            'Arrived Delivery At': null,
+            'Completed At': '-',
+            'Pickup At': null,
+            'Staged At': '2026-10-19 10:05:00',
+            'LM Distance': '-',
+          }),
+        },
+      ],
+      store: TEST_STORE,
+    });
+
+    expect(result.is_valid).toBe(true);
+    expect(result.valid_rows_count).toBe(2);
+    expect(result.invalid_rows_count).toBe(0);
+
+    const liveRow = result.rows[1];
+    expect(liveRow.is_valid).toBe(true);
+    expect(liveRow.normalized_source.status).toBe('LIVE');
+    expect(liveRow.normalized_source.arrive_at_delivery_eta).toBeNull();
+    expect(liveRow.derived_fields.otp_performance).toBe('Not Applicable');
+    expect(liveRow.derived_fields.otp_plus_3_performance).toBe('Not Applicable');
+    expect(liveRow.issues.some((i) => i.code === 'LIVE_ORDER_MISSING_ETA')).toBe(true);
+  });
 });

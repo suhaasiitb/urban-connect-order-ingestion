@@ -378,12 +378,15 @@ export function normalizeOrderRow(rawRow: RawOrderRow): {
     }
   };
 
-  const arrivedPickup = normalizeTimestampField(rawRow['Arrived Pickup At']);
+  const arrivedPickup = normalizeTimestampField(rawRow['Arrived Pickup At'], {
+    allowDashAsNull: true,
+  });
   recordParseError('Arrived Pickup At', arrivedPickup.error);
 
   const lmDistance = normalizeNumericField(rawRow['LM Distance'], {
     integerOnly: true,
     min: 0,
+    allowDashAsNull: true,
   });
   recordParseError('LM Distance', lmDistance.error);
 
@@ -397,10 +400,14 @@ export function normalizeOrderRow(rawRow: RawOrderRow): {
   });
   recordParseError('Completed At', completedAt.error);
 
-  const pickupAt = normalizeTimestampField(rawRow['Pickup At']);
+  const pickupAt = normalizeTimestampField(rawRow['Pickup At'], {
+    allowDashAsNull: true,
+  });
   recordParseError('Pickup At', pickupAt.error);
 
-  const stagedAt = normalizeTimestampField(rawRow['Staged At']);
+  const stagedAt = normalizeTimestampField(rawRow['Staged At'], {
+    allowDashAsNull: true,
+  });
   recordParseError('Staged At', stagedAt.error);
 
   const pickupEta = normalizeNumericField(rawRow['Pickup ETA'], {
@@ -421,13 +428,19 @@ export function normalizeOrderRow(rawRow: RawOrderRow): {
   });
   recordParseError('Total Time', totalTime.error);
 
-  const arriveAtDeliveryEta = normalizeTimestampField(rawRow['Arrive at Delivery ETA']);
+  const arriveAtDeliveryEta = normalizeTimestampField(rawRow['Arrive at Delivery ETA'], {
+    allowDashAsNull: true,
+  });
   recordParseError('Arrive at Delivery ETA', arriveAtDeliveryEta.error);
 
-  const arrivedDeliveryAt = normalizeTimestampField(rawRow['Arrived Delivery At']);
+  const arrivedDeliveryAt = normalizeTimestampField(rawRow['Arrived Delivery At'], {
+    allowDashAsNull: true,
+  });
   recordParseError('Arrived Delivery At', arrivedDeliveryAt.error);
 
-  const rtoAt = normalizeTimestampField(rawRow['RTO At']);
+  const rtoAt = normalizeTimestampField(rawRow['RTO At'], {
+    allowDashAsNull: true,
+  });
   recordParseError('RTO At', rtoAt.error);
 
   const fmDistance = normalizeNumericField(rawRow['FM Distance'], {
@@ -446,8 +459,19 @@ export function normalizeOrderRow(rawRow: RawOrderRow): {
   });
   recordParseError('Delivery ETA', deliveryEta.error);
 
-  const rawStatus = normalizeStringField(rawRow['Status']);
-  const normalizedStatus = rawStatus ? rawStatus.toUpperCase() : '';
+  const rawStatus = normalizeStringField(rawRow['Status'], { allowDashAsNull: true });
+  const rawUpperStatus = rawStatus ? rawStatus.toUpperCase() : '';
+
+  // Orders missing Arrive at Delivery ETA (without a parse error) are considered LIVE orders
+  // unless explicitly marked CANCELLED or RTO_DELIVERED.
+  const isMissingDeliveryEta =
+    !arriveAtDeliveryEta.value && !arriveAtDeliveryEta.error;
+  const normalizedStatus =
+    isMissingDeliveryEta &&
+    rawUpperStatus !== 'CANCELLED' &&
+    rawUpperStatus !== 'RTO_DELIVERED'
+      ? 'LIVE'
+      : rawUpperStatus;
 
   const normalized: NormalizedOrderSource = {
     rider_number: normalizeStringField(rawRow['Rider Number'], { allowDashAsNull: true }),
