@@ -165,11 +165,17 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     [getSlotSnopPlan]
   );
 
-  const renderBreachCellContent = (breach: number) => {
+  const renderBreachCellContent = (breach: number, snopPlan: number) => {
     const isBreach = breach > 0;
+    const formattedDiff = isBreach ? `+${breach.toLocaleString()}` : breach.toLocaleString();
+    const pctStr =
+      snopPlan > 0
+        ? ` (${isBreach ? '+' : ''}${((breach / snopPlan) * 100).toFixed(1)}%)`
+        : '';
     return (
       <span className={isBreach ? 'text-red font-bold' : 'text-green font-semibold'}>
-        {breach.toLocaleString()}
+        {formattedDiff}
+        {pctStr}
       </span>
     );
   };
@@ -732,7 +738,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                         )}
                         <td className="text-right font-bold">{day.totalOrders.toLocaleString()}</td>
                         {showSnopBreach && (
-                          <td className="text-right">{renderBreachCellContent(dayBreach)}</td>
+                          <td className="text-right">{renderBreachCellContent(dayBreach, daySnopPlan)}</td>
                         )}
                         <td className="text-right font-bold">
                           <span
@@ -870,7 +876,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                             )}
                                             <td className="text-center font-semibold">{s.ordersCount}</td>
                                             {showSnopBreach && (
-                                              <td className="text-center">{renderBreachCellContent(slotBreach)}</td>
+                                              <td className="text-center">{renderBreachCellContent(slotBreach, slotSnop)}</td>
                                             )}
                                             <td className="text-center font-semibold">
                                               <span
@@ -907,7 +913,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                         )}
                                         <td className="text-center font-bold">{day.totalOrders}</td>
                                         {showSnopBreach && (
-                                          <td className="text-center">{renderBreachCellContent(dayBreach)}</td>
+                                          <td className="text-center">{renderBreachCellContent(dayBreach, daySnopPlan)}</td>
                                         )}
                                         <td className="text-center font-bold">
                                           <span className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
@@ -1050,7 +1056,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                               )}
                                               <td className="text-center">{s.ordersCount}</td>
                                               {showSnopBreach && (
-                                                <td className="text-center">{renderBreachCellContent(slotBreach)}</td>
+                                                <td className="text-center">{renderBreachCellContent(slotBreach, slotSnop)}</td>
                                               )}
                                               <td className="text-center">{s.ridersCount}</td>
                                               <td className={`text-center ${getDphHeatmapClass(s.dph)}`}>
@@ -1068,7 +1074,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                           )}
                                           <td className="text-center font-bold">{day.totalOrders}</td>
                                           {showSnopBreach && (
-                                            <td className="text-center">{renderBreachCellContent(dayBreach)}</td>
+                                            <td className="text-center">{renderBreachCellContent(dayBreach, daySnopPlan)}</td>
                                           )}
                                           <td className="text-center font-bold">{day.distinctRidersCount}</td>
                                           <td className={`text-center font-bold ${getDphHeatmapClass(day.avgDph)}`}>
@@ -1107,7 +1113,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                       )}
                       <td className="text-right font-bold">{summary.overallTotalOrders.toLocaleString()}</td>
                       {showSnopBreach && (
-                        <td className="text-right">{renderBreachCellContent(periodBreach)}</td>
+                        <td className="text-right">{renderBreachCellContent(periodBreach, periodSnopTotal)}</td>
                       )}
                       <td className="text-right font-bold">
                         <span className={(summary.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
