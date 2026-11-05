@@ -11179,6 +11179,619 @@ html[data-theme="dark"] .side-store-logins-btn:hover {
   color: var(--color-ghost-white);
 }
 
+/* ==============================================================================
+   Mobile Browser Viewport & Navigation Drawer Controls
+   ============================================================================== */
+.topbar-left-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.topbar-mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.topbar-mobile-menu-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+html[data-theme="dark"] .topbar-mobile-menu-btn {
+  background: var(--color-carbon-card);
+  border-color: var(--color-graphite);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .topbar-mobile-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--color-steel-gray);
+}
+
+.side-panel-close-mobile-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.side-panel-close-mobile-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+html[data-theme="dark"] .side-panel-close-mobile-btn {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .side-panel-close-mobile-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-ghost-white);
+}
+
+.mobile-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1050;
+  animation: fadeInBackdrop 0.2s ease-out;
+}
+
+@keyframes fadeInBackdrop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ==============================================================================
+   Mobile Browser Viewport & Touch Optimization (<= 768px)
+   ============================================================================== */
+@media (max-width: 768px) {
+  html, body {
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* App Shell & Layout */
+  .app-shell {
+    overflow-x: hidden;
+  }
+
+  .app-body-layout {
+    flex-direction: column;
+    min-height: calc(100vh - 54px);
+    min-height: calc(100dvh - 54px);
+  }
+
+  .app-body-layout .main-container {
+    margin-left: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0.85rem 0.65rem 3rem 0.65rem !important;
+    overflow-x: hidden;
+  }
+
+  .app-side-panel.sidebar-pinned ~ .main-container {
+    margin-left: 0 !important;
+  }
+
+  /* Top Navigation Bar */
+  .topbar {
+    padding: 0.55rem 0.75rem !important;
+    gap: 0.5rem !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .topbar-mobile-menu-btn {
+    display: inline-flex !important;
+  }
+
+  .topbar-editorial-title {
+    font-size: 1.05rem !important;
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+
+  .basedash-brand-pill {
+    padding: 0.2rem 0.45rem !important;
+    font-size: 0.75rem !important;
+  }
+
+  .uc-logo-crest {
+    width: 18px !important;
+    height: 18px !important;
+    font-size: 10.5px !important;
+  }
+
+  /* Mobile Slide-in Drawer */
+  .side-panel-close-mobile-btn {
+    display: inline-flex !important;
+  }
+
+  .side-panel-pin-btn {
+    display: none !important;
+  }
+
+  .app-side-panel {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 280px !important;
+    max-width: 84vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    transform: translateX(-100%);
+    transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    z-index: 1200 !important;
+    box-shadow: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  .app-side-panel.mobile-open {
+    transform: translateX(0) !important;
+    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.65) !important;
+  }
+
+  /* Always render labels and subnav open inside the mobile drawer */
+  .app-side-panel .side-panel-heading-text {
+    opacity: 1 !important;
+  }
+
+  .app-side-panel .side-nav-label {
+    opacity: 1 !important;
+  }
+
+  .app-side-panel .side-subnav-list {
+    display: flex !important;
+  }
+
+  .app-side-panel .side-user-details {
+    display: flex !important;
+    opacity: 1 !important;
+  }
+
+  .app-side-panel .side-user-card {
+    justify-content: flex-start !important;
+    padding: 0.45rem 0.65rem !important;
+  }
+
+  .app-side-panel .side-user-avatar {
+    margin: 0 !important;
+  }
+
+  .app-side-panel .side-signout-text {
+    display: inline !important;
+    opacity: 1 !important;
+  }
+
+  .app-side-panel .side-store-logins-text {
+    display: inline !important;
+    opacity: 1 !important;
+  }
+
+  .app-side-panel .side-panel-footer {
+    padding: 0.75rem 0.85rem !important;
+    gap: 0.65rem !important;
+  }
+
+  /* Section Cards & Analytics Header */
+  .section-card {
+    padding: 0.85rem !important;
+    border-radius: 10px !important;
+  }
+
+  .analytics-container {
+    gap: 1rem !important;
+  }
+
+  .analytics-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Controls Bars & Filtering on Mobile */
+  .perf-controls-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+    padding: 0.85rem 0.75rem !important;
+  }
+
+  .perf-controls-left {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.65rem !important;
+    width: 100% !important;
+  }
+
+  .store-selector-group {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.35rem !important;
+    margin-right: 0 !important;
+  }
+
+  .store-selector-group .select-input {
+    width: 100% !important;
+    min-height: 42px !important;
+    font-size: 14px !important;
+  }
+
+  .perf-filter-group {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.35rem !important;
+    margin-left: 0 !important;
+  }
+
+  .perf-filter-group .custom-select-wrapper {
+    width: 100% !important;
+  }
+
+  .perf-dropdown-select {
+    width: 100% !important;
+    min-height: 42px !important;
+    font-size: 14px !important;
+  }
+
+  .perf-actions-right,
+  .perf-controls-right {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.45rem !important;
+    justify-content: stretch !important;
+  }
+
+  .perf-actions-right .btn,
+  .perf-actions-right .btn-export-excel,
+  .perf-controls-right .btn {
+    flex: 1 1 calc(50% - 0.25rem) !important;
+    min-height: 38px !important;
+    text-align: center !important;
+    justify-content: center !important;
+    font-size: 0.82rem !important;
+  }
+
+  .custom-range-inline-picker {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 0.5rem !important;
+  }
+
+  .custom-range-field {
+    width: 100% !important;
+  }
+
+  .custom-range-date-input {
+    width: 100% !important;
+    min-height: 40px !important;
+    font-size: 14px !important;
+  }
+
+  .btn-apply-custom {
+    width: 100% !important;
+    min-height: 40px !important;
+  }
+
+  /* KPI Grid & Cards */
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.65rem !important;
+  }
+
+  .kpi-card {
+    padding: 0.75rem !important;
+    border-radius: 8px !important;
+  }
+
+  .kpi-value {
+    font-size: 1.35rem !important;
+  }
+
+  .kpi-label {
+    font-size: 0.7rem !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  .kpi-sub {
+    font-size: 0.68rem !important;
+  }
+
+  .kpi-target-badge {
+    font-size: 0.62rem !important;
+    padding: 1px 4px !important;
+  }
+
+  /* 5th KPI card spans full width for balanced 2x2 + 1 grid */
+  .kpi-grid > .kpi-card:nth-child(5):last-child {
+    grid-column: span 2;
+  }
+
+  /* Section Header & SNOP Breach Toggle */
+  .perf-section-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.65rem !important;
+  }
+
+  .perf-section-header .flex-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+
+  .section-title {
+    font-size: 1.15rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .section-subtitle {
+    font-size: 0.78rem !important;
+  }
+
+  .snop-breach-toggle-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 38px !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Table Horizontal Scrolling & Touch Interactions */
+  .s2p-daily-table-container,
+  .perf-table-wrapper,
+  .planning-table-wrapper,
+  .table-scroll,
+  .excel-pivot-table-container {
+    -webkit-overflow-scrolling: touch !important;
+    overflow-x: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 8px !important;
+  }
+
+  .s2p-daily-table th,
+  .s2p-daily-table td {
+    padding: 0.55rem 0.5rem !important;
+    font-size: 0.78rem !important;
+  }
+
+  .excel-pivot-table th,
+  .excel-pivot-table td {
+    padding: 0.45rem 0.5rem !important;
+    font-size: 0.76rem !important;
+  }
+
+  .btn-view-slots {
+    min-height: 34px !important;
+    padding: 0.35rem 0.55rem !important;
+    font-size: 0.75rem !important;
+  }
+
+  /* Planning Section & Plan vs Actual Audit */
+  .planning-mode-tabs {
+    width: 100% !important;
+    display: flex !important;
+  }
+
+  .planning-mode-tab {
+    flex: 1 !important;
+    text-align: center !important;
+    justify-content: center !important;
+    font-size: 0.8rem !important;
+    padding: 0.45rem 0.5rem !important;
+    min-height: 38px !important;
+  }
+
+  .target-dph-stepper {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .hourly-reconciliation-strip {
+    padding: 0.35rem 0 !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Rider Analytics & Roster Management */
+  .perf-toolbar-tier {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.65rem !important;
+  }
+
+  .perf-toolbar-group {
+    width: 100% !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+
+  .segmented-control {
+    width: 100% !important;
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .segmented-btn {
+    flex: 1 1 auto !important;
+    text-align: center !important;
+    font-size: 0.76rem !important;
+    padding: 0.4rem 0.5rem !important;
+    white-space: nowrap !important;
+  }
+
+  .search-input-wrapper {
+    width: 100% !important;
+  }
+
+  .perf-search-input {
+    width: 100% !important;
+    min-height: 40px !important;
+    font-size: 14px !important;
+  }
+
+  /* Upload Workspace & File Processing */
+  .upload-controls-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dropzone {
+    padding: 1.5rem 1rem !important;
+    min-height: 140px !important;
+  }
+
+  .subnav-tabs {
+    overflow-x: auto !important;
+    width: 100% !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .subnav-tab {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    font-size: 0.82rem !important;
+    padding: 0.45rem 0.75rem !important;
+  }
+
+  /* Modals on Mobile */
+  .modal-backdrop {
+    padding: 0.5rem !important;
+    align-items: center !important;
+  }
+
+  .modal-card,
+  .shift-modal-card,
+  .attendance-modal-card {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 94vh !important;
+    max-height: 94dvh !important;
+    margin: 0 !important;
+    border-radius: 12px !important;
+  }
+
+  .modal-header,
+  .modal-footer,
+  .shift-modal-header,
+  .shift-modal-footer {
+    padding: 0.75rem 0.85rem !important;
+    flex-wrap: wrap !important;
+  }
+
+  .modal-body,
+  .shift-modal-body {
+    padding: 0.85rem 0.75rem !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .modal-footer .btn,
+  .shift-modal-footer .btn {
+    flex: 1 1 auto !important;
+    min-height: 40px !important;
+    justify-content: center !important;
+  }
+
+  /* Login Screen on Mobile */
+  .login-layout {
+    padding: 1rem 0.75rem !important;
+  }
+
+  .login-card {
+    padding: 1.35rem 1.15rem !important;
+    width: 100% !important;
+    border-radius: 12px !important;
+  }
+
+  .login-header h1 {
+    font-size: 1.45rem !important;
+  }
+
+  .login-header .subtitle {
+    font-size: 0.84rem !important;
+  }
+
+  .login-form .form-group input {
+    min-height: 44px !important;
+    font-size: 16px !important;
+  }
+
+  .login-form .btn {
+    min-height: 44px !important;
+    font-size: 15px !important;
+  }
+}
+
+/* Extra Compact Phones (<= 420px) */
+@media (max-width: 420px) {
+  .topbar-editorial-title {
+    font-size: 0.95rem !important;
+    max-width: 160px !important;
+  }
+
+  .basedash-brand-pill .uc-logo-text {
+    display: none !important;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .kpi-grid > .kpi-card:nth-child(5):last-child {
+    grid-column: span 1;
+  }
+
+  .perf-actions-right .btn,
+  .perf-actions-right .btn-export-excel,
+  .perf-controls-right .btn {
+    flex: 1 1 100% !important;
+  }
+}
+
+
 
 
 

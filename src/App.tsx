@@ -33,6 +33,9 @@ export const App: React.FC = () => {
   // Auto-retractable Side Navigation Panel pin state (false = auto-expand on hover, true = pinned open)
   const [isSidebarPinned, setIsSidebarPinned] = useState<boolean>(false);
 
+  // Mobile drawer open state for mobile browsers
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
+
   // Basedash Midnight Dark / Light Theme State (Midnight Dark by default)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
@@ -153,13 +156,48 @@ export const App: React.FC = () => {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="topbar-brand">
-          <span className="badge badge-primary basedash-brand-pill" title="Urban Connect">
-            <span className="uc-logo-crest" aria-hidden="true">U</span>
-            <span className="uc-logo-text">UC</span>
-            <span className="basedash-live-dot" aria-hidden="true" />
-          </span>
-          <strong className="topbar-editorial-title">Amazon Now - Ops,Planning &amp; Analysis</strong>
+        <div className="topbar-left-cluster">
+          <button
+            type="button"
+            className="topbar-mobile-menu-btn"
+            onClick={() => setIsMobileNavOpen((prev) => !prev)}
+            aria-label={isMobileNavOpen ? 'Close navigation drawer' : 'Open navigation drawer'}
+            aria-expanded={isMobileNavOpen}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              {isMobileNavOpen ? (
+                <>
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </>
+              ) : (
+                <>
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </>
+              )}
+            </svg>
+          </button>
+
+          <div className="topbar-brand">
+            <span className="badge badge-primary basedash-brand-pill" title="Urban Connect">
+              <span className="uc-logo-crest" aria-hidden="true">U</span>
+              <span className="uc-logo-text">UC</span>
+              <span className="basedash-live-dot" aria-hidden="true" />
+            </span>
+            <strong className="topbar-editorial-title">Amazon Now - Ops,Planning &amp; Analysis</strong>
+          </div>
         </div>
 
         <div className="topbar-user">
@@ -207,11 +245,34 @@ export const App: React.FC = () => {
       <div className="app-body-layout">
         {/* Auto-Retractable Side Navigation Rail */}
         <aside
-          className={`app-side-panel ${isSidebarPinned ? 'sidebar-pinned' : ''}`}
+          className={`app-side-panel ${isSidebarPinned ? 'sidebar-pinned' : ''} ${
+            isMobileNavOpen ? 'mobile-open' : ''
+          }`}
           aria-label="Section & Sub-Section Navigation"
         >
           <div className="side-panel-header">
             <span className="side-panel-heading-text">Navigation</span>
+            <button
+              type="button"
+              className="side-panel-close-mobile-btn"
+              onClick={() => setIsMobileNavOpen(false)}
+              aria-label="Close navigation drawer"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
             <button
               type="button"
               className={`side-panel-pin-btn ${isSidebarPinned ? 'active' : ''}`}
@@ -232,7 +293,10 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 className={`side-nav-item ${activeView === 's2p_otp' ? 'active' : ''}`}
-                onClick={() => setActiveView('s2p_otp')}
+                onClick={() => {
+                  setActiveView('s2p_otp');
+                  setIsMobileNavOpen(false);
+                }}
                 title="S2P, OTP, DPH & DSR Summary"
               >
                 <span className="side-nav-icon" aria-hidden="true">
@@ -247,7 +311,10 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   className={`side-subnav-item ${activeView === 's2p_otp' ? 'active' : ''}`}
-                  onClick={() => setActiveView('s2p_otp')}
+                  onClick={() => {
+                    setActiveView('s2p_otp');
+                    setIsMobileNavOpen(false);
+                  }}
                 >
                   <span className="subnav-dot" />
                   <span className="side-subnav-label">Daily S2P, OTP &amp; DPH</span>
@@ -260,7 +327,10 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 className={`side-nav-item ${activeView === 'planning' ? 'active' : ''}`}
-                onClick={() => setActiveView('planning')}
+                onClick={() => {
+                  setActiveView('planning');
+                  setIsMobileNavOpen(false);
+                }}
                 title="Planning & Workforce Sizing"
               >
                 <span className="side-nav-icon" aria-hidden="true">
@@ -283,6 +353,7 @@ export const App: React.FC = () => {
                   onClick={() => {
                     setActiveView('planning');
                     setPlanningSubView('FORWARD_PLAN');
+                    setIsMobileNavOpen(false);
                   }}
                 >
                   <span className="subnav-dot" />
@@ -296,6 +367,7 @@ export const App: React.FC = () => {
                   onClick={() => {
                     setActiveView('planning');
                     setPlanningSubView('PLAN_VS_ACTUAL_AUDIT');
+                    setIsMobileNavOpen(false);
                   }}
                 >
                   <span className="subnav-dot" />
@@ -310,7 +382,10 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 className={`side-nav-item ${activeView === 'analytics' ? 'active' : ''}`}
-                onClick={() => setActiveView('analytics')}
+                onClick={() => {
+                  setActiveView('analytics');
+                  setIsMobileNavOpen(false);
+                }}
                 title="Rider Analytics & Management"
               >
                 <span className="side-nav-icon" aria-hidden="true">
@@ -333,6 +408,7 @@ export const App: React.FC = () => {
                   onClick={() => {
                     setActiveView('analytics');
                     setAnalyticsSubView('performance');
+                    setIsMobileNavOpen(false);
                   }}
                 >
                   <span className="subnav-dot" />
@@ -346,6 +422,7 @@ export const App: React.FC = () => {
                   onClick={() => {
                     setActiveView('analytics');
                     setAnalyticsSubView('management');
+                    setIsMobileNavOpen(false);
                   }}
                 >
                   <span className="subnav-dot" />
@@ -359,6 +436,7 @@ export const App: React.FC = () => {
                   onClick={() => {
                     setActiveView('analytics');
                     setAnalyticsSubView('new-riders');
+                    setIsMobileNavOpen(false);
                   }}
                 >
                   <span className="subnav-dot" />
@@ -373,7 +451,10 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 className={`side-nav-item ${activeView === 'upload' ? 'active' : ''}`}
-                onClick={() => setActiveView('upload')}
+                onClick={() => {
+                  setActiveView('upload');
+                  setIsMobileNavOpen(false);
+                }}
                 title="Data Ingestion & Uploads"
               >
                 <span className="side-nav-icon" aria-hidden="true">
@@ -395,6 +476,7 @@ export const App: React.FC = () => {
                   onClick={() => {
                     setActiveView('upload');
                     setUploadSubView('orders');
+                    setIsMobileNavOpen(false);
                   }}
                 >
                   <span className="subnav-dot" />
@@ -408,6 +490,7 @@ export const App: React.FC = () => {
                   onClick={() => {
                     setActiveView('upload');
                     setUploadSubView('riders');
+                    setIsMobileNavOpen(false);
                   }}
                 >
                   <span className="subnav-dot" />
@@ -421,6 +504,7 @@ export const App: React.FC = () => {
                   onClick={() => {
                     setActiveView('upload');
                     setUploadSubView('dnr');
+                    setIsMobileNavOpen(false);
                   }}
                 >
                   <span className="subnav-dot" />
@@ -434,6 +518,7 @@ export const App: React.FC = () => {
                   onClick={() => {
                     setActiveView('upload');
                     setUploadSubView('snop');
+                    setIsMobileNavOpen(false);
                   }}
                 >
                   <span className="subnav-dot" />
@@ -449,7 +534,10 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 className="side-store-logins-btn"
-                onClick={() => setIsStoreLoginsModalOpen(true)}
+                onClick={() => {
+                  setIsMobileNavOpen(false);
+                  setIsStoreLoginsModalOpen(true);
+                }}
                 title="Manage store user accounts and permissions"
                 aria-label="Store Logins"
               >
@@ -490,7 +578,10 @@ export const App: React.FC = () => {
             <button
               type="button"
               className="side-signout-btn"
-              onClick={() => void handleSignOut()}
+              onClick={() => {
+                setIsMobileNavOpen(false);
+                void handleSignOut();
+              }}
               title={`Sign out (${currentUser.email})`}
               aria-label="Sign out"
             >
@@ -513,6 +604,15 @@ export const App: React.FC = () => {
             </button>
           </div>
         </aside>
+
+        {/* Mobile Navigation Drawer Backdrop Overlay */}
+        {isMobileNavOpen && (
+          <div
+            className="mobile-sidebar-backdrop"
+            onClick={() => setIsMobileNavOpen(false)}
+            aria-hidden="true"
+          />
+        )}
 
         <main className="main-container">
           {storesError && (
