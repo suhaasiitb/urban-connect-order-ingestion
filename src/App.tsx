@@ -33,16 +33,8 @@ export const App: React.FC = () => {
   // Auto-retractable Side Navigation Panel pin state (false = auto-expand on hover, true = pinned open)
   const [isSidebarPinned, setIsSidebarPinned] = useState<boolean>(false);
 
-  // Basedash Midnight Dark / Light Theme State (Dark by default)
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    try {
-      const saved = window.localStorage.getItem('uc_dashboard_theme');
-      if (saved === 'light' || saved === 'dark') return saved;
-    } catch {
-      // ignore storage errors
-    }
-    return 'dark';
-  });
+  // Basedash Midnight Dark / Light Theme State (Midnight Dark by default)
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -173,38 +165,42 @@ export const App: React.FC = () => {
         <div className="topbar-user">
           <button
             type="button"
-            className="btn-theme-toggle"
+            className={`btn-theme-toggle btn-theme-bulb ${theme === 'light' ? 'bulb-illuminated' : 'bulb-off'}`}
             onClick={toggleTheme}
             title={
               theme === 'dark'
-                ? 'Switch to Light Mode'
-                : 'Switch to Basedash Midnight Dark Mode'
+                ? 'Illuminate Light Theme'
+                : 'Turn off light (Midnight Theme)'
             }
             aria-label="Toggle Dark and Light Theme"
+            aria-pressed={theme === 'light'}
           >
-            {theme === 'dark' ? (
-              <>
-                <span className="theme-toggle-dot theme-dot-midnight" aria-hidden="true" />
-                <span>Midnight</span>
-              </>
-            ) : (
-              <>
-                <span className="theme-toggle-dot theme-dot-light" aria-hidden="true" />
-                <span>Light</span>
-              </>
-            )}
-          </button>
-
-          {currentUser.role === 'admin' && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setIsStoreLoginsModalOpen(true)}
-              title="Manage store user accounts and permissions"
+            <svg
+              className="theme-bulb-svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
             >
-              Store Logins
-            </button>
-          )}
+              <g className="bulb-rays">
+                <line x1="12" y1="1" x2="12" y2="2.6" />
+                <line x1="4.22" y1="4.22" x2="5.35" y2="5.35" />
+                <line x1="1" y1="11" x2="2.6" y2="11" />
+                <line x1="21.4" y1="11" x2="23" y2="11" />
+                <line x1="18.65" y1="5.35" x2="19.78" y2="4.22" />
+              </g>
+              <path
+                className="bulb-glass"
+                d="M9 18h6M10 22h4M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"
+              />
+              <path className="bulb-filament" d="M10 14v-2.5a2 2 0 1 1 4 0V14" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -447,8 +443,36 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Dedicated Side Panel Footer: User Info & Sign Out */}
+          {/* Dedicated Side Panel Footer: Store Logins, User Info & Sign Out */}
           <div className="side-panel-footer">
+            {currentUser.role === 'admin' && (
+              <button
+                type="button"
+                className="side-store-logins-btn"
+                onClick={() => setIsStoreLoginsModalOpen(true)}
+                title="Manage store user accounts and permissions"
+                aria-label="Store Logins"
+              >
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+                <span className="side-store-logins-text">Store Logins</span>
+              </button>
+            )}
+
             <div className="side-user-card" title={currentUser.email}>
               <div className="side-user-avatar" aria-hidden="true">
                 {currentUser.email.slice(0, 1).toUpperCase()}
