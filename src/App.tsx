@@ -23,7 +23,31 @@ export const App: React.FC = () => {
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [storesError, setStoresError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 's2p_otp' | 'planning'>('s2p_otp');
+  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 's2p_otp' | 'planning'>('analytics');
+
+  // Basedash Midnight Dark / Light Theme State (Dark by default)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = window.localStorage.getItem('uc_dashboard_theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch {
+      // ignore storage errors
+    }
+    return 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try {
+      window.localStorage.setItem('uc_dashboard_theme', theme);
+    } catch {
+      // ignore storage errors
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
 
   // Store logins administration modal (Superadmin only)
   const [isStoreLoginsModalOpen, setIsStoreLoginsModalOpen] = useState(false);
@@ -130,15 +154,18 @@ export const App: React.FC = () => {
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar-brand">
-          <span className="badge badge-primary">Urban Connect</span>
-          <strong>Daily Store Order Ingestion Portal</strong>
+          <span className="badge badge-primary basedash-brand-pill">
+            <span className="basedash-live-dot" aria-hidden="true" />
+            Urban Connect
+          </span>
+          <strong className="topbar-editorial-title">Daily Store Order Ingestion Portal</strong>
         </div>
 
         <nav className="topbar-nav" aria-label="Primary Navigation">
           <button
             type="button"
-            className={`btn btn-sm ${
-              activeView === 's2p_otp' ? 'btn-primary' : 'btn-secondary'
+            className={`btn btn-sm topbar-nav-btn ${
+              activeView === 's2p_otp' ? 'btn-primary active' : 'btn-secondary'
             }`}
             onClick={() => setActiveView('s2p_otp')}
           >
@@ -146,8 +173,8 @@ export const App: React.FC = () => {
           </button>
           <button
             type="button"
-            className={`btn btn-sm ${
-              activeView === 'planning' ? 'btn-primary' : 'btn-secondary'
+            className={`btn btn-sm topbar-nav-btn ${
+              activeView === 'planning' ? 'btn-primary active' : 'btn-secondary'
             }`}
             onClick={() => setActiveView('planning')}
           >
@@ -155,8 +182,8 @@ export const App: React.FC = () => {
           </button>
           <button
             type="button"
-            className={`btn btn-sm ${
-              activeView === 'analytics' ? 'btn-primary' : 'btn-secondary'
+            className={`btn btn-sm topbar-nav-btn ${
+              activeView === 'analytics' ? 'btn-primary active' : 'btn-secondary'
             }`}
             onClick={() => setActiveView('analytics')}
           >
@@ -164,8 +191,8 @@ export const App: React.FC = () => {
           </button>
           <button
             type="button"
-            className={`btn btn-sm ${
-              activeView === 'upload' ? 'btn-primary' : 'btn-secondary'
+            className={`btn btn-sm topbar-nav-btn ${
+              activeView === 'upload' ? 'btn-primary active' : 'btn-secondary'
             }`}
             onClick={() => setActiveView('upload')}
           >
@@ -174,6 +201,30 @@ export const App: React.FC = () => {
         </nav>
 
         <div className="topbar-user">
+          <button
+            type="button"
+            className="btn-theme-toggle"
+            onClick={toggleTheme}
+            title={
+              theme === 'dark'
+                ? 'Switch to Light Mode'
+                : 'Switch to Basedash Midnight Dark Mode'
+            }
+            aria-label="Toggle Dark and Light Theme"
+          >
+            {theme === 'dark' ? (
+              <>
+                <span className="theme-toggle-dot theme-dot-midnight" aria-hidden="true" />
+                <span>Midnight</span>
+              </>
+            ) : (
+              <>
+                <span className="theme-toggle-dot theme-dot-light" aria-hidden="true" />
+                <span>Light</span>
+              </>
+            )}
+          </button>
+
           {currentUser.role === 'admin' ? (
             <>
               <button

@@ -409,9 +409,14 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
             >
               <div className="kpi-header-row">
                 <span className="kpi-label">Active Working Riders</span>
-                {tableShiftFilter !== 'ALL' && (
+                {tableShiftFilter !== 'ALL' ? (
                   <span className="badge badge-secondary" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
                     Show All
+                  </span>
+                ) : (
+                  <span className="basedash-live-indicator">
+                    <span className="basedash-live-dot" aria-hidden="true" />
+                    <span>Live</span>
                   </span>
                 )}
               </div>
@@ -523,11 +528,17 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
           <div className="section-card perf-card">
             <div className="perf-section-header perf-section-header-row">
               <div>
-                <h3 className="section-title">Rider Performance</h3>
+                <h3 className="section-title editorial-serif-heading">Rider Performance</h3>
                 <p className="section-subtitle">
-                  Daily working hours (unique slot count) and order volume per rider with working-day cumulative average.
+                  Daily working hours (unique slot count), one-way LM distance, and order volume per rider with working-day cumulative average.
                 </p>
               </div>
+              {selectedStore && (
+                <div className="basedash-pill-badge">
+                  <span className="basedash-live-dot" aria-hidden="true" />
+                  <span>{selectedStore.store_code} • {startDate} → {endDate}</span>
+                </div>
+              )}
             </div>
 
             {selectedStore && (

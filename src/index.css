@@ -1,4 +1,97 @@
 :root {
+  /* ==========================================================================
+     Basedash Design System — Core Tokens
+     ========================================================================== */
+  --color-void-black: #000000;
+  --color-carbon-card: #050607;
+  --color-ghost-white: #ffffff;
+  --color-bone-white: #e8eaee;
+  --color-ash-gray: #b3b3b3;
+  --color-steel-gray: #808080;
+  --color-graphite: #333333;
+  --color-lavender-pulse: #9984d8;
+  --color-mint-signal: #3fcb7f;
+
+  /* Operational Semantic Extensions (Midnight Harmonized) */
+  --color-amber-signal: #f5a623;
+  --color-crimson-signal: #ff5c5c;
+  --color-sky-signal: #38bdf8;
+
+  /* Typography — Font Families */
+  --font-inter: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-alpha-lyrae: 'Alpha Lyrae', 'Cormorant Garamond', Georgia, serif;
+  --font-iowan-old-style: 'Iowan Old Style', 'Cormorant Garamond', Palatino, serif;
+
+  /* Typography — Scale */
+  --text-caption: 12px;
+  --leading-caption: 1.5;
+  --tracking-caption: -0.36px;
+  --text-body-sm: 14px;
+  --leading-body-sm: 1.43;
+  --tracking-body-sm: -0.42px;
+  --text-body: 16px;
+  --leading-body: 1.5;
+  --tracking-body: -0.48px;
+  --text-body-lg: 18px;
+  --leading-body-lg: 1.56;
+  --tracking-body-lg: -0.54px;
+  --text-subheading: 24px;
+  --leading-subheading: 1.25;
+  --tracking-subheading: -0.6px;
+  --text-heading-sm: 30px;
+  --leading-heading-sm: 1.2;
+  --tracking-heading-sm: -0.9px;
+  --text-heading: 34px;
+  --leading-heading: 1.2;
+  --tracking-heading: -1.02px;
+  --text-display: 48px;
+  --leading-display: 1;
+  --tracking-display: 0px;
+
+  /* Typography — Weights */
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* Spacing */
+  --spacing-unit: 4px;
+  --spacing-4: 4px;
+  --spacing-8: 8px;
+  --spacing-12: 12px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-28: 28px;
+  --spacing-32: 32px;
+  --spacing-40: 40px;
+  --spacing-48: 48px;
+  --spacing-56: 56px;
+  --spacing-96: 96px;
+  --spacing-128: 128px;
+
+  /* Border Radius */
+  --radius-sm: 1px;
+  --radius-md: 6px;
+  --radius-2xl: 16px;
+  --radius-full: 999px;
+
+  /* Named Radii */
+  --radius-cards: 16px;
+  --radius-badges: 999px;
+  --radius-inputs: 6px;
+  --radius-buttons: 6px;
+
+  /* Surfaces */
+  --surface-void-canvas: #000000;
+  --surface-carbon-card: #050607;
+  --surface-tonal-wash: #e8eaee;
+  --surface-table-header: #0a0c0f;
+  --surface-sticky-col: #07080a;
+  --surface-row-hover: #0d1015;
+  --surface-recessed-well: #090b0e;
+
+  /* Light Mode Legacy Fallbacks */
   --bg-page: #f8fafc;
   --bg-card: #ffffff;
   --bg-subtle: #f1f5f9;
@@ -27,11 +120,21 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, sans-serif;
+  font-family: var(--font-inter);
+  letter-spacing: -0.03em;
   background-color: var(--bg-page);
   color: var(--text-main);
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-inter);
+  letter-spacing: -0.03em;
 }
 
 h1,
@@ -39,6 +142,7 @@ h2,
 h3 {
   margin: 0 0 0.35rem 0;
   font-weight: 600;
+  letter-spacing: -0.03em;
 }
 
 p {
@@ -7632,6 +7736,1077 @@ input[type='text'].perf-search-input:focus {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ==============================================================================
+   Basedash Design System — Shared Components & Midnight Dark Theme
+   "Midnight data terminal with frosted type"
+   ============================================================================== */
+
+/* Theme Toggle Pill Button in Topbar */
+.btn-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-badges);
+  font-family: var(--font-inter);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-theme-toggle:hover {
+  border-color: #64748b;
+}
+
+.theme-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.theme-dot-midnight {
+  background: var(--color-lavender-pulse);
+  box-shadow: 0 0 8px rgba(153, 132, 216, 0.85);
+}
+
+.theme-dot-light {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.55);
+}
+
+/* Basedash Live Status Indicator (8px Mint Signal dot + 'Live' text) */
+.basedash-live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-inter);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: #15803d;
+}
+
+.basedash-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-mint-signal);
+  box-shadow: 0 0 8px rgba(63, 203, 127, 0.75);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Basedash Pill Badge */
+.basedash-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-badges);
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font-family: var(--font-inter);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.basedash-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: var(--radius-badges);
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+/* Editorial Display Serif Headline */
+.editorial-serif-heading {
+  font-family: var(--font-alpha-lyrae);
+  font-weight: 400 !important;
+  font-size: 2rem !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.topbar-editorial-title {
+  font-family: var(--font-alpha-lyrae);
+  font-weight: 500;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+}
+
+/* ==============================================================================
+   DARK MODE: Basedash Midnight Observatory (html[data-theme="dark"])
+   ============================================================================== */
+html[data-theme="dark"] {
+  --bg-page: var(--color-void-black);
+  --bg-card: var(--color-carbon-card);
+  --bg-subtle: #0a0c0f;
+  --border-color: var(--color-graphite);
+  --text-main: var(--color-ghost-white);
+  --text-muted: var(--color-ash-gray);
+  --primary: var(--color-ghost-white);
+  --primary-hover: var(--color-bone-white);
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] body {
+  background-color: var(--color-void-black);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .app-shell {
+  background-color: var(--color-void-black);
+  background-image: radial-gradient(
+    ellipse 75% 320px at 50% -40px,
+    rgba(163, 102, 255, 0.16) 0%,
+    rgba(123, 78, 245, 0.07) 45%,
+    transparent 100%
+  );
+  background-repeat: no-repeat;
+}
+
+/* Top Navigation Bar — Basedash Spec */
+html[data-theme="dark"] .topbar {
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--color-graphite);
+  padding: 0.85rem 1.75rem;
+}
+
+html[data-theme="dark"] .basedash-brand-pill {
+  background: transparent;
+  border: 1px solid var(--color-steel-gray);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .topbar-editorial-title {
+  color: var(--color-ghost-white);
+  font-weight: 400;
+}
+
+html[data-theme="dark"] .topbar-nav-btn.btn-secondary {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-ash-gray);
+  font-weight: 400;
+  font-size: 14px;
+  border-radius: var(--radius-buttons);
+}
+
+html[data-theme="dark"] .topbar-nav-btn.btn-secondary:hover:not(:disabled) {
+  color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+html[data-theme="dark"] .topbar-nav-btn.btn-primary,
+html[data-theme="dark"] .topbar-nav-btn.active {
+  background: var(--color-ghost-white);
+  color: var(--color-void-black);
+  border: 1px solid var(--color-ghost-white);
+  font-weight: 500;
+  font-size: 14px;
+  border-radius: var(--radius-buttons);
+}
+
+html[data-theme="dark"] .btn-theme-toggle {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-steel-gray);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .btn-theme-toggle:hover {
+  border-color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .topbar-user .user-pill {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  color: var(--color-ash-gray);
+  border-radius: var(--radius-badges);
+  padding: 0.3rem 0.75rem;
+  font-size: 13px;
+}
+
+html[data-theme="dark"] .topbar-user .user-pill strong {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .topbar-user .btn-secondary {
+  background: transparent;
+  border: 1px solid var(--color-steel-gray);
+  color: var(--color-ghost-white);
+  border-radius: var(--radius-buttons);
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .topbar-user .btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ==============================================================================
+   Rider Analytics & Rider Performance Pivot Table — Basedash Midnight Redesign
+   ============================================================================== */
+
+/* Section Cards: Carbon Card (#050607), 16px radius, Graphite border, ZERO shadow */
+html[data-theme="dark"] .analytics-container .section-card,
+html[data-theme="dark"] .analytics-container .perf-card {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-cards);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .analytics-container .section-title {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .analytics-container .editorial-serif-heading {
+  font-family: var(--font-alpha-lyrae);
+  font-size: 36px !important;
+  font-weight: 400 !important;
+  line-height: 1.05 !important;
+  letter-spacing: 0em !important;
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .analytics-container .section-subtitle {
+  color: var(--color-ash-gray);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+}
+
+html[data-theme="dark"] .analytics-container .perf-section-header {
+  border-bottom: 1px solid var(--color-graphite);
+  padding-bottom: 1rem;
+}
+
+html[data-theme="dark"] .basedash-pill-badge {
+  border-color: var(--color-steel-gray);
+  color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+html[data-theme="dark"] .basedash-live-indicator {
+  color: var(--color-mint-signal);
+}
+
+/* Top Tab Switcher & Store Selector */
+html[data-theme="dark"] .analytics-tab-pill-group {
+  background: var(--color-void-black);
+  border: 1px solid var(--color-graphite);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+html[data-theme="dark"] .analytics-tab-pill {
+  color: var(--color-ash-gray);
+  border-radius: var(--radius-buttons);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+html[data-theme="dark"] .analytics-tab-pill:hover:not(.active) {
+  color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Filled Primary Inversion: White pill on black canvas */
+html[data-theme="dark"] .analytics-tab-pill.active {
+  background: var(--color-ghost-white);
+  color: var(--color-void-black);
+  font-weight: 600;
+  box-shadow: none;
+  border-radius: var(--radius-buttons);
+}
+
+html[data-theme="dark"] .tab-live-badge {
+  background: rgba(63, 203, 127, 0.14);
+  color: var(--color-mint-signal);
+  border: 1px solid rgba(63, 203, 127, 0.45);
+}
+
+html[data-theme="dark"] .tab-live-badge-warn {
+  background: rgba(245, 166, 35, 0.14) !important;
+  color: var(--color-amber-signal) !important;
+  border: 1px solid rgba(245, 166, 35, 0.45) !important;
+}
+
+html[data-theme="dark"] .analytics-container .field-label {
+  color: var(--color-ash-gray);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .analytics-container .select-input {
+  background: var(--color-void-black);
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-steel-gray);
+  border-radius: var(--radius-inputs);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .analytics-container .select-input:focus {
+  outline: none;
+  border-color: var(--color-lavender-pulse);
+  box-shadow: 0 0 0 2px rgba(153, 132, 216, 0.25);
+}
+
+/* Basedash Metric Display Cards (KPI Grid) */
+html[data-theme="dark"] .analytics-container .kpi-card {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-cards);
+  padding: 20px;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .analytics-container .kpi-label {
+  font-size: 14px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: -0.03em;
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .analytics-container .kpi-value {
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--color-ghost-white);
+  margin: 0.5rem 0 0.35rem;
+}
+
+html[data-theme="dark"] .analytics-container .kpi-value.text-blue {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .analytics-container .kpi-value.text-green {
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .analytics-container .kpi-value.text-amber {
+  color: var(--color-amber-signal);
+}
+
+html[data-theme="dark"] .analytics-container .kpi-value.text-red {
+  color: var(--color-crimson-signal);
+}
+
+html[data-theme="dark"] .analytics-container .kpi-value.text-slate {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .analytics-container .kpi-sub {
+  font-size: 13px;
+  color: var(--color-ash-gray);
+  letter-spacing: -0.03em;
+}
+
+html[data-theme="dark"] .analytics-container .kpi-target-badge {
+  background: rgba(63, 203, 127, 0.1);
+  border: 1px solid rgba(63, 203, 127, 0.4);
+  color: var(--color-mint-signal);
+  border-radius: var(--radius-badges);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+}
+
+html[data-theme="dark"] .analytics-container .kpi-card-interactive:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-steel-gray);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .analytics-container .kpi-card-active {
+  background: rgba(153, 132, 216, 0.07) !important;
+  border-color: var(--color-lavender-pulse) !important;
+  box-shadow: 0 0 0 1px var(--color-lavender-pulse) !important;
+}
+
+/* 2-Tier Controls & Filter Bar */
+html[data-theme="dark"] .perf-controls-bar {
+  background: var(--color-void-black);
+  border: 1px solid var(--color-graphite);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .perf-toolbar-tier-secondary {
+  border-top: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .perf-toolbar-divider {
+  background: var(--color-graphite);
+}
+
+html[data-theme="dark"] .perf-control-label {
+  color: var(--color-ash-gray);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+/* Dropdowns & Inputs in Controls Bar */
+html[data-theme="dark"] .perf-dropdown-select {
+  background: var(--color-carbon-card);
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-inputs);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .perf-dropdown-select:hover:not(:disabled) {
+  background: #0a0c0f;
+  border-color: var(--color-steel-gray);
+}
+
+html[data-theme="dark"] .perf-dropdown-select:focus {
+  border-color: var(--color-lavender-pulse);
+  box-shadow: 0 0 0 2px rgba(153, 132, 216, 0.25);
+}
+
+html[data-theme="dark"] .select-chevron {
+  color: var(--color-ash-gray);
+}
+
+/* Segmented Controls */
+html[data-theme="dark"] .segmented-control {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-inputs);
+  padding: 3px;
+}
+
+html[data-theme="dark"] .segmented-btn {
+  color: var(--color-ash-gray);
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .segmented-btn:hover:not(.segmented-btn-active) {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .segmented-btn-active {
+  background: var(--color-ghost-white) !important;
+  color: var(--color-void-black) !important;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+/* Custom Inline Date Picker */
+html[data-theme="dark"] .custom-range-inline-picker {
+  background: var(--color-carbon-card);
+  border: 1px dashed var(--color-steel-gray);
+  border-radius: var(--radius-inputs);
+}
+
+html[data-theme="dark"] .custom-range-label {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .custom-range-date-input {
+  background: var(--color-void-black);
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-inputs);
+}
+
+html[data-theme="dark"] .btn-apply-custom {
+  background: var(--color-ghost-white);
+  color: var(--color-void-black);
+  border-radius: var(--radius-buttons);
+  font-weight: 600;
+}
+
+html[data-theme="dark"] .btn-apply-custom:hover:not(:disabled) {
+  background: var(--color-bone-white);
+}
+
+/* Search Box */
+html[data-theme="dark"] .perf-search-input,
+html[data-theme="dark"] input[type='text'].perf-search-input {
+  background: var(--color-carbon-card);
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-inputs);
+}
+
+html[data-theme="dark"] .perf-search-input::placeholder {
+  color: var(--color-steel-gray);
+}
+
+html[data-theme="dark"] .perf-search-input:focus,
+html[data-theme="dark"] input[type='text'].perf-search-input:focus {
+  border-color: var(--color-lavender-pulse);
+  box-shadow: 0 0 0 2px rgba(153, 132, 216, 0.25);
+}
+
+html[data-theme="dark"] .search-icon,
+html[data-theme="dark"] .search-clear-btn {
+  color: var(--color-steel-gray);
+}
+
+html[data-theme="dark"] .search-clear-btn:hover {
+  color: var(--color-ghost-white);
+}
+
+/* Alerts & Highlights Group */
+html[data-theme="dark"] .perf-highlights-group {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-inputs);
+}
+
+html[data-theme="dark"] .btn-dnr-toggle,
+html[data-theme="dark"] .btn-shift-warning-toggle {
+  background: transparent;
+  color: var(--color-ash-gray);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-buttons);
+}
+
+html[data-theme="dark"] .btn-dnr-toggle:hover,
+html[data-theme="dark"] .btn-shift-warning-toggle:hover {
+  background: rgba(245, 166, 35, 0.1);
+  color: var(--color-amber-signal);
+  border-color: rgba(245, 166, 35, 0.5);
+}
+
+html[data-theme="dark"] .btn-shift-warning-toggle.has-warning {
+  background: rgba(245, 166, 35, 0.08);
+  color: var(--color-amber-signal);
+  border-color: rgba(245, 166, 35, 0.45);
+}
+
+html[data-theme="dark"] .btn-dnr-toggle-active,
+html[data-theme="dark"] .btn-shift-warning-active {
+  background: rgba(245, 166, 35, 0.18) !important;
+  color: var(--color-ghost-white) !important;
+  border-color: var(--color-amber-signal) !important;
+  box-shadow: 0 0 0 1px var(--color-amber-signal) !important;
+}
+
+/* Toolbar Action Buttons — Basedash Button Rules */
+/* Outlined Secondary Action */
+html[data-theme="dark"] .perf-btn-refresh {
+  background: transparent;
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-steel-gray);
+  border-radius: var(--radius-buttons);
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .perf-btn-refresh:hover:not(:disabled) {
+  border-color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Filled Primary Action — White background (#ffffff), Black text (#000000), 6px radius */
+html[data-theme="dark"] .btn-export-excel {
+  background: var(--color-ghost-white);
+  color: var(--color-void-black);
+  border: 1px solid var(--color-ghost-white);
+  border-radius: var(--radius-buttons);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .btn-export-excel:hover:not(:disabled) {
+  background: var(--color-bone-white);
+  border-color: var(--color-bone-white);
+  box-shadow: none;
+}
+
+/* Summary / Breakdown Callout Banner */
+html[data-theme="dark"] .callout-summary {
+  background: var(--color-void-black);
+  border: 1px solid var(--color-graphite);
+  color: var(--color-ash-gray);
+  border-radius: 10px;
+}
+
+html[data-theme="dark"] .callout-summary strong {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .callout-summary .callout-badge {
+  background: rgba(153, 132, 216, 0.14);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.4);
+  border-radius: var(--radius-badges);
+}
+
+html[data-theme="dark"] .callout-breakdown {
+  background: rgba(153, 132, 216, 0.08);
+  border: 1px solid rgba(153, 132, 216, 0.45);
+  color: var(--color-ghost-white);
+  border-radius: 10px;
+}
+
+html[data-theme="dark"] .callout-breakdown .callout-badge {
+  background: var(--color-lavender-pulse);
+  color: var(--color-void-black);
+  border-radius: var(--radius-badges);
+}
+
+html[data-theme="dark"] .callout-toggle-btn {
+  background: transparent;
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-steel-gray);
+  border-radius: var(--radius-buttons);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .callout-toggle-btn:hover {
+  border-color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Missing Shift Actionable Warning Banner */
+html[data-theme="dark"] .alert-missing-shift-banner {
+  background: rgba(245, 166, 35, 0.08);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .alert-missing-shift-sub {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .btn-fill-shifts {
+  background: var(--color-ghost-white) !important;
+  color: var(--color-void-black) !important;
+  border-color: var(--color-ghost-white) !important;
+  box-shadow: none !important;
+}
+
+/* Main Pivot Table Container & Grid */
+html[data-theme="dark"] .perf-table-wrapper {
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+/* Table Headers */
+html[data-theme="dark"] .tier1-header-row th,
+html[data-theme="dark"] .tier2-header-row th,
+html[data-theme="dark"] .th-rider-name,
+html[data-theme="dark"] .th-active-shift,
+html[data-theme="dark"] .th-compliance,
+html[data-theme="dark"] .th-active-days,
+html[data-theme="dark"] .th-date-group,
+html[data-theme="dark"] .th-avg-group,
+html[data-theme="dark"] .th-sub-avg-hours,
+html[data-theme="dark"] .th-sub-avg-orders,
+html[data-theme="dark"] .th-sub-avg-distance,
+html[data-theme="dark"] .th-sub-total-orders,
+html[data-theme="dark"] .th-sub-total-distance {
+  background-color: var(--surface-table-header) !important;
+  color: var(--color-ash-gray) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .th-rider-name {
+  background-color: var(--surface-sticky-col) !important;
+  color: var(--color-ghost-white) !important;
+  border-right: 1px solid var(--color-graphite) !important;
+  box-shadow: 4px 0 8px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme="dark"] .modern-summary-header th {
+  border-bottom: 1px solid var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .th-sub-hours {
+  background-color: var(--surface-table-header) !important;
+  color: var(--color-lavender-pulse) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .th-sub-orders {
+  background-color: var(--surface-table-header) !important;
+  color: var(--color-mint-signal) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .th-sub-km {
+  background-color: var(--surface-table-header) !important;
+  color: var(--color-ash-gray) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+/* Table Body Rows & Cells */
+html[data-theme="dark"] .perf-data-row td,
+html[data-theme="dark"] .td-active-shift,
+html[data-theme="dark"] .td-compliance,
+html[data-theme="dark"] .td-avg-hours,
+html[data-theme="dark"] .td-avg-orders,
+html[data-theme="dark"] .td-avg-distance,
+html[data-theme="dark"] .td-total-orders,
+html[data-theme="dark"] .td-total-distance {
+  background-color: var(--color-carbon-card);
+  color: var(--color-ash-gray);
+  border-color: #191c22;
+}
+
+html[data-theme="dark"] .td-rider-name {
+  background-color: var(--surface-sticky-col) !important;
+  color: var(--color-ghost-white);
+  border-right: 1px solid var(--color-graphite) !important;
+  box-shadow: 4px 0 8px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme="dark"] .perf-data-row:hover td {
+  background-color: var(--surface-row-hover) !important;
+}
+
+html[data-theme="dark"] .perf-data-row:hover .td-rider-name {
+  background-color: #11151c !important;
+}
+
+/* DNR Highlighted Rows in Dark Mode */
+html[data-theme="dark"] .row-dnr-highlight td,
+html[data-theme="dark"] .row-dnr-highlight .td-rider-name {
+  background-color: #17130a !important;
+}
+
+html[data-theme="dark"] .row-dnr-highlight.row-dnr-frequent td,
+html[data-theme="dark"] .row-dnr-highlight.row-dnr-frequent .td-rider-name {
+  background-color: #1c0d10 !important;
+}
+
+/* Rider Name, Phone & Onboarded Tag */
+html[data-theme="dark"] .rider-name-text {
+  color: var(--color-ghost-white);
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .rider-phone-sub {
+  color: var(--color-ash-gray);
+  font-size: 12px;
+}
+
+html[data-theme="dark"] .rider-phone-none {
+  color: var(--color-steel-gray);
+  font-size: 12px;
+}
+
+html[data-theme="dark"] .rider-onboarded-tag {
+  background: rgba(153, 132, 216, 0.12);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.4);
+  border-radius: var(--radius-badges);
+}
+
+/* Active & Shift Badges */
+html[data-theme="dark"] .badge-active-yes {
+  background: rgba(63, 203, 127, 0.12);
+  color: var(--color-mint-signal);
+  border: 1px solid rgba(63, 203, 127, 0.45);
+}
+
+html[data-theme="dark"] .badge-active-no {
+  background: rgba(128, 128, 128, 0.1);
+  color: var(--color-steel-gray);
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .badge-morning {
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--color-sky-signal);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+html[data-theme="dark"] .badge-second {
+  background: rgba(153, 132, 216, 0.14);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.45);
+}
+
+html[data-theme="dark"] .badge-split {
+  background: rgba(245, 166, 35, 0.12);
+  color: var(--color-amber-signal);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+}
+
+html[data-theme="dark"] .badge-custom,
+html[data-theme="dark"] .badge-shift-unassigned {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-steel-gray);
+  border: 1px dashed var(--color-graphite);
+}
+
+html[data-theme="dark"] .badge-shift-warning {
+  background: rgba(255, 92, 92, 0.12) !important;
+  color: var(--color-crimson-signal) !important;
+  border: 1px dashed rgba(255, 92, 92, 0.5) !important;
+}
+
+html[data-theme="dark"] .shift-timings-caption {
+  color: var(--color-ash-gray);
+}
+
+/* 8-Hour Compliance & Active Days */
+html[data-theme="dark"] .badge-compliance-ok {
+  background: rgba(63, 203, 127, 0.12);
+  color: var(--color-mint-signal);
+  border: 1px solid rgba(63, 203, 127, 0.45);
+}
+
+html[data-theme="dark"] .badge-compliance-warn {
+  background: rgba(245, 166, 35, 0.12);
+  color: var(--color-amber-signal);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+}
+
+html[data-theme="dark"] .active-days-pill {
+  background: #0a0c0f;
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .active-days-num {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .active-days-denom {
+  color: var(--color-steel-gray);
+}
+
+/* Daily Breakdown Cells & Avg Metrics */
+html[data-theme="dark"] .td-hours {
+  color: var(--color-ghost-white);
+  border-right: 1px solid #191c22;
+}
+
+html[data-theme="dark"] .td-hours.td-hours-target-met {
+  background-color: rgba(63, 203, 127, 0.1) !important;
+  color: var(--color-mint-signal) !important;
+}
+
+html[data-theme="dark"] .hours-met-tag {
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .td-orders {
+  color: var(--color-mint-signal);
+  border-right: 1px solid #191c22;
+}
+
+html[data-theme="dark"] .td-distance,
+html[data-theme="dark"] .daily-km-text {
+  color: var(--color-ash-gray);
+  border-color: var(--color-graphite);
+}
+
+html[data-theme="dark"] .cell-dash {
+  color: #3a3f47;
+}
+
+html[data-theme="dark"] .td-avg-hours {
+  border-left: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .val-target-met {
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .val-target-under {
+  color: var(--color-amber-signal);
+}
+
+html[data-theme="dark"] .avg-unit-tag {
+  color: var(--color-steel-gray);
+}
+
+html[data-theme="dark"] .mini-progress-track {
+  background-color: #1f242d;
+}
+
+html[data-theme="dark"] .fill-target-met {
+  background-color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .fill-target-under {
+  background-color: var(--color-amber-signal);
+}
+
+html[data-theme="dark"] .avg-orders-accent {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .avg-distance-accent {
+  color: var(--color-lavender-pulse);
+}
+
+html[data-theme="dark"] .total-orders-pill {
+  background: #0a0c0f;
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .total-km-pill {
+  background: rgba(153, 132, 216, 0.12);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.4);
+}
+
+html[data-theme="dark"] .total-km-pill strong {
+  color: var(--color-ghost-white);
+}
+
+/* Table Footer Summary Row */
+html[data-theme="dark"] .perf-footer-row td,
+html[data-theme="dark"] .perf-footer-row .td-avg-hours,
+html[data-theme="dark"] .perf-footer-row .td-avg-orders,
+html[data-theme="dark"] .perf-footer-row .td-avg-distance,
+html[data-theme="dark"] .perf-footer-row .td-total-orders,
+html[data-theme="dark"] .perf-footer-row .td-total-distance {
+  background-color: var(--surface-table-header) !important;
+  color: var(--color-ghost-white) !important;
+  border-top: 1px solid var(--color-graphite) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .summary-compliance-rate {
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .summary-avg-days {
+  background: #141820;
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-graphite);
+}
+
+/* Footer Caption Pills & Formula Tags */
+html[data-theme="dark"] .caption-summary-pill,
+html[data-theme="dark"] .roster-last-updated-pill,
+html[data-theme="dark"] .formula-tag {
+  background: var(--color-void-black) !important;
+  border: 1px solid var(--color-graphite) !important;
+  color: var(--color-ash-gray) !important;
+}
+
+html[data-theme="dark"] .caption-summary-pill strong,
+html[data-theme="dark"] .roster-last-updated-pill strong,
+html[data-theme="dark"] .formula-tag strong {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .pill-compliance-summary {
+  background: rgba(63, 203, 127, 0.08) !important;
+  border-color: rgba(63, 203, 127, 0.4) !important;
+  color: var(--color-mint-signal) !important;
+}
+
+html[data-theme="dark"] .dot-active {
+  background-color: var(--color-mint-signal);
+  box-shadow: 0 0 8px rgba(63, 203, 127, 0.75);
+}
+
+html[data-theme="dark"] .table-empty-cell {
+  color: var(--color-ash-gray);
+}
+
+/* Modals Launched from Rider Performance Pivot Table (Shift & DNR Modals) */
+html[data-theme="dark"] .individual-shift-modal-card,
+html[data-theme="dark"] .shift-modal-card,
+html[data-theme="dark"] .dnr-modal-card {
+  background: var(--color-carbon-card) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: var(--radius-cards) !important;
+  color: var(--color-ghost-white) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85) !important;
+}
+
+html[data-theme="dark"] .individual-shift-modal-header,
+html[data-theme="dark"] .individual-shift-modal-footer,
+html[data-theme="dark"] .shift-modal-header,
+html[data-theme="dark"] .shift-modal-footer {
+  background: var(--color-carbon-card) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .individual-shift-modal-body,
+html[data-theme="dark"] .shift-modal-body {
+  background: var(--color-void-black) !important;
+}
+
+html[data-theme="dark"] .individual-shift-modal-title,
+html[data-theme="dark"] .shift-modal-title,
+html[data-theme="dark"] .section-subheading-text {
+  color: var(--color-ghost-white) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .individual-shift-modal-subtitle,
+html[data-theme="dark"] .shift-modal-desc,
+html[data-theme="dark"] .individual-shift-label,
+html[data-theme="dark"] .time-field-label {
+  color: var(--color-ash-gray) !important;
+}
+
+html[data-theme="dark"] .individual-shift-modal-subtitle strong {
+  color: var(--color-ghost-white) !important;
+}
+
+html[data-theme="dark"] .individual-shift-section,
+html[data-theme="dark"] .shift-toolbar,
+html[data-theme="dark"] .shift-table-container {
+  background: var(--color-carbon-card) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .hour-dropdown-select,
+html[data-theme="dark"] .onboarded-dropdown-select,
+html[data-theme="dark"] .input-joining-date,
+html[data-theme="dark"] .input-referred-by,
+html[data-theme="dark"] .input-referred-phone,
+html[data-theme="dark"] .shift-search-input,
+html[data-theme="dark"] .shift-type-filter,
+html[data-theme="dark"] .shift-select-input {
+  background: var(--color-void-black) !important;
+  color: var(--color-ghost-white) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: var(--radius-inputs) !important;
+}
+
+html[data-theme="dark"] .individual-shift-close-btn,
+html[data-theme="dark"] .modal-close-btn {
+  background: var(--color-void-black) !important;
+  border: 1px solid var(--color-graphite) !important;
+  color: var(--color-ash-gray) !important;
+}
+
+html[data-theme="dark"] .individual-shift-close-btn:hover,
+html[data-theme="dark"] .modal-close-btn:hover {
+  border-color: var(--color-ghost-white) !important;
+  color: var(--color-ghost-white) !important;
+}
+
+
 
 
 
