@@ -94,6 +94,10 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
     const localDates = getAvailableForecastDates(storeCode);
     setAvailableDates(localDates);
 
+    const initialDph = getStoreTargetDphSync(storeCode);
+    setTargetDph(initialDph);
+    setDphInput(String(initialDph));
+
     // Display next dates data from current date by default (e.g. tomorrow or nearest upcoming forecast date)
     setSelectedDate((prev) => {
       if (prev && localDates.includes(prev)) return prev;
@@ -120,6 +124,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       if (isCancelled) return;
       setTargetDph(val);
       setDphInput(String(val));
+      setSummary((prev) => (prev ? recalculatePlanningWithDph(prev, val) : null));
     });
 
     // Realtime subscription for cross-session / multi-tab DPH updates
