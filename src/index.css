@@ -10932,6 +10932,78 @@ html[data-theme="dark"] .side-signout-btn:hover {
   color: #fca5a5;
 }
 
+/* ==============================================================================
+   Highlight SNOP Breach Toggle Button (S2P & OTP Daily Summary)
+   ============================================================================== */
+.snop-breach-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.78rem;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  user-select: none;
+}
+
+.snop-breach-toggle-btn:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.snop-breach-toggle-btn.active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.snop-breach-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+  transition: all 0.16s ease;
+}
+
+.snop-breach-toggle-btn.active .snop-breach-toggle-dot {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.65);
+}
+
+html[data-theme="dark"] .snop-breach-toggle-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--color-graphite);
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .snop-breach-toggle-btn:hover {
+  border-color: var(--color-steel-gray);
+  color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme="dark"] .snop-breach-toggle-btn.active {
+  background: rgba(153, 132, 216, 0.16);
+  border-color: rgba(153, 132, 216, 0.55);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .snop-breach-toggle-dot {
+  background: var(--color-steel-gray);
+}
+
+html[data-theme="dark"] .snop-breach-toggle-btn.active .snop-breach-toggle-dot {
+  background: var(--color-crimson-signal, #ff5c5c);
+  box-shadow: 0 0 8px rgba(255, 92, 92, 0.8);
+}
+
+
 
 
 

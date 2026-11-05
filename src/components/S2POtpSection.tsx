@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
 import type { UserProfile } from '../services/authService';
 import {
@@ -8,9 +8,16 @@ import {
 } from '../services/analyticsService';
 import { supabase } from '../config/supabaseClient';
 import {
+  type SnopForecastRecord,
+  fetchStoreSnopForecast,
+  getStoredSnopRecords,
+} from '../services/planningService';
+import {
+  type DailyPerformanceSummary,
   type S2POtpSummaryResult,
   exportS2POtpToExcel,
   fetchS2POtpAnalytics,
+  getDayOfWeekName,
   getDphImpactedSlots,
 } from '../services/s2pOtpService';
 
@@ -76,6 +83,96 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
   // Active slot sub-view per date (defaults to 'all', can switch to 's2p', 'otp', 'dph')
   const [slotViewModes, setSlotViewModes] = useState<Record<string, SlotViewType>>({});
+
+  // Toggle for displaying SNOP Plan (left of Orders) and Breach (SNOP Plan - Orders, right of Orders)
+  const [showSnopBreach, setShowSnopBreach] = useState<boolean>(false);
+  const [snopRecords, setSnopRecords] = useState<SnopForecastRecord[]>(() =>
+    getStoredSnopRecords(selectedStore?.store_code || 'TMK7')
+  );
+
+  const loadSnopData = useCallback(async () => {
+    if (!selectedStore?.store_code) return;
+    const code = selectedStore.store_code;
+    const local = getStoredSnopRecords(code);
+    if (local.length > 0) {
+      setSnopRecords(local);
+    }
+    const remote = await fetchStoreSnopForecast(code);
+    if (remote.length > 0) {
+      setSnopRecords(remote);
+    }
+  }, [selectedStore?.store_code]);
+
+  useEffect(() => {
+    void loadSnopData();
+    const handleSnopUpdate = () => {
+      void loadSnopData();
+    };
+    window.addEventListener('snop_forecast_saved', handleSnopUpdate);
+    window.addEventListener('storage', handleSnopUpdate);
+    return () => {
+      window.removeEventListener('snop_forecast_saved', handleSnopUpdate);
+      window.removeEventListener('storage', handleSnopUpdate);
+    };
+  }, [loadSnopData]);
+
+  // Pre-index recent SNOP plan by exact date, by day-of-week, and latest available date
+  const snopLookup = useMemo(() => {
+    const byDate = new Map<string, Map<number, number>>();
+    for (const r of snopRecords) {
+      let slotMap = byDate.get(r.dateStr);
+      if (!slotMap) {
+        slotMap = new Map<number, number>();
+        byDate.set(r.dateStr, slotMap);
+      }
+      slotMap.set(r.hour, (slotMap.get(r.hour) || 0) + r.projectedOrders);
+    }
+
+    const sortedDatesDesc = Array.from(byDate.keys()).sort().reverse();
+    const byDayOfWeek = new Map<string, Map<number, number>>();
+    for (const d of sortedDatesDesc) {
+      const dow = getDayOfWeekName(d);
+      if (!byDayOfWeek.has(dow)) {
+        const slotMap = byDate.get(d);
+        if (slotMap) byDayOfWeek.set(dow, slotMap);
+      }
+    }
+
+    const latestSlotMap = sortedDatesDesc.length > 0 ? byDate.get(sortedDatesDesc[0]) : undefined;
+
+    return { byDate, byDayOfWeek, latestSlotMap };
+  }, [snopRecords]);
+
+  const getSlotSnopPlan = useCallback(
+    (dateStr: string, dayOfWeek: string, slotHour: number): number => {
+      const slotMap =
+        snopLookup.byDate.get(dateStr) ??
+        snopLookup.byDayOfWeek.get(dayOfWeek) ??
+        snopLookup.latestSlotMap;
+      if (!slotMap) return 0;
+      return Math.round(slotMap.get(slotHour) ?? 0);
+    },
+    [snopLookup]
+  );
+
+  const getDaySnopPlan = useCallback(
+    (day: DailyPerformanceSummary): number => {
+      return day.slots.reduce(
+        (sum, s) => sum + getSlotSnopPlan(day.dateStr, day.dayOfWeek, s.slotHour),
+        0
+      );
+    },
+    [getSlotSnopPlan]
+  );
+
+  const renderBreachCellContent = (breach: number) => {
+    const isNegative = breach < 0;
+    return (
+      <span className={isNegative ? 'text-red font-bold' : 'text-green font-semibold'}>
+        {breach.toLocaleString()}
+      </span>
+    );
+  };
 
   const checkTodayOrders = useCallback(async () => {
     if (!selectedStore) return;
@@ -347,6 +444,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               className="btn btn-secondary btn-sm perf-btn-refresh"
               onClick={() => {
                 void checkTodayOrders();
+                void loadSnopData();
                 void loadData(true);
               }}
               disabled={loading}
@@ -507,15 +605,27 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       {/* 3. Daily Summary Table with Expandable Slot Drill-Downs */}
       <div className="section-card perf-card mt-md">
         <div className="perf-section-header">
-          <div className="flex-row items-center justify-between">
+          <div className="flex-row items-center justify-between flex-wrap gap-sm">
             <div>
               <h3 className="section-title editorial-serif-heading">Daily S2P, OTP, DPH &amp; DSR Summary</h3>
               <p className="section-subtitle">
                 Click on any calendar day row to expand its hourly/slot breakdown matching Excel pivots.
               </p>
             </div>
-            <div className="badge badge-info">
-              {summary?.days.length ?? 0} active days detected ({startDate} to {endDate})
+            <div className="flex-row items-center gap-sm flex-wrap">
+              <button
+                type="button"
+                className={`snop-breach-toggle-btn ${showSnopBreach ? 'active' : ''}`}
+                onClick={() => setShowSnopBreach((prev) => !prev)}
+                aria-pressed={showSnopBreach}
+                title="Highlight SNOP Breach: adds SNOP Plan (left of Orders) and Breach = SNOP Plan − Orders (right of Orders)"
+              >
+                <span className="snop-breach-toggle-dot" aria-hidden="true" />
+                <span>Highlight SNOP Breach</span>
+              </button>
+              <div className="badge badge-info">
+                {summary?.days.length ?? 0} active days detected ({startDate} to {endDate})
+              </div>
             </div>
           </div>
         </div>
@@ -552,7 +662,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                   <th style={{ width: '40px' }} aria-label="Expand toggle" />
                   <th>Date</th>
                   <th>Day</th>
+                  {showSnopBreach && <th className="text-right">SNOP Plan</th>}
                   <th className="text-right">Orders</th>
+                  {showSnopBreach && <th className="text-right">Breach</th>}
                   <th className="text-right">DSR %</th>
                   <th className="text-right">Actual Riders Turn-up</th>
                   <th className="text-right">DPH</th>
@@ -567,6 +679,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                   const isExpanded = expandedDates.has(day.dateStr);
                   const activeView = slotViewModes[day.dateStr] || 'all';
                   const impactedSlots = getDphImpactedSlots(day.slots);
+                  const daySnopPlan = getDaySnopPlan(day);
+                  const dayBreach = daySnopPlan - day.totalOrders;
 
                   return (
                     <React.Fragment key={day.dateStr}>
@@ -613,7 +727,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                         <td>
                           <span className="badge badge-secondary">{day.dayOfWeek}</span>
                         </td>
+                        {showSnopBreach && (
+                          <td className="text-right font-semibold">{daySnopPlan.toLocaleString()}</td>
+                        )}
                         <td className="text-right font-bold">{day.totalOrders.toLocaleString()}</td>
+                        {showSnopBreach && (
+                          <td className="text-right">{renderBreachCellContent(dayBreach)}</td>
+                        )}
                         <td className="text-right font-bold">
                           <span
                             className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
@@ -663,7 +783,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                       {/* Expanded Child Accordion Row */}
                       {isExpanded && (
                         <tr className="s2p-expanded-row">
-                          <td colSpan={11} className="s2p-expanded-cell">
+                          <td colSpan={showSnopBreach ? 13 : 11} className="s2p-expanded-cell">
                             <div className="s2p-slot-breakdown-card">
                               {/* Sub-Header & Pivot View Switcher */}
                               <div className="s2p-slot-header">
@@ -727,7 +847,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                     <thead>
                                       <tr>
                                         <th className="text-center" style={{ width: '80px' }}>Slot</th>
+                                        {showSnopBreach && <th className="text-center">SNOP Plan</th>}
                                         <th className="text-center">Orders</th>
+                                        {showSnopBreach && <th className="text-center">Breach</th>}
                                         <th className="text-center">DSR %</th>
                                         <th className="text-center">Actual Riders Turn-up</th>
                                         <th className="text-center">DPH</th>
@@ -737,40 +859,56 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {day.slots.map((s) => (
-                                        <tr key={s.slotHour}>
-                                          <td className="text-center font-bold text-slate" title={s.slotLabel}>{s.slotHour}</td>
-                                          <td className="text-center font-semibold">{s.ordersCount}</td>
-                                          <td className="text-center font-semibold">
-                                            <span
-                                              className={(s.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
-                                              title={`Completed: ${(s.completedOrdersCount ?? 0).toLocaleString()} / ${s.ordersCount.toLocaleString()}`}
-                                            >
-                                              {(s.dsrPct ?? 0).toFixed(1)}%
-                                            </span>
-                                          </td>
-                                          <td className="text-center">{s.ridersCount}</td>
-                                          <td className="text-center">
-                                            <span className={`dph-pill ${getDphHeatmapClass(s.dph)}`}>
-                                              {s.dph.toFixed(1)}
-                                            </span>
-                                          </td>
-                                          <td className={`text-center ${getS2pBadgeClass(s.avgS2p)}`}>
-                                            {s.avgS2p.toFixed(2)}
-                                          </td>
-                                          <td className="text-center font-semibold text-green">
-                                            {s.otpAchievedPct.toFixed(2)}%
-                                          </td>
-                                          <td className="text-center text-red">
-                                            {s.otpBreachedPct > 0 ? `${s.otpBreachedPct.toFixed(2)}%` : '0.00%'}
-                                          </td>
-                                        </tr>
-                                      ))}
+                                      {day.slots.map((s) => {
+                                        const slotSnop = getSlotSnopPlan(day.dateStr, day.dayOfWeek, s.slotHour);
+                                        const slotBreach = slotSnop - s.ordersCount;
+                                        return (
+                                          <tr key={s.slotHour}>
+                                            <td className="text-center font-bold text-slate" title={s.slotLabel}>{s.slotHour}</td>
+                                            {showSnopBreach && (
+                                              <td className="text-center font-semibold">{slotSnop.toLocaleString()}</td>
+                                            )}
+                                            <td className="text-center font-semibold">{s.ordersCount}</td>
+                                            {showSnopBreach && (
+                                              <td className="text-center">{renderBreachCellContent(slotBreach)}</td>
+                                            )}
+                                            <td className="text-center font-semibold">
+                                              <span
+                                                className={(s.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
+                                                title={`Completed: ${(s.completedOrdersCount ?? 0).toLocaleString()} / ${s.ordersCount.toLocaleString()}`}
+                                              >
+                                                {(s.dsrPct ?? 0).toFixed(1)}%
+                                              </span>
+                                            </td>
+                                            <td className="text-center">{s.ridersCount}</td>
+                                            <td className="text-center">
+                                              <span className={`dph-pill ${getDphHeatmapClass(s.dph)}`}>
+                                                {s.dph.toFixed(1)}
+                                              </span>
+                                            </td>
+                                            <td className={`text-center ${getS2pBadgeClass(s.avgS2p)}`}>
+                                              {s.avgS2p.toFixed(2)}
+                                            </td>
+                                            <td className="text-center font-semibold text-green">
+                                              {s.otpAchievedPct.toFixed(2)}%
+                                            </td>
+                                            <td className="text-center text-red">
+                                              {s.otpBreachedPct > 0 ? `${s.otpBreachedPct.toFixed(2)}%` : '0.00%'}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
                                     </tbody>
                                     <tfoot>
                                       <tr className="excel-pivot-grand-total">
                                         <td className="text-center font-bold">Grand Total</td>
+                                        {showSnopBreach && (
+                                          <td className="text-center font-bold">{daySnopPlan.toLocaleString()}</td>
+                                        )}
                                         <td className="text-center font-bold">{day.totalOrders}</td>
+                                        {showSnopBreach && (
+                                          <td className="text-center">{renderBreachCellContent(dayBreach)}</td>
+                                        )}
                                         <td className="text-center font-bold">
                                           <span className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
                                             {(day.dsrPct ?? 0).toFixed(1)}%
@@ -893,27 +1031,45 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                       <thead>
                                         <tr>
                                           <th className="text-center" style={{ width: '80px' }}><em>Slot</em></th>
+                                          {showSnopBreach && <th className="text-center">SNOP Plan</th>}
                                           <th className="text-center">Orders</th>
+                                          {showSnopBreach && <th className="text-center">Breach</th>}
                                           <th className="text-center">Actual Riders Turn-up</th>
                                           <th className="text-center">DPH</th>
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {day.slots.map((s) => (
-                                          <tr key={s.slotHour}>
-                                            <td className="text-center">{s.slotHour}</td>
-                                            <td className="text-center">{s.ordersCount}</td>
-                                            <td className="text-center">{s.ridersCount}</td>
-                                            <td className={`text-center ${getDphHeatmapClass(s.dph)}`}>
-                                              {s.dph.toFixed(1)}
-                                            </td>
-                                          </tr>
-                                        ))}
+                                        {day.slots.map((s) => {
+                                          const slotSnop = getSlotSnopPlan(day.dateStr, day.dayOfWeek, s.slotHour);
+                                          const slotBreach = slotSnop - s.ordersCount;
+                                          return (
+                                            <tr key={s.slotHour}>
+                                              <td className="text-center">{s.slotHour}</td>
+                                              {showSnopBreach && (
+                                                <td className="text-center font-semibold">{slotSnop.toLocaleString()}</td>
+                                              )}
+                                              <td className="text-center">{s.ordersCount}</td>
+                                              {showSnopBreach && (
+                                                <td className="text-center">{renderBreachCellContent(slotBreach)}</td>
+                                              )}
+                                              <td className="text-center">{s.ridersCount}</td>
+                                              <td className={`text-center ${getDphHeatmapClass(s.dph)}`}>
+                                                {s.dph.toFixed(1)}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
                                       </tbody>
                                       <tfoot>
                                         <tr className="excel-pivot-grand-total">
                                           <td className="text-center font-bold">Grand Total</td>
+                                          {showSnopBreach && (
+                                            <td className="text-center font-bold">{daySnopPlan.toLocaleString()}</td>
+                                          )}
                                           <td className="text-center font-bold">{day.totalOrders}</td>
+                                          {showSnopBreach && (
+                                            <td className="text-center">{renderBreachCellContent(dayBreach)}</td>
+                                          )}
                                           <td className="text-center font-bold">{day.distinctRidersCount}</td>
                                           <td className={`text-center font-bold ${getDphHeatmapClass(day.avgDph)}`}>
                                             {day.avgDph.toFixed(1)}
@@ -938,26 +1094,43 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                 })}
               </tbody>
               <tfoot>
-                <tr className="s2p-overall-grand-total">
-                  <td colSpan={3} className="font-bold">
-                    Period Grand Total ({summary.periodDays} {summary.periodDays === 1 ? 'Day' : 'Days'})
-                  </td>
-                  <td className="text-right font-bold">{summary.overallTotalOrders.toLocaleString()}</td>
-                  <td className="text-right font-bold">{summary.overallDistinctRiders} riders</td>
-                  <td className="text-right font-bold">
-                    <span className={`dph-pill ${getDphHeatmapClass(summary.overallAvgDph)}`}>
-                      {summary.overallAvgDph.toFixed(1)}
-                    </span>
-                  </td>
-                  <td className="text-center font-normal text-muted" />
-                  <td className={`text-right font-bold ${getS2pBadgeClass(summary.overallAvgS2p)}`}>
-                    {summary.overallAvgS2p.toFixed(2)} min
-                  </td>
-                  <td className="text-right font-bold text-green">
-                    {summary.overallOtpAchievedPct.toFixed(2)}%
-                  </td>
-                  <td />
-                </tr>
+                {(() => {
+                  const periodSnopTotal = summary.days.reduce((sum, d) => sum + getDaySnopPlan(d), 0);
+                  const periodBreach = periodSnopTotal - summary.overallTotalOrders;
+                  return (
+                    <tr className="s2p-overall-grand-total">
+                      <td colSpan={3} className="font-bold">
+                        Period Grand Total ({summary.periodDays} {summary.periodDays === 1 ? 'Day' : 'Days'})
+                      </td>
+                      {showSnopBreach && (
+                        <td className="text-right font-bold">{periodSnopTotal.toLocaleString()}</td>
+                      )}
+                      <td className="text-right font-bold">{summary.overallTotalOrders.toLocaleString()}</td>
+                      {showSnopBreach && (
+                        <td className="text-right">{renderBreachCellContent(periodBreach)}</td>
+                      )}
+                      <td className="text-right font-bold">
+                        <span className={(summary.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
+                          {(summary.overallDsrPct ?? 0).toFixed(1)}%
+                        </span>
+                      </td>
+                      <td className="text-right font-bold">{summary.overallDistinctRiders} riders</td>
+                      <td className="text-right font-bold">
+                        <span className={`dph-pill ${getDphHeatmapClass(summary.overallAvgDph)}`}>
+                          {summary.overallAvgDph.toFixed(1)}
+                        </span>
+                      </td>
+                      <td className="text-center font-normal text-muted" />
+                      <td className={`text-right font-bold ${getS2pBadgeClass(summary.overallAvgS2p)}`}>
+                        {summary.overallAvgS2p.toFixed(2)} min
+                      </td>
+                      <td className="text-right font-bold text-green">
+                        {summary.overallOtpAchievedPct.toFixed(2)}%
+                      </td>
+                      <td />
+                    </tr>
+                  );
+                })()}
               </tfoot>
             </table>
           </div>
