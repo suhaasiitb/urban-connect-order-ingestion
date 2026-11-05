@@ -158,7 +158,7 @@ export const NewRiderOnboardingSection: React.FC<NewRiderOnboardingSectionProps>
           <div className="onboarding-badge-tag">
             <span>🚀 7-Day Ramp-Up Tracking</span>
           </div>
-          <h3 className="onboarding-title">New Rider First 7 Days Onboarding Tracker</h3>
+          <h3 className="onboarding-title editorial-serif-heading">New Rider First 7 Days Onboarding Tracker</h3>
           <p className="onboarding-subtitle">
             Monitors newly joined riders across their first 7 calendar days to ensure they ramp up orders and meet the mandatory 8-hour shift target.
           </p>

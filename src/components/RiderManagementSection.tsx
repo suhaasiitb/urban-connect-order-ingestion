@@ -607,7 +607,7 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
         {/* Header with Title & Primary Actions */}
         <div className="perf-section-header perf-section-header-row">
           <div>
-            <h3 className="section-title">Rider Management</h3>
+            <h3 className="section-title editorial-serif-heading">Rider Management</h3>
             <p className="section-subtitle">
               Manage rider profiles, shift timings, joining dates, onboarding fleet managers, and referral tracking.
             </p>

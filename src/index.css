@@ -8806,6 +8806,502 @@ html[data-theme="dark"] .modal-close-btn:hover {
   color: var(--color-ghost-white) !important;
 }
 
+/* ==============================================================================
+   Shared KPI Badges & Text Accents (Dark Mode)
+   ============================================================================== */
+html[data-theme="dark"] .analytics-container .kpi-value.text-teal {
+  color: var(--color-mint-signal) !important;
+}
+
+html[data-theme="dark"] .analytics-container .kpi-value.text-purple,
+html[data-theme="dark"] .analytics-container .kpi-value.text-indigo {
+  color: var(--color-lavender-pulse) !important;
+}
+
+html[data-theme="dark"] .analytics-container .badge-secondary {
+  background: rgba(128, 128, 128, 0.14) !important;
+  color: var(--color-ash-gray) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: var(--radius-badges) !important;
+}
+
+html[data-theme="dark"] .analytics-container .badge-success {
+  background: rgba(63, 203, 127, 0.12) !important;
+  color: var(--color-mint-signal) !important;
+  border: 1px solid rgba(63, 203, 127, 0.45) !important;
+  border-radius: var(--radius-badges) !important;
+}
+
+html[data-theme="dark"] .analytics-container .badge-danger {
+  background: rgba(255, 92, 92, 0.12) !important;
+  color: var(--color-crimson-signal) !important;
+  border: 1px solid rgba(255, 92, 92, 0.45) !important;
+  border-radius: var(--radius-badges) !important;
+}
+
+html[data-theme="dark"] .analytics-container .badge-warning {
+  background: rgba(245, 166, 35, 0.12) !important;
+  color: var(--color-amber-signal) !important;
+  border: 1px solid rgba(245, 166, 35, 0.45) !important;
+  border-radius: var(--radius-badges) !important;
+}
+
+html[data-theme="dark"] .analytics-container .badge-purple {
+  background: rgba(153, 132, 216, 0.14) !important;
+  color: var(--color-lavender-pulse) !important;
+  border: 1px solid rgba(153, 132, 216, 0.45) !important;
+  border-radius: var(--radius-badges) !important;
+}
+
+/* ==============================================================================
+   Rider Management Section — Basedash Midnight Redesign
+   ============================================================================== */
+
+/* Top Action Buttons in Rider Management Header */
+html[data-theme="dark"] .management-header-actions .btn-primary {
+  background: var(--color-ghost-white) !important;
+  color: var(--color-void-black) !important;
+  border: 1px solid var(--color-ghost-white) !important;
+  border-radius: var(--radius-buttons) !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .management-header-actions .btn-primary:hover:not(:disabled) {
+  background: var(--color-bone-white) !important;
+}
+
+html[data-theme="dark"] .management-header-actions .btn-secondary {
+  background: transparent !important;
+  color: var(--color-ghost-white) !important;
+  border: 1px solid var(--color-steel-gray) !important;
+  border-radius: var(--radius-buttons) !important;
+  font-weight: 500 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+html[data-theme="dark"] .management-header-actions .btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-ghost-white) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Rider Management Filter & Search Toolbar */
+html[data-theme="dark"] .management-toolbar-wrapper {
+  background: var(--color-void-black) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: 12px !important;
+}
+
+html[data-theme="dark"] .filter-pill-label,
+html[data-theme="dark"] .field-label-sm {
+  color: var(--color-ash-gray) !important;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+html[data-theme="dark"] .btn-group-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--color-carbon-card);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-inputs);
+  padding: 3px;
+}
+
+html[data-theme="dark"] .management-status-pills-row .segmented-btn {
+  color: var(--color-ash-gray);
+  background: transparent;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .management-status-pills-row .segmented-btn:hover:not(.active) {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .management-status-pills-row .segmented-btn.active {
+  background: var(--color-ghost-white) !important;
+  color: var(--color-void-black) !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .management-status-pills-row .segmented-btn.warn.active {
+  background: rgba(245, 166, 35, 0.18) !important;
+  color: var(--color-amber-signal) !important;
+  border: 1px solid var(--color-amber-signal) !important;
+}
+
+html[data-theme="dark"] .search-field-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+html[data-theme="dark"] .management-search-input,
+html[data-theme="dark"] input[type='text'].management-search-input {
+  background: var(--color-carbon-card) !important;
+  color: var(--color-ghost-white) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: var(--radius-inputs) !important;
+  padding: 0.48rem 1.85rem 0.48rem 2.15rem !important;
+  font-size: 14px;
+}
+
+html[data-theme="dark"] .management-search-input::placeholder {
+  color: var(--color-steel-gray) !important;
+}
+
+html[data-theme="dark"] .management-search-input:focus {
+  outline: none;
+  border-color: var(--color-lavender-pulse) !important;
+  box-shadow: 0 0 0 2px rgba(153, 132, 216, 0.25) !important;
+}
+
+/* Rider Management Table Container & Rows */
+html[data-theme="dark"] .management-table-container {
+  background: var(--color-carbon-card) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: 12px !important;
+  overflow-x: auto;
+}
+
+html[data-theme="dark"] .table-management thead th {
+  background: var(--surface-table-header) !important;
+  color: var(--color-ash-gray) !important;
+  border-bottom: 1px solid var(--color-graphite) !important;
+  border-right: 1px solid var(--color-graphite) !important;
+  letter-spacing: -0.02em;
+}
+
+html[data-theme="dark"] .management-data-row td {
+  background: var(--color-carbon-card) !important;
+  color: var(--color-ash-gray) !important;
+  border-bottom: 1px solid #191c22 !important;
+  border-right: 1px solid #191c22 !important;
+}
+
+html[data-theme="dark"] .management-data-row:hover td {
+  background: var(--surface-row-hover) !important;
+}
+
+html[data-theme="dark"] .management-data-row.row-modified td {
+  background: rgba(153, 132, 216, 0.08) !important;
+}
+
+html[data-theme="dark"] .management-data-row .rider-name-text {
+  color: var(--color-ghost-white) !important;
+  font-weight: 500;
+}
+
+/* Assigned Shift Preset Pills in Rider Management Table */
+html[data-theme="dark"] .btn-shift-pill {
+  background: var(--color-void-black) !important;
+  color: var(--color-ash-gray) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: var(--radius-buttons) !important;
+}
+
+html[data-theme="dark"] .btn-shift-pill:hover {
+  border-color: var(--color-steel-gray) !important;
+  color: var(--color-ghost-white) !important;
+  background: #0a0c0f !important;
+}
+
+html[data-theme="dark"] .btn-shift-pill.pill-morning.active {
+  background: rgba(56, 189, 248, 0.14) !important;
+  color: var(--color-sky-signal) !important;
+  border-color: rgba(56, 189, 248, 0.55) !important;
+}
+
+html[data-theme="dark"] .btn-shift-pill.pill-2nd.active {
+  background: rgba(153, 132, 216, 0.16) !important;
+  color: var(--color-lavender-pulse) !important;
+  border-color: rgba(153, 132, 216, 0.55) !important;
+}
+
+html[data-theme="dark"] .btn-shift-pill.pill-split.active {
+  background: rgba(245, 166, 35, 0.16) !important;
+  color: var(--color-amber-signal) !important;
+  border-color: rgba(245, 166, 35, 0.55) !important;
+}
+
+html[data-theme="dark"] .btn-shift-pill.pill-custom {
+  background: transparent !important;
+  border: 1px dashed var(--color-steel-gray) !important;
+  color: var(--color-ash-gray) !important;
+}
+
+html[data-theme="dark"] .shift-timings-text {
+  color: var(--color-ash-gray) !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Editable Inputs inside Rider Management Table */
+html[data-theme="dark"] .input-table-field {
+  background: var(--color-void-black) !important;
+  color: var(--color-ghost-white) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: var(--radius-inputs) !important;
+}
+
+html[data-theme="dark"] .input-table-field::placeholder {
+  color: var(--color-steel-gray) !important;
+}
+
+html[data-theme="dark"] .input-table-field:focus {
+  border-color: var(--color-lavender-pulse) !important;
+  box-shadow: 0 0 0 2px rgba(153, 132, 216, 0.25) !important;
+}
+
+/* Action Buttons inside Rider Management Table */
+html[data-theme="dark"] .management-data-row .td-action .btn-primary {
+  background: var(--color-ghost-white) !important;
+  color: var(--color-void-black) !important;
+  border: 1px solid var(--color-ghost-white) !important;
+  border-radius: var(--radius-buttons) !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="dark"] .management-data-row .td-action .btn-secondary {
+  background: transparent !important;
+  color: var(--color-ash-gray) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: var(--radius-buttons) !important;
+}
+
+html[data-theme="dark"] .management-data-row .td-action .btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-steel-gray) !important;
+  color: var(--color-ghost-white) !important;
+}
+
+html[data-theme="dark"] .btn-icon-subtle {
+  background: transparent !important;
+  border: 1px solid var(--color-graphite) !important;
+  color: var(--color-ash-gray) !important;
+  border-radius: var(--radius-buttons) !important;
+  padding: 0.3rem 0.45rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+html[data-theme="dark"] .btn-icon-subtle:hover:not(:disabled) {
+  border-color: var(--color-crimson-signal) !important;
+  background: rgba(255, 92, 92, 0.12) !important;
+}
+
+html[data-theme="dark"] .management-footer-caption {
+  background: var(--color-void-black) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: 10px !important;
+}
+
+/* ==============================================================================
+   New Rider Onboarding (First 7 Days) — Basedash Midnight Redesign
+   ============================================================================== */
+html[data-theme="dark"] .onboarding-header-card {
+  border-bottom: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .onboarding-badge-tag {
+  background: rgba(153, 132, 216, 0.14);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.45);
+  border-radius: var(--radius-badges);
+}
+
+html[data-theme="dark"] .onboarding-title {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .onboarding-subtitle {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .perf-btn-shifts {
+  background: transparent;
+  border: 1px solid var(--color-steel-gray);
+  color: var(--color-ghost-white);
+  border-radius: var(--radius-buttons);
+}
+
+html[data-theme="dark"] .perf-btn-shifts:hover {
+  border-color: var(--color-ghost-white);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .onboarding-kpi-card {
+  background: var(--color-void-black) !important;
+  border: 1px solid var(--color-graphite) !important;
+  border-radius: var(--radius-cards) !important;
+}
+
+html[data-theme="dark"] .cohort-active-badge-pill {
+  background: rgba(63, 203, 127, 0.1);
+  border: 1px solid rgba(63, 203, 127, 0.4);
+  color: var(--color-mint-signal);
+  border-radius: var(--radius-badges);
+}
+
+html[data-theme="dark"] .th-shift,
+html[data-theme="dark"] .th-joining-date,
+html[data-theme="dark"] .th-health,
+html[data-theme="dark"] .th-day-card-col,
+html[data-theme="dark"] .th-action {
+  background-color: var(--surface-table-header) !important;
+  color: var(--color-ash-gray) !important;
+  border-color: var(--color-graphite) !important;
+}
+
+html[data-theme="dark"] .td-shift,
+html[data-theme="dark"] .td-joining-date,
+html[data-theme="dark"] .td-health,
+html[data-theme="dark"] .td-day-box,
+html[data-theme="dark"] .td-action {
+  background-color: var(--color-carbon-card);
+  color: var(--color-ash-gray);
+  border-color: #191c22 !important;
+}
+
+html[data-theme="dark"] .badge-shift-morning-shift {
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--color-sky-signal);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+html[data-theme="dark"] .badge-shift-2nd-shift {
+  background: rgba(153, 132, 216, 0.14);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.45);
+}
+
+html[data-theme="dark"] .badge-shift-split-shift {
+  background: rgba(245, 166, 35, 0.12);
+  color: var(--color-amber-signal);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+}
+
+html[data-theme="dark"] .badge-shift-custom {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-ash-gray);
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .joining-date-pill {
+  background: #0a0c0f;
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .tag-active-week {
+  background: rgba(153, 132, 216, 0.14);
+  color: var(--color-lavender-pulse);
+  border: 1px solid rgba(153, 132, 216, 0.4);
+}
+
+html[data-theme="dark"] .tag-done-week {
+  background: rgba(63, 203, 127, 0.12);
+  color: var(--color-mint-signal);
+  border: 1px solid rgba(63, 203, 127, 0.4);
+}
+
+html[data-theme="dark"] .badge-health-ok {
+  background: rgba(63, 203, 127, 0.12);
+  color: var(--color-mint-signal);
+  border: 1px solid rgba(63, 203, 127, 0.45);
+}
+
+html[data-theme="dark"] .badge-health-warn {
+  background: rgba(245, 166, 35, 0.12);
+  color: var(--color-amber-signal);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+}
+
+html[data-theme="dark"] .badge-health-risk {
+  background: rgba(255, 92, 92, 0.12);
+  color: var(--color-crimson-signal);
+  border: 1px solid rgba(255, 92, 92, 0.45);
+}
+
+html[data-theme="dark"] .onboarding-day-card {
+  background: var(--color-void-black);
+  border: 1px solid var(--color-graphite);
+}
+
+html[data-theme="dark"] .day-status-compliant {
+  background: rgba(63, 203, 127, 0.08);
+  border-color: rgba(63, 203, 127, 0.4);
+}
+
+html[data-theme="dark"] .day-status-under_8h {
+  background: rgba(245, 166, 35, 0.08);
+  border-color: rgba(245, 166, 35, 0.4);
+}
+
+html[data-theme="dark"] .day-status-absent {
+  background: rgba(255, 92, 92, 0.06);
+  border-color: rgba(255, 92, 92, 0.35);
+  border-style: dashed;
+}
+
+html[data-theme="dark"] .day-status-upcoming {
+  background: #060709;
+  border-color: #191c22;
+}
+
+html[data-theme="dark"] .day-card-header {
+  color: var(--color-ash-gray);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .day-card-date {
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .hours-target-ok {
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .hours-target-warn {
+  color: var(--color-amber-signal);
+}
+
+html[data-theme="dark"] .day-metric-orders {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .day-metric-absent {
+  background: rgba(255, 92, 92, 0.14);
+  color: var(--color-crimson-signal);
+}
+
+html[data-theme="dark"] .day-metric-upcoming {
+  color: var(--color-steel-gray);
+}
+
+html[data-theme="dark"] .inline-date-input {
+  background: var(--color-void-black);
+  color: var(--color-ghost-white);
+  border: 1px solid var(--color-lavender-pulse);
+}
+
+html[data-theme="dark"] .btn-edit-joining {
+  border-color: var(--color-graphite);
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .btn-edit-joining:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--color-ghost-white);
+  color: var(--color-ghost-white);
+}
+
+
 
 
 
