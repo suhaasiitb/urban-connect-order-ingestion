@@ -39,8 +39,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     <div className="login-layout">
       <div className="login-card">
         <div className="login-header">
-          <span className="badge badge-primary">Urban Connect</span>
-          <h1 className="editorial-serif-heading">Daily Store Order Ingestion Portal</h1>
+          <span className="badge badge-primary basedash-brand-pill" title="Urban Connect">
+            <span className="uc-logo-crest" aria-hidden="true">U</span>
+            <span className="uc-logo-text">UC</span>
+            <span className="basedash-live-dot" aria-hidden="true" />
+          </span>
+          <h1 className="editorial-serif-heading">Amazon Now - Ops,Planning &amp; Analysis</h1>
           <p className="subtitle">
             Sign in with your administrator or store operator credentials to upload
             and inspect store order workbooks and performance analytics.

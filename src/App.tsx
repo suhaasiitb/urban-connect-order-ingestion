@@ -162,11 +162,12 @@ export const App: React.FC = () => {
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar-brand">
-          <span className="badge badge-primary basedash-brand-pill">
+          <span className="badge badge-primary basedash-brand-pill" title="Urban Connect">
+            <span className="uc-logo-crest" aria-hidden="true">U</span>
+            <span className="uc-logo-text">UC</span>
             <span className="basedash-live-dot" aria-hidden="true" />
-            Urban Connect
           </span>
-          <strong className="topbar-editorial-title">Daily Store Order Ingestion Portal</strong>
+          <strong className="topbar-editorial-title">Amazon Now - Ops,Planning &amp; Analysis</strong>
         </div>
 
         <div className="topbar-user">
