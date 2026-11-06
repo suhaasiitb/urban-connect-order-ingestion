@@ -402,11 +402,14 @@ export async function getRiderShiftsForStore(
         res.error.message?.includes('referred_') ||
         res.error.message?.includes('onboarded_by'))
     ) {
-      if (res.error.code === '42703' || res.error.message?.includes('referred_')) {
+      if (res.error.message?.includes('referred_')) {
         remoteHasReferralColumns = false;
       }
       if (res.error.message?.includes('onboarded_by')) {
         remoteHasOnboardedByColumn = false;
+      }
+      if (!res.error.message?.includes('referred_') && !res.error.message?.includes('onboarded_by')) {
+        remoteHasReferralColumns = false;
       }
 
       const fallbackCols = [
@@ -422,6 +425,10 @@ export async function getRiderShiftsForStore(
         'updated_at',
       ];
       if (remoteHasOnboardedByColumn) fallbackCols.push('onboarded_by');
+      if (remoteHasReferralColumns) {
+        fallbackCols.push('referred_by');
+        fallbackCols.push('referred_phone');
+      }
 
       const fallbackQuery = supabase
         .from('store_rider_shifts')
@@ -506,7 +513,8 @@ export async function getRiderShiftsForStore(
     console.warn('Could not load store_rider_shifts from Supabase:', err);
   }
 
-  // 2. Merge with localStorage so local edits and onboardedBy are preserved
+  // 2. Merge with localStorage so local edits, referrals, and onboardedBy are preserved
+  const unsyncedToRemote: RiderShiftConfig[] = [];
   try {
     const storage =
       typeof window !== 'undefined' && window.localStorage
@@ -530,7 +538,7 @@ export async function getRiderShiftsForStore(
           const existing = shiftMap.get(norm);
 
           if (!existing) {
-            shiftMap.set(norm, {
+            const mergedItem: RiderShiftConfig = {
               ...item,
               riderName: cleanName || item.riderName,
               normalizedName: norm,
@@ -539,28 +547,50 @@ export async function getRiderShiftsForStore(
               onboardedBy: item.onboardedBy ? String(item.onboardedBy).trim() : null,
               referredBy: item.referredBy ? String(item.referredBy).trim() : null,
               referredPhone: item.referredPhone ? String(item.referredPhone).trim() : null,
-            });
+            };
+            shiftMap.set(norm, mergedItem);
+            unsyncedToRemote.push(mergedItem);
           } else {
             const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
             const remoteUpdated = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
             if (localUpdated > 0 && localUpdated >= remoteUpdated) {
-              shiftMap.set(norm, {
+              const mergedItem: RiderShiftConfig = {
                 ...item,
                 riderName: cleanName || item.riderName,
                 normalizedName: norm,
                 shiftType: effectiveShift,
                 totalPlannedHours: totalPlanned,
-                onboardedBy: item.onboardedBy
-                  ? String(item.onboardedBy).trim()
-                  : existing.onboardedBy || null,
-                referredBy: item.referredBy
-                  ? String(item.referredBy).trim()
-                  : existing.referredBy || null,
-                referredPhone: item.referredPhone
-                  ? String(item.referredPhone).trim()
-                  : existing.referredPhone || null,
+                onboardedBy:
+                  item.onboardedBy !== undefined
+                    ? item.onboardedBy
+                      ? String(item.onboardedBy).trim()
+                      : null
+                    : existing.onboardedBy || null,
+                referredBy:
+                  item.referredBy !== undefined
+                    ? item.referredBy
+                      ? String(item.referredBy).trim()
+                      : null
+                    : existing.referredBy || null,
+                referredPhone:
+                  item.referredPhone !== undefined
+                    ? item.referredPhone
+                      ? String(item.referredPhone).trim()
+                      : null
+                    : existing.referredPhone || null,
                 updatedAt: item.updatedAt,
-              });
+              };
+              shiftMap.set(norm, mergedItem);
+
+              if (
+                localUpdated > remoteUpdated ||
+                (mergedItem.referredBy ?? null) !== (existing.referredBy ?? null) ||
+                (mergedItem.referredPhone ?? null) !== (existing.referredPhone ?? null) ||
+                (mergedItem.onboardedBy ?? null) !== (existing.onboardedBy ?? null) ||
+                (mergedItem.joiningDate ?? null) !== (existing.joiningDate ?? null)
+              ) {
+                unsyncedToRemote.push(mergedItem);
+              }
             } else {
               const patched = { ...existing };
               let changed = false;
@@ -578,17 +608,113 @@ export async function getRiderShiftsForStore(
               }
               if (changed) {
                 shiftMap.set(norm, patched);
+                unsyncedToRemote.push(patched);
               }
             }
           }
         }
       }
     }
+
+    // Write merged map back to localStorage so local cache reflects latest remote + local state
+    if (shiftMap.size > 0 && storage) {
+      storage.setItem(
+        `${LOCAL_STORAGE_PREFIX}${storeId}`,
+        JSON.stringify(Array.from(shiftMap.values()))
+      );
+    }
   } catch (err) {
     console.warn('Could not read rider shifts from localStorage:', err);
   }
 
+  // 3. Background heal: if local cache had referrals/shifts not yet in Supabase, push them now
+  if (
+    unsyncedToRemote.length > 0 &&
+    !storeId.startsWith('test-') &&
+    typeof process === 'undefined'
+  ) {
+    const rowsToSync = unsyncedToRemote.map((s) => {
+      const baseRow: Record<string, unknown> = {
+        store_id: storeId,
+        rider_name: s.riderName,
+        normalized_name: s.normalizedName || normalizeRiderName(s.riderName),
+        shift_type: s.shiftType,
+        slot1_start_hour: s.slot1StartHour,
+        slot1_end_hour: s.slot1EndHour,
+        slot2_start_hour: s.slot2StartHour != null ? s.slot2StartHour : null,
+        slot2_end_hour: s.slot2EndHour != null ? s.slot2EndHour : null,
+        total_planned_hours: s.totalPlannedHours,
+        joining_date: s.joiningDate ? s.joiningDate : null,
+        updated_at: s.updatedAt || new Date().toISOString(),
+      };
+      if (remoteHasOnboardedByColumn) {
+        baseRow.onboarded_by = s.onboardedBy ? s.onboardedBy : null;
+      }
+      if (remoteHasReferralColumns) {
+        baseRow.referred_by = s.referredBy ? s.referredBy : null;
+        baseRow.referred_phone = s.referredPhone ? s.referredPhone : null;
+      }
+      return baseRow;
+    });
+
+    void supabase
+      .from('store_rider_shifts')
+      .upsert(rowsToSync, { onConflict: 'store_id,normalized_name' });
+  }
+
   return shiftMap;
+}
+
+/**
+ * Synchronously caches a single rider's shift & referral configuration in localStorage
+ * so that even an immediate page refresh before network completion preserves the edit.
+ */
+export function cacheSingleRiderShiftLocally(params: {
+  storeId: string;
+  shift: RiderShiftConfig;
+}): RiderShiftConfig {
+  const { storeId, shift } = params;
+  const nowIso = new Date().toISOString();
+  const norm = shift.normalizedName || normalizeRiderName(shift.riderName);
+  const normalizedShift: RiderShiftConfig = {
+    ...shift,
+    normalizedName: norm,
+    shiftType: classifyShiftType(shift),
+    totalPlannedHours: calculatePlannedHours(shift),
+    updatedAt: nowIso,
+  };
+
+  try {
+    const storage =
+      typeof window !== 'undefined' && window.localStorage
+        ? window.localStorage
+        : typeof localStorage !== 'undefined'
+        ? localStorage
+        : null;
+    const raw = storage?.getItem(`${LOCAL_STORAGE_PREFIX}${storeId}`);
+    let list: RiderShiftConfig[] = [];
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      } catch {
+        list = [];
+      }
+    }
+    const idx = list.findIndex(
+      (s) => (s.normalizedName || normalizeRiderName(s.riderName)) === norm
+    );
+    if (idx >= 0) {
+      list[idx] = normalizedShift;
+    } else {
+      list.push(normalizedShift);
+    }
+    storage?.setItem(`${LOCAL_STORAGE_PREFIX}${storeId}`, JSON.stringify(list));
+  } catch (err) {
+    console.warn('Could not cache single rider shift locally:', err);
+  }
+
+  return normalizedShift;
 }
 
 /**
@@ -640,7 +766,9 @@ export async function saveRiderShiftsForStore(params: {
       (prev.slot2StartHour ?? null) !== (s.slot2StartHour ?? null) ||
       (prev.slot2EndHour ?? null) !== (s.slot2EndHour ?? null) ||
       (prev.onboardedBy ?? null) !== (s.onboardedBy ?? null) ||
-      (prev.joiningDate ?? null) !== (s.joiningDate ?? null);
+      (prev.joiningDate ?? null) !== (s.joiningDate ?? null) ||
+      (prev.referredBy ?? null) !== (s.referredBy ?? null) ||
+      (prev.referredPhone ?? null) !== (s.referredPhone ?? null);
 
     const updatedItem: RiderShiftConfig = {
       ...s,
@@ -655,11 +783,15 @@ export async function saveRiderShiftsForStore(params: {
     return updatedItem;
   });
 
-  // 1. Immediately cache in localStorage
+  // 1. Immediately cache in localStorage (merge with existing prevMap so partial batch saves never wipe other riders)
   try {
+    const mergedMap = new Map<string, RiderShiftConfig>(prevMap);
+    for (const item of normalizedShifts) {
+      mergedMap.set(item.normalizedName, item);
+    }
     storage?.setItem(
       `${LOCAL_STORAGE_PREFIX}${storeId}`,
-      JSON.stringify(normalizedShifts)
+      JSON.stringify(Array.from(mergedMap.values()))
     );
   } catch (err) {
     console.warn('Could not cache rider shifts to localStorage:', err);
@@ -713,15 +845,22 @@ export async function saveRiderShiftsForStore(params: {
         upsertErr.message?.includes('referred_') ||
         upsertErr.message?.includes('onboarded_by'))
     ) {
-      if (upsertErr.code === '42703' || upsertErr.message?.includes('referred_')) {
+      if (upsertErr.message?.includes('referred_')) {
         remoteHasReferralColumns = false;
       }
       if (upsertErr.message?.includes('onboarded_by')) {
         remoteHasOnboardedByColumn = false;
       }
+      if (!upsertErr.message?.includes('referred_') && !upsertErr.message?.includes('onboarded_by')) {
+        remoteHasReferralColumns = false;
+      }
       const rowsFallback = rows.map(({ referred_by: _r1, referred_phone: _r2, onboarded_by: _o, ...rest }) => {
         const rowClean: Record<string, unknown> = { ...rest };
         if (remoteHasOnboardedByColumn && _o !== undefined) rowClean.onboarded_by = _o;
+        if (remoteHasReferralColumns) {
+          if (_r1 !== undefined) rowClean.referred_by = _r1;
+          if (_r2 !== undefined) rowClean.referred_phone = _r2;
+        }
         return rowClean;
       });
       const retryPromise = supabase
@@ -863,11 +1002,14 @@ export async function saveSingleRiderShift(params: {
         upsertErr.message?.includes('referred_') ||
         upsertErr.message?.includes('onboarded_by'))
     ) {
-      if (upsertErr.code === '42703' || upsertErr.message?.includes('referred_')) {
+      if (upsertErr.message?.includes('referred_')) {
         remoteHasReferralColumns = false;
       }
       if (upsertErr.message?.includes('onboarded_by')) {
         remoteHasOnboardedByColumn = false;
+      }
+      if (!upsertErr.message?.includes('referred_') && !upsertErr.message?.includes('onboarded_by')) {
+        remoteHasReferralColumns = false;
       }
       const rowClean = { ...row };
       if (!remoteHasReferralColumns) {
@@ -1058,4 +1200,62 @@ export function exportRiderManagementToExcel(params: {
   XLSX.utils.book_append_sheet(wb, ws, 'Rider Management');
   const filename = `Rider_Management_${params.storeCode}_${new Date().toISOString().slice(0, 10)}.xlsx`;
   XLSX.writeFile(wb, filename);
+}
+
+/**
+ * Subscribes to live changes on store_rider_shifts (both cross-device via Supabase Realtime
+ * and cross-tab via localStorage storage events) so referral and shift edits reflect immediately.
+ */
+export function subscribeToStoreRiderShifts(
+  storeId: string,
+  onUpdate: (shifts: Map<string, RiderShiftConfig>) => void
+): () => void {
+  if (!storeId) return () => {};
+
+  const storageKey = `${LOCAL_STORAGE_PREFIX}${storeId}`;
+
+  const handleStorageEvent = (e: StorageEvent) => {
+    if (e.key === storageKey && e.newValue) {
+      void getRiderShiftsForStore(storeId).then((fresh) => {
+        onUpdate(fresh);
+      });
+    }
+  };
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', handleStorageEvent);
+  }
+
+  let channel: ReturnType<typeof supabase.channel> | null = null;
+  try {
+    const channelName = `realtime:store_rider_shifts:${storeId}`;
+    channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'store_rider_shifts',
+          filter: `store_id=eq.${storeId}`,
+        },
+        () => {
+          void getRiderShiftsForStore(storeId).then((fresh) => {
+            onUpdate(fresh);
+          });
+        }
+      )
+      .subscribe();
+  } catch (err) {
+    console.warn('Realtime subscription error for store_rider_shifts:', err);
+  }
+
+  return () => {
+    if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('storage', handleStorageEvent);
+    }
+    if (channel) {
+      void supabase.removeChannel(channel);
+    }
+  };
 }

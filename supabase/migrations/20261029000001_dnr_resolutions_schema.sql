@@ -1,11 +1,11 @@
-// ==============================================================================
-// Migration: 20261029000001_dnr_resolutions_schema.sql
-// Purpose:   Store Rider-level DNR (Delivery Not Received) Resolutions & Audit History.
-//            Allows managers to log actions taken on riders flagged with DNRs:
-//            - Given Warning to Rider
-//            - Rider ID deactivated
-//            - RCA resolved No mistake from Rider
-// ==============================================================================
+-- ==============================================================================
+-- Migration: 20261029000001_dnr_resolutions_schema.sql
+-- Purpose:   Store Rider-level DNR (Delivery Not Received) Resolutions & Audit History.
+--            Allows managers to log actions taken on riders flagged with DNRs:
+--            - Given Warning to Rider
+--            - Rider ID deactivated
+--            - RCA resolved No mistake from Rider
+-- ==============================================================================
 
 BEGIN;
 

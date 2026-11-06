@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import type { ActiveRosterSummary } from '../services/activeRiderService';
 import {
   type RiderShiftConfig,
@@ -9,6 +9,7 @@ import {
   classifyShiftType,
   formatShiftTimings,
   exportRiderManagementToExcel,
+  cacheSingleRiderShiftLocally,
 } from '../services/riderShiftService';
 import { cleanRiderDisplayName, normalizeRiderName } from '../services/activeRiderService';
 import { IndividualRiderShiftModal } from './IndividualRiderShiftModal';
@@ -196,16 +197,143 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
     });
   }, [combinedRiders, riderShiftsMap]);
 
-  // Helpers to update draft fields for a rider
+  // Helper to convert a draft row into a RiderShiftConfig
+  const buildConfigFromRow = useCallback((row: RiderManagementRow): RiderShiftConfig => {
+    const shiftType = row.draftShiftType === 'UNASSIGNED' ? 'Morning Shift' : row.draftShiftType;
+    return {
+      riderName: row.riderName,
+      normalizedName: row.normalizedName,
+      shiftType: shiftType as ShiftType,
+      slot1StartHour: row.draftSlot1Start,
+      slot1EndHour: row.draftSlot1End,
+      slot2StartHour: row.draftSlot2Start,
+      slot2EndHour: row.draftSlot2End,
+      totalPlannedHours: row.draftTotalHours > 0 ? row.draftTotalHours : 9,
+      joiningDate: row.draftJoiningDate ? row.draftJoiningDate.trim() : null,
+      onboardedBy: row.draftOnboardedBy ? row.draftOnboardedBy.trim() : null,
+      referredBy: row.draftReferredBy ? row.draftReferredBy.trim() : null,
+      referredPhone: row.draftReferredPhone ? row.draftReferredPhone.trim() : null,
+    };
+  }, []);
+
+  // Save Single Row
+  const handleSaveRow = useCallback(
+    async (row: RiderManagementRow) => {
+      setSavingRider(row.normalizedName);
+      setAlertBanner(null);
+
+      const configToSave = buildConfigFromRow(row);
+
+      try {
+        const res = await onSaveSingleShift(configToSave);
+        if (res.ok) {
+          setJustSavedRiders((prev) => new Set(prev).add(row.normalizedName));
+          setTimeout(() => {
+            setJustSavedRiders((prev) => {
+              const next = new Set(prev);
+              next.delete(row.normalizedName);
+              return next;
+            });
+          }, 3000);
+
+          // Mark unmodified in draft if row wasn't edited further while save was in-flight
+          setDraftRows((prev) => {
+            const cur = prev.get(row.normalizedName);
+            if (!cur) return prev;
+            const stillMatchesSaved =
+              cur.draftShiftType === row.draftShiftType &&
+              cur.draftSlot1Start === row.draftSlot1Start &&
+              cur.draftSlot1End === row.draftSlot1End &&
+              cur.draftSlot2Start === row.draftSlot2Start &&
+              cur.draftSlot2End === row.draftSlot2End &&
+              cur.draftJoiningDate === row.draftJoiningDate &&
+              cur.draftOnboardedBy === row.draftOnboardedBy &&
+              cur.draftReferredBy === row.draftReferredBy &&
+              cur.draftReferredPhone === row.draftReferredPhone;
+            const copy = new Map(prev);
+            copy.set(row.normalizedName, {
+              ...cur,
+              isModified: !stillMatchesSaved,
+              shiftConfig: configToSave,
+            });
+            return copy;
+          });
+        } else {
+          setAlertBanner({ type: 'error', message: res.error || 'Failed to save rider shift' });
+        }
+      } catch (err) {
+        setAlertBanner({
+          type: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setSavingRider(null);
+      }
+    },
+    [buildConfigFromRow, onSaveSingleShift]
+  );
+
+  // Per-rider debounce timers for automatic cloud sync when editing referrals/onboarder/dates
+  const autoSaveTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const latestDraftRowsRef = useRef<Map<string, RiderManagementRow>>(draftRows);
+  useEffect(() => {
+    latestDraftRowsRef.current = draftRows;
+  }, [draftRows]);
+
+  useEffect(() => {
+    const timersMap = autoSaveTimersRef.current;
+    return () => {
+      for (const timer of timersMap.values()) {
+        clearTimeout(timer);
+      }
+      timersMap.clear();
+    };
+  }, []);
+
+  const scheduleRowAutoSave = useCallback(
+    (norm: string, delayMs: number = 650) => {
+      const existingTimer = autoSaveTimersRef.current.get(norm);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const timer = setTimeout(() => {
+        autoSaveTimersRef.current.delete(norm);
+        const latestRow = latestDraftRowsRef.current.get(norm);
+        if (latestRow && latestRow.isModified) {
+          void handleSaveRow(latestRow);
+        }
+      }, delayMs);
+      autoSaveTimersRef.current.set(norm, timer);
+    },
+    [handleSaveRow]
+  );
+
+  const flushRowAutoSave = useCallback(
+    (norm: string) => {
+      const existingTimer = autoSaveTimersRef.current.get(norm);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        autoSaveTimersRef.current.delete(norm);
+      }
+      const latestRow = latestDraftRowsRef.current.get(norm);
+      if (latestRow && latestRow.isModified) {
+        void handleSaveRow(latestRow);
+      }
+    },
+    [handleSaveRow]
+  );
+
+  // Helpers to update draft fields for a rider (persists immediately to localStorage + schedules Supabase sync)
   const handleUpdateField = (
     norm: string,
-    updates: Partial<RiderManagementRow>
+    updates: Partial<RiderManagementRow>,
+    options?: { autoSaveDelayMs?: number; skipAutoSave?: boolean }
   ) => {
     setDraftRows((prev) => {
       const current = prev.get(norm);
       if (!current) return prev;
 
-      const next = { ...current, ...updates, isModified: true };
+      const next = { ...current, ...updates, isModified: updates.isModified ?? true };
 
       // Recalculate planned hours if time slots changed
       if (
@@ -228,81 +356,37 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
         });
       }
 
+      // Immediately write to localStorage so even an instant page refresh on mobile preserves the referral/shift
+      if (!options?.skipAutoSave && storeId) {
+        const cfg = buildConfigFromRow(next);
+        cacheSingleRiderShiftLocally({ storeId, shift: cfg });
+      }
+
       const copy = new Map(prev);
       copy.set(norm, next);
       return copy;
     });
+
+    if (!options?.skipAutoSave) {
+      scheduleRowAutoSave(norm, options?.autoSaveDelayMs ?? 650);
+    }
   };
 
   // Quick Preset Handlers
   const handleApplyPreset = (norm: string, presetName: 'Morning Shift' | '2nd Shift' | 'Split Shift') => {
     const p = SHIFT_PRESETS[presetName];
-    handleUpdateField(norm, {
-      draftShiftType: presetName,
-      draftSlot1Start: p.slot1Start,
-      draftSlot1End: p.slot1End,
-      draftSlot2Start: p.slot2Start ?? null,
-      draftSlot2End: p.slot2End ?? null,
-      draftTotalHours: p.hours,
-    });
-  };
-
-  // Save Single Row
-  const handleSaveRow = async (row: RiderManagementRow) => {
-    setSavingRider(row.normalizedName);
-    setAlertBanner(null);
-
-    const shiftType = row.draftShiftType === 'UNASSIGNED' ? 'Morning Shift' : row.draftShiftType;
-    const configToSave: RiderShiftConfig = {
-      riderName: row.riderName,
-      normalizedName: row.normalizedName,
-      shiftType: shiftType as ShiftType,
-      slot1StartHour: row.draftSlot1Start,
-      slot1EndHour: row.draftSlot1End,
-      slot2StartHour: row.draftSlot2Start,
-      slot2EndHour: row.draftSlot2End,
-      totalPlannedHours: row.draftTotalHours > 0 ? row.draftTotalHours : 9,
-      joiningDate: row.draftJoiningDate ? row.draftJoiningDate.trim() : null,
-      onboardedBy: row.draftOnboardedBy ? row.draftOnboardedBy.trim() : null,
-      referredBy: row.draftReferredBy ? row.draftReferredBy.trim() : null,
-      referredPhone: row.draftReferredPhone ? row.draftReferredPhone.trim() : null,
-    };
-
-    try {
-      const res = await onSaveSingleShift(configToSave);
-      if (res.ok) {
-        setJustSavedRiders((prev) => new Set(prev).add(row.normalizedName));
-        setTimeout(() => {
-          setJustSavedRiders((prev) => {
-            const next = new Set(prev);
-            next.delete(row.normalizedName);
-            return next;
-          });
-        }, 3000);
-
-        // Mark unmodified in draft
-        setDraftRows((prev) => {
-          const cur = prev.get(row.normalizedName);
-          if (!cur) return prev;
-          const copy = new Map(prev);
-          copy.set(row.normalizedName, {
-            ...cur,
-            isModified: false,
-            shiftConfig: configToSave,
-          });
-          return copy;
-        });
-      } else {
-        setAlertBanner({ type: 'error', message: res.error || 'Failed to save rider shift' });
-      }
-    } catch (err) {
-      setAlertBanner({
-        type: 'error',
-        message: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setSavingRider(null);
-    }
+    handleUpdateField(
+      norm,
+      {
+        draftShiftType: presetName,
+        draftSlot1Start: p.slot1Start,
+        draftSlot1End: p.slot1End,
+        draftSlot2Start: p.slot2Start ?? null,
+        draftSlot2End: p.slot2End ?? null,
+        draftTotalHours: p.hours,
+      },
+      { autoSaveDelayMs: 250 }
+    );
   };
 
   // Unassign Shift
@@ -312,11 +396,15 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
     try {
       const res = await onDeleteSingleShift(row.riderName);
       if (res.ok) {
-        handleUpdateField(row.normalizedName, {
-          draftShiftType: 'UNASSIGNED',
-          draftTotalHours: 0,
-          isModified: false,
-        });
+        handleUpdateField(
+          row.normalizedName,
+          {
+            draftShiftType: 'UNASSIGNED',
+            draftTotalHours: 0,
+            isModified: false,
+          },
+          { skipAutoSave: true }
+        );
         onRefresh();
       }
     } finally {
@@ -927,10 +1015,15 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
                           className="input-table-field input-date text-center"
                           value={row.draftJoiningDate}
                           onChange={(e) =>
-                            handleUpdateField(row.normalizedName, {
-                              draftJoiningDate: e.target.value,
-                            })
+                            handleUpdateField(
+                              row.normalizedName,
+                              {
+                                draftJoiningDate: e.target.value,
+                              },
+                              { autoSaveDelayMs: 300 }
+                            )
                           }
+                          onBlur={() => flushRowAutoSave(row.normalizedName)}
                           title="Sets Day 1 joining date for onboarding tracker"
                         />
                       </td>
@@ -941,9 +1034,13 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
                           className="input-table-field select-onboarder text-center"
                           value={row.draftOnboardedBy}
                           onChange={(e) =>
-                            handleUpdateField(row.normalizedName, {
-                              draftOnboardedBy: e.target.value,
-                            })
+                            handleUpdateField(
+                              row.normalizedName,
+                              {
+                                draftOnboardedBy: e.target.value,
+                              },
+                              { autoSaveDelayMs: 250 }
+                            )
                           }
                         >
                           <option value="">— Select —</option>
@@ -967,6 +1064,7 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
                               draftReferredBy: e.target.value,
                             })
                           }
+                          onBlur={() => flushRowAutoSave(row.normalizedName)}
                         />
                       </td>
 
@@ -982,6 +1080,7 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
                               draftReferredPhone: e.target.value,
                             })
                           }
+                          onBlur={() => flushRowAutoSave(row.normalizedName)}
                         />
                       </td>
 

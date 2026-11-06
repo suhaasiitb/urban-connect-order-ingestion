@@ -11,6 +11,7 @@ import {
   saveRiderShiftsForStore,
   saveSingleRiderShift,
   deleteSingleRiderShift,
+  cacheSingleRiderShiftLocally,
   type RiderShiftConfig,
 } from '../../src/services/riderShiftService';
 
@@ -430,6 +431,53 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
       expect(splitPreset.slot1Start).toBe(14);
       expect(splitPreset.slot1End).toBe(22);
       expect(formatShiftTimings({ slot1StartHour: 14, slot1EndHour: 22 })).toBe('2 PM – 10 PM');
+    });
+
+    it('preserves referrals across immediate page refresh via cacheSingleRiderShiftLocally and partial batch saves', async () => {
+      const referralStoreId = 'test-referral-store-001';
+
+      // 1. User types referral on mobile -> immediately cached locally before network completes
+      cacheSingleRiderShiftLocally({
+        storeId: referralStoreId,
+        shift: {
+          riderName: 'Sagar Patil',
+          normalizedName: 'sagar patil',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          totalPlannedHours: 9,
+          referredBy: 'Sunil',
+          referredPhone: '9123456789',
+        },
+      });
+
+      // Simulate page refresh on mobile
+      let map = await getRiderShiftsForStore(referralStoreId);
+      expect(map.get('sagar patil')?.referredBy).toBe('Sunil');
+      expect(map.get('sagar patil')?.referredPhone).toBe('9123456789');
+
+      // 2. Partial batch save of a second rider's referral must NOT wipe the first rider
+      await saveRiderShiftsForStore({
+        storeId: referralStoreId,
+        shifts: [
+          {
+            riderName: 'Rohan More',
+            normalizedName: 'rohan more',
+            shiftType: '2nd Shift',
+            slot1StartHour: 15,
+            slot1EndHour: 24,
+            totalPlannedHours: 9,
+            referredBy: 'Atharva',
+            referredPhone: '9988776655',
+          },
+        ],
+      });
+
+      map = await getRiderShiftsForStore(referralStoreId);
+      expect(map.get('sagar patil')?.referredBy).toBe('Sunil');
+      expect(map.get('sagar patil')?.referredPhone).toBe('9123456789');
+      expect(map.get('rohan more')?.referredBy).toBe('Atharva');
+      expect(map.get('rohan more')?.referredPhone).toBe('9988776655');
     });
   });
 });

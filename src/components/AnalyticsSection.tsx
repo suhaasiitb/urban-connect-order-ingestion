@@ -17,6 +17,7 @@ import {
   saveRiderShiftsForStore,
   saveSingleRiderShift,
   deleteSingleRiderShift,
+  subscribeToStoreRiderShifts,
 } from '../services/riderShiftService';
 import {
   type StoreDnrSummary,
@@ -177,6 +178,17 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     void loadDnr();
   }, [loadRoster, loadShifts, loadDnr]);
 
+  // Subscribe to live cross-device and cross-tab updates for store_rider_shifts
+  useEffect(() => {
+    if (!selectedStore?.id) return;
+    const unsubscribe = subscribeToStoreRiderShifts(selectedStore.id, (freshShifts) => {
+      setRiderShiftsMap(freshShifts);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [selectedStore?.id]);
+
   // Load Rider Performance Pivot
   const loadRiderPivot = useCallback(async () => {
     if (!selectedStore) return;
@@ -287,39 +299,49 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     void loadOnboarding();
   };
 
-  // Handle inline saving of single rider shift from pivot table
-  const handleSaveSingleShift = async (shift: RiderShiftConfig) => {
-    if (!selectedStore) return { ok: false, error: 'No store selected' };
-    const norm = shift.normalizedName || normalizeRiderName(shift.riderName);
-    const updatedConfig: RiderShiftConfig = {
-      ...shift,
-      normalizedName: norm,
-    };
-    const updatedMap = new Map(riderShiftsMap);
-    updatedMap.set(norm, updatedConfig);
-    setRiderShiftsMap(updatedMap);
+  // Handle inline saving of single rider shift from pivot table or management table
+  const handleSaveSingleShift = useCallback(
+    async (shift: RiderShiftConfig) => {
+      if (!selectedStore) return { ok: false, error: 'No store selected' };
+      const norm = shift.normalizedName || normalizeRiderName(shift.riderName);
+      const updatedConfig: RiderShiftConfig = {
+        ...shift,
+        normalizedName: norm,
+      };
+      setRiderShiftsMap((prev) => {
+        const next = new Map(prev);
+        next.set(norm, updatedConfig);
+        return next;
+      });
 
-    const res = await saveSingleRiderShift({
-      storeId: selectedStore.id,
-      shift: updatedConfig,
-    });
-    return res;
-  };
+      const res = await saveSingleRiderShift({
+        storeId: selectedStore.id,
+        shift: updatedConfig,
+      });
+      return res;
+    },
+    [selectedStore]
+  );
 
   // Handle inline deleting/unassigning of single rider shift from pivot table
-  const handleDeleteSingleShift = async (riderName: string) => {
-    if (!selectedStore) return { ok: false, error: 'No store selected' };
-    const norm = normalizeRiderName(riderName);
-    const updatedMap = new Map(riderShiftsMap);
-    updatedMap.delete(norm);
-    setRiderShiftsMap(updatedMap);
+  const handleDeleteSingleShift = useCallback(
+    async (riderName: string) => {
+      if (!selectedStore) return { ok: false, error: 'No store selected' };
+      const norm = normalizeRiderName(riderName);
+      setRiderShiftsMap((prev) => {
+        const next = new Map(prev);
+        next.delete(norm);
+        return next;
+      });
 
-    const res = await deleteSingleRiderShift({
-      storeId: selectedStore.id,
-      riderName,
-    });
-    return res;
-  };
+      const res = await deleteSingleRiderShift({
+        storeId: selectedStore.id,
+        riderName,
+      });
+      return res;
+    },
+    [selectedStore]
+  );
 
   return (
     <div className="analytics-container">
@@ -605,6 +627,14 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
           }}
           onSaveSingleShift={handleSaveSingleShift}
           onSaveBatchShifts={async (shifts) => {
+            setRiderShiftsMap((prev) => {
+              const next = new Map(prev);
+              for (const s of shifts) {
+                const norm = s.normalizedName || normalizeRiderName(s.riderName);
+                if (norm) next.set(norm, { ...s, normalizedName: norm });
+              }
+              return next;
+            });
             const res = await saveRiderShiftsForStore({
               storeId: selectedStore.id,
               shifts,
