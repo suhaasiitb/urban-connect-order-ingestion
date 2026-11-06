@@ -4,6 +4,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { PlanningSection } from './components/PlanningSection';
 import { S2POtpSection } from './components/S2POtpSection';
 import { StoreLoginsModal } from './components/StoreLoginsModal';
+import { ThemePreferenceModal } from './components/ThemePreferenceModal';
 import { UploadWorkspace } from './components/UploadWorkspace';
 import { isSupabaseConfigured, supabase } from './config/supabaseClient';
 import type { StoreMaster } from './domain/types';
@@ -13,6 +14,12 @@ import {
   signOutUser,
 } from './services/authService';
 import { fetchActiveStores } from './services/storeService';
+import {
+  type ThemeMode,
+  getStoredTheme,
+  hasUserSavedThemePreference,
+  saveThemePreference,
+} from './services/themeService';
 
 export const App: React.FC = () => {
   const [initializing, setInitializing] = useState(true);
@@ -36,20 +43,20 @@ export const App: React.FC = () => {
   // Mobile drawer open state for mobile browsers
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
 
-  // Basedash Midnight Dark / Light Theme State (Midnight Dark by default)
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  // Basedash Midnight Dark / Light Theme State (Autopicks saved preference, defaults to Midnight)
+  const [theme, setTheme] = useState<ThemeMode>(() => getStoredTheme());
+  const [showThemePrompt, setShowThemePrompt] = useState<boolean>(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    try {
-      window.localStorage.setItem('uc_dashboard_theme', theme);
-    } catch {
-      // ignore storage errors
-    }
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      saveThemePreference(next, currentUser?.user_id);
+      return next;
+    });
   };
 
   // Store logins administration modal (Superadmin only)
@@ -90,6 +97,9 @@ export const App: React.FC = () => {
         setCurrentUser(res.user);
         if (res.user) {
           await loadStoresForUser(res.user);
+          if (!hasUserSavedThemePreference(res.user.user_id)) {
+            setShowThemePrompt(true);
+          }
         }
       } finally {
         if (mounted) {
@@ -124,6 +134,11 @@ export const App: React.FC = () => {
     setAuthError(null);
     setCurrentUser(loggedInUser);
     await loadStoresForUser(loggedInUser);
+
+    // If the user has not selected their theme preference yet, gently prompt them
+    if (!hasUserSavedThemePreference(loggedInUser.user_id)) {
+      setShowThemePrompt(true);
+    }
   };
 
   const handleSignOut = async () => {
@@ -677,6 +692,28 @@ export const App: React.FC = () => {
               stores={stores}
               isOpen={isStoreLoginsModalOpen}
               onClose={() => setIsStoreLoginsModalOpen(false)}
+            />
+          )}
+
+          {/* Gentle Theme Preference Setup Prompt for First-Time Users */}
+          {showThemePrompt && (
+            <ThemePreferenceModal
+              currentTheme={theme}
+              onSelectTheme={(t) => {
+                setTheme(t);
+                document.documentElement.setAttribute('data-theme', t);
+              }}
+              onConfirm={(t) => {
+                setTheme(t);
+                document.documentElement.setAttribute('data-theme', t);
+                saveThemePreference(t, currentUser?.user_id);
+                setShowThemePrompt(false);
+              }}
+              onDismiss={() => {
+                // Keep current selection / midnight and save so user is not re-prompted
+                saveThemePreference(theme, currentUser?.user_id);
+                setShowThemePrompt(false);
+              }}
             />
           )}
         </main>
