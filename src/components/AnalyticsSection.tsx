@@ -48,7 +48,6 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   onSelectStoreId,
   currentUser,
   activeTab: controlledTab,
-  onChangeTab,
 }) => {
   const selectedStore = stores.find((s) => s.id === selectedStoreId) ?? stores[0];
 
@@ -69,12 +68,7 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     overallAvgHours: 0,
     overallAvgOrders: 0,
   });
-  const [internalActiveTab, setInternalActiveTab] = useState<'performance' | 'management' | 'new-riders'>('performance');
-  const activeTab = controlledTab ?? internalActiveTab;
-  const setActiveTab = (tab: 'performance' | 'management' | 'new-riders') => {
-    setInternalActiveTab(tab);
-    onChangeTab?.(tab);
-  };
+  const activeTab = controlledTab ?? 'performance';
   const [tableShiftFilter, setTableShiftFilter] = useState<string>('ALL');
   const [shiftModalFilter, setShiftModalFilter] = useState<string | undefined>(undefined);
   const [shiftModalSearchQuery, setShiftModalSearchQuery] = useState<string | undefined>(undefined);
@@ -345,62 +339,9 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
 
   return (
     <div className="analytics-container">
-      {/* Tab Switcher & Store Selector */}
+      {/* Store Selector */}
       <div className="section-card">
         <div className="flex-row items-center justify-between gap-md flex-wrap">
-          <div className="analytics-tab-pill-group">
-            <button
-              type="button"
-              className={`analytics-tab-pill ${activeTab === 'performance' ? 'active' : ''}`}
-              onClick={() => setActiveTab('performance')}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <line x1="3" y1="9" x2="21" y2="9" />
-                <line x1="9" y1="21" x2="9" y2="9" />
-              </svg>
-              <span>Rider Performance</span>
-            </button>
-
-            <button
-              type="button"
-              className={`analytics-tab-pill ${activeTab === 'management' ? 'active' : ''}`}
-              onClick={() => setActiveTab('management')}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-              <span>Rider Management</span>
-              {activeWithoutShiftCount > 0 && (
-                <span className="tab-live-badge tab-live-badge-warn">
-                  {activeWithoutShiftCount} Missing Shift
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              className={`analytics-tab-pill ${activeTab === 'new-riders' ? 'active' : ''}`}
-              onClick={() => setActiveTab('new-riders')}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="8.5" cy="7" r="4" />
-                <line x1="20" y1="8" x2="20" y2="14" />
-                <line x1="23" y1="11" x2="17" y2="11" />
-              </svg>
-              <span>New Rider Onboarding (First 7 Days)</span>
-              {onboardingSummary && onboardingSummary.activeWeek1Count > 0 && (
-                <span className="tab-live-badge">
-                  {onboardingSummary.activeWeek1Count} Active
-                </span>
-              )}
-            </button>
-          </div>
-
           <div className="store-selector-group">
             <span className="field-label">Store:</span>
             {currentUser?.role === 'store_user' ? (

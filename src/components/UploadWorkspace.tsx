@@ -65,7 +65,6 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   onNavigateToPlanning,
   currentUser,
   uploadType: controlledUploadType,
-  onChangeUploadType,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -73,12 +72,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [isUploading, setIsUploading] = useState(false);
 
   // Upload Mode: 'orders' (Daily Store Orders) vs 'riders' (Active Riders Roster) vs 'dnr' (DNR Reports) vs 'snop' (SNOP Forecast)
-  const [internalUploadType, setInternalUploadType] = useState<'orders' | 'riders' | 'dnr' | 'snop'>('orders');
-  const uploadType = controlledUploadType ?? internalUploadType;
-  const setUploadType = (type: 'orders' | 'riders' | 'dnr' | 'snop') => {
-    setInternalUploadType(type);
-    onChangeUploadType?.(type);
-  };
+  const uploadType = controlledUploadType ?? 'orders';
 
   // 30-Day Ingestion Coverage
   const [coverage, setCoverage] = useState<StoreCoverageSummary | null>(null);
@@ -199,6 +193,10 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     setDnrParseResult(null);
     setSnopParseResult(null);
   };
+
+  useEffect(() => {
+    resetFileInput();
+  }, [uploadType]);
 
   // Handle file selection and parsing for either Orders or Riders
   const processSelectedFile = async (file: File) => {
@@ -681,7 +679,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
 
       {/* 3. File Upload Section */}
       <div className="section-card upload-dropzone-card">
-        {/* Step 2 Header & Upload Mode Switch */}
+        {/* Step 2 Header */}
         <div className="upload-header-row">
           <div className="upload-header">
             <span className="section-step">Step 2</span>
@@ -705,67 +703,6 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                   : `Upload future orders forecast (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}. New upload rewrites existing store forecast.`}
               </p>
             </div>
-          </div>
-
-          {/* Mode Switch: Daily Orders vs Active Riders Roster vs DNR Reports */}
-          <div className="upload-mode-toggle">
-            <button
-              type="button"
-              className={`mode-toggle-btn ${uploadType === 'orders' ? 'mode-toggle-btn-active' : ''}`}
-              onClick={() => {
-                setUploadType('orders');
-                resetFileInput();
-              }}
-              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
-            >
-              <span className="mode-icon">📦</span>
-              <span>Daily Orders</span>
-            </button>
-            <button
-              type="button"
-              className={`mode-toggle-btn ${uploadType === 'riders' ? 'mode-toggle-btn-active' : ''}`}
-              onClick={() => {
-                setUploadType('riders');
-                resetFileInput();
-              }}
-              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
-            >
-              <span className="mode-icon">🚴</span>
-              <span>Active Riders</span>
-              {activeRoster && activeRoster.totalRiders > 0 && (
-                <span className="mode-pill-badge">{activeRoster.totalRiders}</span>
-              )}
-            </button>
-            <button
-              type="button"
-              className={`mode-toggle-btn ${uploadType === 'dnr' ? 'mode-toggle-btn-active' : ''}`}
-              onClick={() => {
-                setUploadType('dnr');
-                resetFileInput();
-              }}
-              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr || isSavingSnop}
-            >
-              <span className="mode-icon">⚠️</span>
-              <span>DNR Reports</span>
-              {dnrSummary && dnrSummary.totalRecords > 0 && (
-                <span className="mode-pill-badge mode-pill-badge-warning">{dnrSummary.totalRecords}</span>
-              )}
-            </button>
-            <button
-              type="button"
-              className={`mode-toggle-btn ${uploadType === 'snop' ? 'mode-toggle-btn-active' : ''}`}
-              onClick={() => {
-                setUploadType('snop');
-                resetFileInput();
-              }}
-              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr || isSavingSnop}
-            >
-              <span className="mode-icon">📈</span>
-              <span>SNOP Forecast</span>
-              {snopMeta && snopMeta.totalRows > 0 && (
-                <span className="mode-pill-badge mode-pill-badge-info">{snopMeta.totalRows}</span>
-              )}
-            </button>
           </div>
         </div>
 
