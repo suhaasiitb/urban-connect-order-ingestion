@@ -9,6 +9,7 @@
 
 import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
+import { getTodayDateString } from './analyticsService';
 
 export interface SlotPerformanceMetrics {
   slotHour: number; // 0 to 23
@@ -721,10 +722,13 @@ export async function fetchS2POtpAnalytics(params: {
   forceRefresh?: boolean;
 }): Promise<FetchS2POtpAnalyticsResult> {
   const { storeId, startDate, endDate, forceRefresh = false } = params;
+  const todayStr = getTodayDateString('Asia/Kolkata');
+  const isTodayQuery = startDate === todayStr || endDate === todayStr;
+  const shouldBypassCache = forceRefresh || isTodayQuery;
   const cacheKey = `${storeId}:${startDate}:${endDate}`;
 
-  // 1. Check in-memory cache first if not forced
-  if (!forceRefresh) {
+  // 1. Check in-memory cache first if not forced and not querying today's live data
+  if (!shouldBypassCache) {
     const cached = analyticsCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       return {
@@ -746,7 +750,9 @@ export async function fetchS2POtpAnalytics(params: {
         }
       );
 
-      if (!rpcErr && Array.isArray(rpcData)) {
+      // Only accept RPC result if successful and has rows (or for non-today completed queries).
+      // If RPC returned 0 rows for today, fall through to client fallback to inspect orders directly.
+      if (!rpcErr && Array.isArray(rpcData) && (rpcData.length > 0 || !isTodayQuery)) {
         // If the database RPC is still the legacy version without completed_orders_count,
         // compute completed_orders_count by querying only non-completed orders (typically <1% of rows)
         // with full pagination so PostgREST's 1,000-row limit never truncates multi-day DSR results.
@@ -797,11 +803,13 @@ export async function fetchS2POtpAnalytics(params: {
 
         const summary = buildSummaryFromRpcRows(rpcData, { storeId, startDate, endDate });
 
-        analyticsCache.set(cacheKey, {
-          timestamp: Date.now(),
-          data: summary,
-          source: 'rpc',
-        });
+        if (!isTodayQuery || summary.days.length > 0) {
+          analyticsCache.set(cacheKey, {
+            timestamp: Date.now(),
+            data: summary,
+            source: 'rpc',
+          });
+        }
         return {
           data: summary,
           source: 'rpc',
@@ -815,11 +823,13 @@ export async function fetchS2POtpAnalytics(params: {
     const orders = await fetchOrdersInParallelChunks(storeId, startDate, endDate);
     const summary = buildSummaryFromRawOrders(orders, { storeId, startDate, endDate });
 
-    analyticsCache.set(cacheKey, {
-      timestamp: Date.now(),
-      data: summary,
-      source: 'client',
-    });
+    if (!isTodayQuery || summary.days.length > 0) {
+      analyticsCache.set(cacheKey, {
+        timestamp: Date.now(),
+        data: summary,
+        source: 'client',
+      });
+    }
 
     return {
       data: summary,

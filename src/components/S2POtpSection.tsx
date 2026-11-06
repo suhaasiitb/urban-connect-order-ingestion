@@ -200,32 +200,51 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     void checkTodayOrders();
   }, [checkTodayOrders]);
 
-  const loadData = useCallback(async (forceRefresh = false) => {
-    if (!selectedStore) return;
-    setLoading(true);
-    setError(null);
+  const loadData = useCallback(
+    async (
+      forceRefresh = false,
+      overrideStart?: string,
+      overrideEnd?: string,
+      overridePreset?: PresetValue | 'custom'
+    ) => {
+      if (!selectedStore) return;
+      const queryStart = overrideStart ?? startDate;
+      const queryEnd = overrideEnd ?? endDate;
+      const activePreset = overridePreset ?? selectedPreset;
 
-    // Bypass in-memory cache if explicitly forced or if querying today's live ongoing data
-    const isTodayQuery = startDate === todayStr || endDate === todayStr;
-    const res = await fetchS2POtpAnalytics({
-      storeId: selectedStore.id,
-      startDate,
-      endDate,
-      forceRefresh: forceRefresh || isTodayQuery,
-    });
+      setLoading(true);
+      setError(null);
+      // Immediately reset summary so prior multi-day data is never displayed with the new date range
+      setSummary(null);
 
-    setLoading(false);
-    if (res.error) {
-      setError(res.error);
-    } else if (res.data) {
-      setSummary(res.data);
-      setLoadSource(res.source ?? null);
-      // Auto-expand the date if there's only 1 date (e.g. Today) or keep previous state
-      if (res.data.days.length === 1 || selectedPreset === 'today') {
-        setExpandedDates(new Set([res.data.days[0].dateStr]));
+      // Bypass in-memory cache if explicitly forced or if querying today's live ongoing data
+      const isTodayQuery =
+        queryStart === todayStr || queryEnd === todayStr || activePreset === 'today';
+      const res = await fetchS2POtpAnalytics({
+        storeId: selectedStore.id,
+        startDate: queryStart,
+        endDate: queryEnd,
+        forceRefresh: forceRefresh || isTodayQuery,
+      });
+
+      setLoading(false);
+      if (res.error) {
+        setError(res.error);
+      } else if (res.data) {
+        setSummary(res.data);
+        setLoadSource(res.source ?? null);
+        // Safely auto-expand the date if there's at least 1 date (e.g. Today)
+        if (
+          res.data.days &&
+          res.data.days.length > 0 &&
+          (res.data.days.length === 1 || activePreset === 'today')
+        ) {
+          setExpandedDates(new Set([res.data.days[0].dateStr]));
+        }
       }
-    }
-  }, [selectedStore, startDate, endDate, todayStr, selectedPreset]);
+    },
+    [selectedStore, startDate, endDate, todayStr, selectedPreset]
+  );
 
   useEffect(() => {
     void loadData(false);
@@ -236,23 +255,32 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     setShowCustomRange(false);
     const shouldIncludeToday = forceIncludeToday !== undefined ? forceIncludeToday : includeToday;
 
+    let newStart = startDate;
+    let newEnd = endDate;
+
     if (preset === 'today') {
-      setStartDate(todayStr);
-      setEndDate(todayStr);
-      setCustomStart(todayStr);
-      setCustomEnd(todayStr);
+      newStart = todayStr;
+      newEnd = todayStr;
     } else if (preset === 1) {
       const range = getDateRangeForDays(1, timeZone, false);
-      setStartDate(range.startDate);
-      setEndDate(range.endDate);
-      setCustomStart(range.startDate);
-      setCustomEnd(range.endDate);
+      newStart = range.startDate;
+      newEnd = range.endDate;
     } else {
       const range = getDateRangeForDays(preset, timeZone, shouldIncludeToday);
-      setStartDate(range.startDate);
-      setEndDate(range.endDate);
-      setCustomStart(range.startDate);
-      setCustomEnd(range.endDate);
+      newStart = range.startDate;
+      newEnd = range.endDate;
+    }
+
+    // Immediately clear previous summary so prior multi-day data is never displayed
+    setSummary(null);
+    setStartDate(newStart);
+    setEndDate(newEnd);
+    setCustomStart(newStart);
+    setCustomEnd(newEnd);
+
+    // If dates didn't change (e.g. clicking 'today' while already on 'today'), force refresh directly
+    if (newStart === startDate && newEnd === endDate) {
+      void loadData(preset === 'today', newStart, newEnd, preset);
     }
   };
 
@@ -260,18 +288,26 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     setIncludeToday(checked);
     if (typeof selectedPreset === 'number' && selectedPreset > 1) {
       const range = getDateRangeForDays(selectedPreset, timeZone, checked);
+      setSummary(null);
       setStartDate(range.startDate);
       setEndDate(range.endDate);
       setCustomStart(range.startDate);
       setCustomEnd(range.endDate);
+      if (range.startDate === startDate && range.endDate === endDate) {
+        void loadData(checked, range.startDate, range.endDate, selectedPreset);
+      }
     }
   };
 
   const handleApplyCustomDate = () => {
     if (customStart && customEnd) {
+      setSummary(null);
       setStartDate(customStart);
       setEndDate(customEnd);
       setSelectedPreset('custom');
+      if (customStart === startDate && customEnd === endDate) {
+        void loadData(false, customStart, customEnd, 'custom');
+      }
     }
   };
 

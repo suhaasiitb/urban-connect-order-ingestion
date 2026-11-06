@@ -449,4 +449,82 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
     expect(day.avgOtpAchievedPct).toBe(99.15);
     expect(day.avgOtpBreachedPct).toBe(0.85);
   });
+
+  it('safely handles empty RPC rows (e.g. today before any orders) without errors or NaN', () => {
+    const summary = buildSummaryFromRpcRows([], {
+      storeId: 'tpe2-store',
+      startDate: '2026-11-06',
+      endDate: '2026-11-06',
+    });
+
+    expect(summary.days).toHaveLength(0);
+    expect(summary.overallTotalOrders).toBe(0);
+    expect(summary.overallDistinctRiders).toBe(0);
+    expect(summary.overallTotalRiderSlotHours).toBe(0);
+    expect(summary.overallAvgDph).toBe(0);
+    expect(summary.overallAvgS2p).toBe(0);
+    expect(summary.overallDsrPct).toBe(0);
+    expect(summary.periodDays).toBe(1);
+  });
+
+  it('correctly aggregates live ongoing orders missing delivery ETA in fallback client path', () => {
+    const liveRawOrders = [
+      {
+        rider_number: 'RIDER_001',
+        slot_hour: 10,
+        order_date: '2026-11-06',
+        s2p_minutes: null,
+        otp_plus_3_performance: null,
+        status: 'LIVE',
+      },
+      {
+        rider_number: 'RIDER_002',
+        slot_hour: 10,
+        order_date: '2026-11-06',
+        s2p_minutes: null,
+        otp_plus_3_performance: null,
+        status: 'LIVE',
+      },
+      {
+        rider_number: 'RIDER_001',
+        slot_hour: 11,
+        order_date: '2026-11-06',
+        s2p_minutes: 0.45,
+        otp_plus_3_performance: 'OTP Achieved',
+        status: 'COMPLETED',
+      },
+    ];
+
+    const summary = buildSummaryFromRawOrders(liveRawOrders, {
+      storeId: 'tpe2-store',
+      startDate: '2026-11-06',
+      endDate: '2026-11-06',
+    });
+
+    expect(summary.days).toHaveLength(1);
+    const day = summary.days[0];
+    expect(day.dateStr).toBe('2026-11-06');
+    expect(day.totalOrders).toBe(3);
+    expect(day.distinctRidersCount).toBe(2);
+    expect(day.completedOrdersCount).toBe(1);
+    // 1 completed of 3 orders = 33.33% DSR
+    expect(day.dsrPct).toBe(33.33);
+
+    // Slot 10 (2 live orders, 2 riders)
+    const slot10 = day.slots.find((s) => s.slotHour === 10);
+    expect(slot10).toBeDefined();
+    expect(slot10?.ordersCount).toBe(2);
+    expect(slot10?.ridersCount).toBe(2);
+    expect(slot10?.dph).toBe(1.0);
+    expect(slot10?.completedOrdersCount).toBe(0);
+    expect(slot10?.dsrPct).toBe(0.0);
+
+    // Slot 11 (1 completed order, 1 rider)
+    const slot11 = day.slots.find((s) => s.slotHour === 11);
+    expect(slot11).toBeDefined();
+    expect(slot11?.ordersCount).toBe(1);
+    expect(slot11?.completedOrdersCount).toBe(1);
+    expect(slot11?.dsrPct).toBe(100.0);
+    expect(slot11?.avgS2p).toBe(0.45);
+  });
 });
