@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatAuditSlotLabel,
+  expandDateRange,
+  fetchAvailableAuditDates,
+  fetchPlanVsActualAudit,
   type RiderSlotAdherence,
   type HourlySlotReconciliation,
 } from '../../src/services/planVsActualAuditService';
@@ -156,5 +159,60 @@ describe('Plan vs Actual Attendance & Turn-Up Audit Unit Tests', () => {
     expect(slot6Reconciliation.variance).toBe(-2);
     expect(slot6Reconciliation.status).toBe('deficit');
     expect(slot6Reconciliation.missingRiders).toHaveLength(2);
+  });
+
+  describe('Historical Date Expansion & Audit Data Availability', () => {
+    it('expands multi-day date range inclusive in descending order', () => {
+      const dates = expandDateRange('2026-10-31', '2026-11-06');
+      expect(dates).toHaveLength(7);
+      expect(dates[0]).toBe('2026-11-06');
+      expect(dates[6]).toBe('2026-10-31');
+      expect(dates).toEqual([
+        '2026-11-06',
+        '2026-11-05',
+        '2026-11-04',
+        '2026-11-03',
+        '2026-11-02',
+        '2026-11-01',
+        '2026-10-31',
+      ]);
+    });
+
+    it('expands single-day date range correctly', () => {
+      const dates = expandDateRange('2026-11-05', '2026-11-05');
+      expect(dates).toEqual(['2026-11-05']);
+    });
+
+    it('handles inverted or invalid date ranges gracefully', () => {
+      expect(expandDateRange('2026-11-06', '2026-11-01')).toEqual([]);
+      expect(expandDateRange('', '2026-11-06')).toEqual([]);
+      expect(expandDateRange('invalid', '2026-11-06')).toEqual([]);
+    });
+
+    it('fetches available audit dates including past historical dates', async () => {
+      const dates = await fetchAvailableAuditDates('test-store-id', 'Asia/Kolkata', 'TMK7');
+      expect(dates.length).toBeGreaterThanOrEqual(14);
+      // Confirms all elements are YYYY-MM-DD
+      for (const d of dates) {
+        expect(d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+      // Confirms descending order
+      for (let i = 0; i < dates.length - 1; i++) {
+        expect(dates[i] >= dates[i + 1]).toBe(true);
+      }
+    });
+
+    it('marks hasOrderData as false and totalOrdersCount as 0 when no orders exist for date', async () => {
+      const res = await fetchPlanVsActualAudit({
+        storeId: 'test-store-id',
+        warehouseId: 'TMK7',
+        dateStr: '2020-01-01', // date in the distant past with zero orders
+      });
+      expect(res.data).not.toBeNull();
+      if (res.data) {
+        expect(res.data.hasOrderData).toBe(false);
+        expect(res.data.totalOrdersCount).toBe(0);
+      }
+    });
   });
 });

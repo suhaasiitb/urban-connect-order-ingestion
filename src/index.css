@@ -1678,6 +1678,17 @@ select {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
+.perf-date-picker-input {
+  padding: 0.42rem 0.75rem;
+  min-width: 135px;
+  cursor: pointer;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] .perf-date-picker-input {
+  color-scheme: dark;
+}
+
 .select-chevron {
   position: absolute;
   right: 0.75rem;

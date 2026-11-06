@@ -32,18 +32,49 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
   // Slot modal inspection state
   const [inspectedSlot, setInspectedSlot] = useState<HourlySlotReconciliation | null>(null);
 
-  // Load available previous dates
+  // Compute store's current local date (today)
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    const dtf = new Intl.DateTimeFormat('en-CA', {
+      timeZone: selectedStore.timezone || 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return dtf.format(now);
+  }, [selectedStore]);
+
+  // Formats a date string for display in selectors and labels
+  const formatDateLabel = useCallback(
+    (dStr: string) => {
+      if (!dStr) return '';
+      const dObj = new Date(`${dStr}T00:00:00`);
+      const formatted = dObj.toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+      return dStr === todayStr ? `${formatted} (Today)` : formatted;
+    },
+    [todayStr]
+  );
+
+  // Load available dates across batches, orders, attendance, and recent history
   useEffect(() => {
     let isCancelled = false;
     async function loadDates() {
       const dates = await fetchAvailableAuditDates(
         selectedStore.id,
-        selectedStore.timezone || 'Asia/Kolkata'
+        selectedStore.timezone || 'Asia/Kolkata',
+        selectedStore.store_code
       );
       if (!isCancelled) {
         setAvailableDates(dates);
         if (dates.length > 0) {
-          setSelectedDate((prev) => (prev && dates.includes(prev) ? prev : dates[0]));
+          setSelectedDate((prev) => (prev && /^\d{4}-\d{2}-\d{2}$/.test(prev) ? prev : dates[0]));
+        } else {
+          setSelectedDate((prev) => prev || todayStr);
         }
       }
     }
@@ -51,7 +82,7 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [selectedStore]);
+  }, [selectedStore, todayStr]);
 
   // Load audit data for selected date
   const loadAuditData = useCallback(async () => {
@@ -77,26 +108,45 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
     void loadAuditData();
   }, [loadAuditData]);
 
-  // Date navigation handlers
-  const currentDateIndex = availableDates.indexOf(selectedDate);
-  const hasPreviousDate = currentDateIndex >= 0 && currentDateIndex < availableDates.length - 1;
-  const hasNextDate = currentDateIndex > 0;
-
-  const handlePrevDate = () => {
-    if (hasPreviousDate) {
-      setSelectedDate(availableDates[currentDateIndex + 1]);
+  // Combined set of all selectable dates in the dropdown (guarantees selectedDate & today are present)
+  const allDropdownDates = useMemo(() => {
+    const set = new Set<string>(availableDates);
+    if (selectedDate && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+      set.add(selectedDate);
     }
+    if (todayStr) {
+      set.add(todayStr);
+    }
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [availableDates, selectedDate, todayStr]);
+
+  // Shifts a date string by a number of calendar days
+  const shiftDateByDays = (dateStr: string, days: number): string => {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    dateObj.setUTCDate(dateObj.getUTCDate() + days);
+    const yyyy = dateObj.getUTCFullYear();
+    const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(dateObj.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  // Date navigation handlers allowing navigation across any historical day
+  const handlePrevDate = () => {
+    const base = selectedDate || todayStr;
+    setSelectedDate(shiftDateByDays(base, -1));
   };
 
   const handleNextDate = () => {
-    if (hasNextDate) {
-      setSelectedDate(availableDates[currentDateIndex - 1]);
-    }
+    const base = selectedDate || todayStr;
+    if (base >= todayStr) return;
+    setSelectedDate(shiftDateByDays(base, 1));
   };
 
   // Filtered riders
   const filteredRiders = useMemo(() => {
-    if (!summary) return [];
+    if (!summary || !summary.hasOrderData) return [];
     return summary.riders.filter((r) => {
       // Category filter
       if (categoryFilter !== 'ALL') {
@@ -150,23 +200,11 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
                   onChange={(e) => setSelectedDate(e.target.value)}
                   disabled={loading}
                 >
-                  {availableDates.map((dStr) => {
-                    const dObj = new Date(`${dStr}T00:00:00`);
-                    const label = dObj.toLocaleDateString('en-GB', {
-                      weekday: 'short',
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    });
-                    return (
-                      <option key={dStr} value={dStr}>
-                        {label}
-                      </option>
-                    );
-                  })}
-                  {!availableDates.includes(selectedDate) && selectedDate && (
-                    <option value={selectedDate}>{selectedDate}</option>
-                  )}
+                  {allDropdownDates.map((dStr) => (
+                    <option key={dStr} value={dStr}>
+                      {formatDateLabel(dStr)}
+                    </option>
+                  ))}
                 </select>
                 <span className="select-chevron" aria-hidden="true">
                   <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -176,13 +214,35 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
               </div>
             </div>
 
+            {/* Calendar Date Picker Input for Any Historical Date */}
+            <div className="perf-filter-group">
+              <label htmlFor="audit-date-picker" className="perf-control-label">
+                Calendar:
+              </label>
+              <input
+                type="date"
+                id="audit-date-picker"
+                className="perf-dropdown-select perf-date-picker-input"
+                value={selectedDate}
+                max={todayStr}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setSelectedDate(e.target.value);
+                  }
+                }}
+                disabled={loading}
+                title="Select any historical calendar date"
+                aria-label="Pick any calendar date"
+              />
+            </div>
+
             {/* Prev / Next Date Navigation */}
             <div className="segmented-control">
               <button
                 type="button"
                 className="segmented-btn"
                 onClick={handlePrevDate}
-                disabled={!hasPreviousDate || loading}
+                disabled={loading}
                 title="Previous Day (Older)"
               >
                 ‹ Prev Day
@@ -191,7 +251,7 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
                 type="button"
                 className="segmented-btn"
                 onClick={handleNextDate}
-                disabled={!hasNextDate || loading}
+                disabled={loading || selectedDate >= todayStr}
                 title="Next Day (Newer)"
               >
                 Next Day ›
@@ -241,8 +301,8 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
                 summary &&
                 exportPlanVsActualAuditToExcel(summary, selectedStore.store_name)
               }
-              disabled={!summary || summary.riders.length === 0}
-              title="Export Plan vs Actual Audit to Excel"
+              disabled={!summary || !summary.hasOrderData || summary.riders.length === 0}
+              title={summary?.hasOrderData ? 'Export Plan vs Actual Audit to Excel' : 'Data not available to export'}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" strokeLinecap="round" strokeLinejoin="round" />
@@ -254,34 +314,36 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
           </div>
         </div>
 
-        {/* Search Input */}
-        <div className="perf-toolbar-tier perf-toolbar-tier-secondary">
-          <div className="perf-search-box perf-search-box-wide">
-            <span className="search-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            </span>
-            <input
-              type="text"
-              placeholder="Search rider name, phone, or shift..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="perf-search-input"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                className="search-clear-btn"
-                onClick={() => setSearchQuery('')}
-                aria-label="Clear search"
-              >
-                ×
-              </button>
-            )}
+        {/* Search Input - shown only when order data exists */}
+        {summary && summary.hasOrderData && (
+          <div className="perf-toolbar-tier perf-toolbar-tier-secondary">
+            <div className="perf-search-box perf-search-box-wide">
+              <span className="search-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                placeholder="Search rider name, phone, or shift..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="perf-search-input"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="search-clear-btn"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {error && (
@@ -290,11 +352,62 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
         </div>
       )}
 
-      {/* 2. Top Summary KPI Cards */}
-      {summary && (
-        <div className="kpi-grid planning-compact-kpi mb-md">
-          {/* Card 1: Turn-Up Rate */}
-          <div className="kpi-card">
+      {/* 2. Loading State */}
+      {loading && (
+        <div className="section-card perf-card text-center p-xl my-md">
+          <div className="perf-loading-state" style={{ justifyContent: 'center' }}>
+            <div className="spinner-sm" aria-hidden="true" />
+            <span>Auditing plan vs actual attendance and orders for {formatDateLabel(selectedDate)}...</span>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Data Not Available State */}
+      {!loading && summary && !summary.hasOrderData && (
+        <div className="section-card perf-card text-center p-xl my-md">
+          <div className="mb-sm" style={{ fontSize: '2.5rem' }} aria-hidden="true">
+            📋
+          </div>
+          <h3 className="section-title editorial-serif-heading text-lg font-bold mb-xs">
+            Data Not Available
+          </h3>
+          <p className="section-subtitle max-w-lg mx-auto mb-md" style={{ color: 'var(--color-slate-400, #94a3b8)' }}>
+            No order delivery data is available for <strong>{summary.formattedDate || formatDateLabel(selectedDate)}</strong> for store <strong>{selectedStore.store_name}</strong>.
+            {summary.hasAttendanceData
+              ? ' Attendance was marked for this date, but delivered order records have not been uploaded yet.'
+              : ' Order data has not been uploaded for this date.'}
+          </p>
+
+          <div className="flex-row items-center justify-center gap-sm flex-wrap mt-md">
+            {availableDates.length > 0 && availableDates[0] !== selectedDate && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setSelectedDate(availableDates[0])}
+              >
+                Go to Latest Available ({formatDateLabel(availableDates[0])})
+              </button>
+            )}
+            {selectedDate !== todayStr && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setSelectedDate(todayStr)}
+              >
+                Go to Today ({formatDateLabel(todayStr)})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4. Full Plan vs Actual Audit View */}
+      {!loading && summary && summary.hasOrderData && (
+        <>
+          {/* Top Summary KPI Cards */}
+          <div className="kpi-grid planning-compact-kpi mb-md">
+            {/* Card 1: Turn-Up Rate */}
+            <div className="kpi-card">
             <div className="kpi-header-row">
               <span className="kpi-label">Planned vs Actual Turn-Up</span>
               <span className={`badge ${summary.turnUpRatePct >= 90 ? 'badge-success' : summary.turnUpRatePct >= 75 ? 'badge-warning' : 'badge-danger'}`} style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
@@ -395,64 +508,62 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
             <span className="kpi-sub">Marked Absent/Unmarked but worked</span>
           </div>
         </div>
-      )}
 
-      {/* 3. Hourly Slot Turn-Up Reconciliation Bar (Slots 6 AM to 11 PM) */}
-      {summary && summary.hourlySlots.length > 0 && (
-        <div className="section-card perf-card mb-md p-md">
-          <div className="flex-row items-center justify-between gap-md mb-sm flex-wrap">
-            <div>
-              <h4 className="font-bold text-sm text-slate-800 m-0">
-                Hourly Slot Turn-Up Reconciliation ({summary.formattedDate})
-              </h4>
-              <p className="text-xs text-muted m-0">
-                Click any slot box to view scheduled riders vs who showed up and who was missing.
-              </p>
+        {/* 3. Hourly Slot Turn-Up Reconciliation Bar (Slots 6 AM to 11 PM) */}
+        {summary.hourlySlots.length > 0 && (
+          <div className="section-card perf-card mb-md p-md">
+            <div className="flex-row items-center justify-between gap-md mb-sm flex-wrap">
+              <div>
+                <h4 className="font-bold text-sm text-slate-800 m-0">
+                  Hourly Slot Turn-Up Reconciliation ({summary.formattedDate})
+                </h4>
+                <p className="text-xs text-muted m-0">
+                  Click any slot box to view scheduled riders vs who showed up and who was missing.
+                </p>
+              </div>
+              <div className="flex-row items-center gap-sm text-xs">
+                <span className="flex-row items-center gap-xs">
+                  <span className="legend-dot dot-deficit" /> Deficit (Late/No-Show)
+                </span>
+                <span className="flex-row items-center gap-xs">
+                  <span className="legend-dot dot-balanced" /> Balanced
+                </span>
+                <span className="flex-row items-center gap-xs">
+                  <span className="legend-dot dot-surplus" /> Surplus
+                </span>
+              </div>
             </div>
-            <div className="flex-row items-center gap-sm text-xs">
-              <span className="flex-row items-center gap-xs">
-                <span className="legend-dot dot-deficit" /> Deficit (Late/No-Show)
-              </span>
-              <span className="flex-row items-center gap-xs">
-                <span className="legend-dot dot-balanced" /> Balanced
-              </span>
-              <span className="flex-row items-center gap-xs">
-                <span className="legend-dot dot-surplus" /> Surplus
-              </span>
+
+            <div className="hourly-reconciliation-strip">
+              {summary.hourlySlots.map((s) => {
+                const isDeficit = s.variance < 0;
+                const isSurplus = s.variance > 0;
+                return (
+                  <button
+                    key={s.hour}
+                    type="button"
+                    className={`hourly-slot-box cursor-pointer ${
+                      isDeficit ? 'box-deficit' : isSurplus ? 'box-surplus' : 'box-balanced'
+                    }`}
+                    onClick={() => setInspectedSlot(s)}
+                    title={`Slot ${s.hour} (${s.slotLabel}): Planned ${s.plannedTurnUp} | Actual ${s.actualTurnUp} (${s.variance >= 0 ? `+${s.variance}` : s.variance}). Click to inspect riders.`}
+                  >
+                    <span className="slot-box-hour">{s.hour}</span>
+                    <span className="slot-box-counts">
+                      <strong>{s.actualTurnUp}</strong>
+                      <small className="muted">/{s.plannedTurnUp}</small>
+                    </span>
+                    <span className={`slot-box-tag ${isDeficit ? 'tag-deficit' : isSurplus ? 'tag-surplus' : 'tag-balanced'}`}>
+                      {s.variance > 0 ? `+${s.variance}` : s.variance < 0 ? s.variance : '✓'}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
+        )}
 
-          <div className="hourly-reconciliation-strip">
-            {summary.hourlySlots.map((s) => {
-              const isDeficit = s.variance < 0;
-              const isSurplus = s.variance > 0;
-              return (
-                <button
-                  key={s.hour}
-                  type="button"
-                  className={`hourly-slot-box cursor-pointer ${
-                    isDeficit ? 'box-deficit' : isSurplus ? 'box-surplus' : 'box-balanced'
-                  }`}
-                  onClick={() => setInspectedSlot(s)}
-                  title={`Slot ${s.hour} (${s.slotLabel}): Planned ${s.plannedTurnUp} | Actual ${s.actualTurnUp} (${s.variance >= 0 ? `+${s.variance}` : s.variance}). Click to inspect riders.`}
-                >
-                  <span className="slot-box-hour">{s.hour}</span>
-                  <span className="slot-box-counts">
-                    <strong>{s.actualTurnUp}</strong>
-                    <small className="muted">/{s.plannedTurnUp}</small>
-                  </span>
-                  <span className={`slot-box-tag ${isDeficit ? 'tag-deficit' : isSurplus ? 'tag-surplus' : 'tag-balanced'}`}>
-                    {s.variance > 0 ? `+${s.variance}` : s.variance < 0 ? s.variance : '✓'}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 4. Filter Pills */}
-      {summary && (
+        {/* 4. Filter Pills */}
         <div className="perf-filter-group mb-sm flex-row items-center gap-xs flex-wrap">
           <span className="perf-control-label">Filter Verdict:</span>
           <div className="perf-highlight-pills flex-wrap">
@@ -500,7 +611,6 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
             </button>
           </div>
         </div>
-      )}
 
       {/* 5. Detailed Rider Shift Adherence & Audit Table */}
       <div className="section-card perf-card">
@@ -730,6 +840,8 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* 6. Slot Inspection Modal */}
       {inspectedSlot && (
