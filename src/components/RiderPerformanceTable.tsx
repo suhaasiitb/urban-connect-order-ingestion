@@ -88,9 +88,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const [avgMode, setAvgMode] = useState<'period' | 'active'>('period');
   const [dateOrder, setDateOrder] = useState<'desc' | 'asc'>('desc');
 
-  const presets = [1, 3, 7, 10, 14, 20, 30];
+  const presets = [0, 1, 3, 7, 10, 14, 20, 30];
 
-  const periodDays = data.periodDays || data.dateColumns.length || selectedDays;
+  const periodDays = data.periodDays || data.dateColumns.length || Math.max(1, selectedDays);
   const periodLabel = avgMode === 'period' ? `${periodDays}d Avg` : 'Active Avg';
 
   const displayedDateColumns = useMemo(() => {
@@ -402,6 +402,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   onChange={(e) => {
                     const val = e.target.value;
                     if (val === 'custom') {
+                      setCustomStart(startDate);
+                      setCustomEnd(endDate);
                       setShowCustomRange(true);
                     } else {
                       setShowCustomRange(false);
@@ -412,7 +414,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 >
                   {presets.map((days) => (
                     <option key={days} value={days}>
-                      {days === 1 ? '1 Day (Yesterday)' : `${days} Days`}
+                      {days === 0
+                        ? 'Today (Ongoing)'
+                        : days === 1
+                        ? '1 Day (Yesterday)'
+                        : `${days} Days`}
                     </option>
                   ))}
                   <option value="custom">Custom Range...</option>

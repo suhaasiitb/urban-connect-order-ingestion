@@ -51,9 +51,9 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
 }) => {
   const selectedStore = stores.find((s) => s.id === selectedStoreId) ?? stores[0];
 
-  // Presets: 7, 10, 14, 20, 30 days
+  // Presets: 0 (Today), 1 (Yesterday), 3, 7, 10, 14, 20, 30 days
   const [selectedDays, setSelectedDays] = useState<number>(7);
-  const initialRange = getDateRangeForDays(7, selectedStore?.timezone || 'Asia/Kolkata');
+  const initialRange = getDateRangeForDays(7, selectedStore?.timezone || 'Asia/Kolkata', true);
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
 
@@ -209,7 +209,9 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
 
   const handleSelectDaysPreset = (days: number) => {
     setSelectedDays(days);
-    const range = getDateRangeForDays(days, selectedStore?.timezone || 'Asia/Kolkata');
+    // days === 0 is Today (Ongoing); days === 1 is 1 Day (Yesterday); multi-day presets include today's date & data
+    const includeToday = days !== 1;
+    const range = getDateRangeForDays(days, selectedStore?.timezone || 'Asia/Kolkata', includeToday);
     setStartDate(range.startDate);
     setEndDate(range.endDate);
   };
@@ -396,7 +398,9 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                 {loadingPivot ? '...' : pivotResult.totalRiders}
               </strong>
               <span className="kpi-sub">
-                In selected period ({selectedDays} {selectedDays === 1 ? 'day' : 'days'})
+                {selectedDays === 0
+                  ? 'Today (Ongoing)'
+                  : `In selected period (${selectedDays} ${selectedDays === 1 ? 'day' : 'days'})`}
               </span>
             </div>
 
