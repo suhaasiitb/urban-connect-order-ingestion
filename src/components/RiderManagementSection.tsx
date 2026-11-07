@@ -156,15 +156,20 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
           continue;
         }
 
-        const shiftType: ShiftType | 'UNASSIGNED' = existingShift
-          ? existingShift.shiftType || classifyShiftType(existingShift)
-          : 'UNASSIGNED';
+        const hasAssignedShift =
+          Boolean(existingShift) &&
+          existingShift?.shiftType !== 'UNASSIGNED' &&
+          (existingShift?.totalPlannedHours ?? 0) > 0;
+        const shiftType: ShiftType | 'UNASSIGNED' =
+          hasAssignedShift && existingShift
+            ? existingShift.shiftType || classifyShiftType(existingShift)
+            : 'UNASSIGNED';
 
         const s1Start = existingShift?.slot1StartHour ?? 6;
         const s1End = existingShift?.slot1EndHour ?? 15;
         const s2Start = existingShift?.slot2StartHour ?? null;
         const s2End = existingShift?.slot2EndHour ?? null;
-        const plannedHrs = existingShift
+        const plannedHrs = hasAssignedShift
           ? calculatePlannedHours({
               slot1StartHour: s1Start,
               slot1EndHour: s1End,
@@ -199,16 +204,16 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
 
   // Helper to convert a draft row into a RiderShiftConfig
   const buildConfigFromRow = useCallback((row: RiderManagementRow): RiderShiftConfig => {
-    const shiftType = row.draftShiftType === 'UNASSIGNED' ? 'Morning Shift' : row.draftShiftType;
+    const isUnassigned = row.draftShiftType === 'UNASSIGNED' || row.draftTotalHours <= 0;
     return {
       riderName: row.riderName,
       normalizedName: row.normalizedName,
-      shiftType: shiftType as ShiftType,
+      shiftType: isUnassigned ? 'UNASSIGNED' : row.draftShiftType,
       slot1StartHour: row.draftSlot1Start,
       slot1EndHour: row.draftSlot1End,
       slot2StartHour: row.draftSlot2Start,
       slot2EndHour: row.draftSlot2End,
-      totalPlannedHours: row.draftTotalHours > 0 ? row.draftTotalHours : 9,
+      totalPlannedHours: isUnassigned ? 0 : row.draftTotalHours,
       joiningDate: row.draftJoiningDate ? row.draftJoiningDate.trim() : null,
       onboardedBy: row.draftOnboardedBy ? row.draftOnboardedBy.trim() : null,
       referredBy: row.draftReferredBy ? row.draftReferredBy.trim() : null,
@@ -423,20 +428,7 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
     setAlertBanner(null);
 
     try {
-      const configs: RiderShiftConfig[] = modifiedRows.map((row) => ({
-        riderName: row.riderName,
-        normalizedName: row.normalizedName,
-        shiftType: (row.draftShiftType === 'UNASSIGNED' ? 'Morning Shift' : row.draftShiftType) as ShiftType,
-        slot1StartHour: row.draftSlot1Start,
-        slot1EndHour: row.draftSlot1End,
-        slot2StartHour: row.draftSlot2Start,
-        slot2EndHour: row.draftSlot2End,
-        totalPlannedHours: row.draftTotalHours > 0 ? row.draftTotalHours : 9,
-        joiningDate: row.draftJoiningDate ? row.draftJoiningDate.trim() : null,
-        onboardedBy: row.draftOnboardedBy ? row.draftOnboardedBy.trim() : null,
-        referredBy: row.draftReferredBy ? row.draftReferredBy.trim() : null,
-        referredPhone: row.draftReferredPhone ? row.draftReferredPhone.trim() : null,
-      }));
+      const configs: RiderShiftConfig[] = modifiedRows.map((row) => buildConfigFromRow(row));
 
       if (onSaveBatchShifts) {
         const res = await onSaveBatchShifts(configs);
@@ -573,14 +565,14 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
   const missingShiftsCount = useMemo(
     () =>
       Array.from(draftRows.values()).filter(
-        (r) => r.isActive && (!r.shiftConfig || r.draftShiftType === 'UNASSIGNED')
+        (r) => r.isActive && (!r.shiftConfig || r.draftShiftType === 'UNASSIGNED' || r.draftTotalHours <= 0)
       ).length,
     [draftRows]
   );
   const configuredShiftsCount = useMemo(
     () =>
       Array.from(draftRows.values()).filter(
-        (r) => r.shiftConfig && r.draftShiftType !== 'UNASSIGNED'
+        (r) => r.shiftConfig && r.draftShiftType !== 'UNASSIGNED' && r.draftTotalHours > 0
       ).length,
     [draftRows]
   );

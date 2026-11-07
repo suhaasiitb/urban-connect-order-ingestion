@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
 import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService';
 
-export type ShiftType = 'Morning Shift' | '2nd Shift' | 'Split Shift' | 'Custom';
+export type ShiftType = 'Morning Shift' | '2nd Shift' | 'Split Shift' | 'Custom' | 'UNASSIGNED';
 
 export const ONBOARDED_BY_OPTIONS = [
   'Sunil',
@@ -36,7 +36,7 @@ export interface RiderShiftConfig {
   updatedAt?: string | null;
 }
 
-export const SHIFT_PRESETS: Record<Exclude<ShiftType, 'Custom'>, {
+export const SHIFT_PRESETS: Record<Exclude<ShiftType, 'Custom' | 'UNASSIGNED'>, {
   label: string;
   slot1Start: number;
   slot1End: number;
@@ -357,6 +357,10 @@ function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F)
 let remoteHasOnboardedByColumn = true;
 let remoteHasReferralColumns = true;
 
+// Cutoff timestamp for TPE2 shift reset migration (2026-11-07T13:20:00Z)
+const REMOTE_SHIFTS_RESET_CUTOFF_MS = Date.parse('2026-11-07T13:20:00Z');
+const TPE2_ATTENDANCE_RESET_FLAG = 'uc_tpe2_attendance_reset_20261107_v1';
+
 /**
  * Loads rider shifts for a store from Supabase and merges with localStorage.
  */
@@ -364,6 +368,28 @@ export async function getRiderShiftsForStore(
   storeId: string
 ): Promise<Map<string, RiderShiftConfig>> {
   const shiftMap = new Map<string, RiderShiftConfig>();
+  let remoteQuerySucceeded = false;
+
+  // One-time cleanup of any legacy TPE2 attendance shift cache in localStorage
+  try {
+    const storage =
+      typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;
+    if (storage && !storage.getItem(TPE2_ATTENDANCE_RESET_FLAG)) {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < storage.length; i++) {
+        const k = storage.key(i);
+        if (k && k.startsWith(`${LOCAL_STORAGE_ATTENDANCE_PREFIX}TPE2_`)) {
+          keysToRemove.push(k);
+        }
+      }
+      for (const k of keysToRemove) {
+        storage.removeItem(k);
+      }
+      storage.setItem(TPE2_ATTENDANCE_RESET_FLAG, '1');
+    }
+  } catch {
+    // Ignore storage errors
+  }
 
   // 1. Try Supabase
   try {
@@ -443,6 +469,10 @@ export async function getRiderShiftsForStore(
 
     const { data, error } = res;
 
+    if (!error && Array.isArray(data)) {
+      remoteQuerySucceeded = true;
+    }
+
     if (!error && Array.isArray(data) && data.length > 0) {
       for (const row of data as (Record<string, unknown> & {
         rider_name: string;
@@ -471,6 +501,10 @@ export async function getRiderShiftsForStore(
           continue;
         }
 
+        const isRowUnassigned =
+          String(row.shift_type || '').toUpperCase() === 'UNASSIGNED' ||
+          (row.total_planned_hours != null && Number(row.total_planned_hours) <= 0);
+
         const s1Start = Number(row.slot1_start_hour ?? 6);
         const s1End = Number(row.slot1_end_hour ?? 14);
         const s2Start = row.slot2_start_hour != null ? Number(row.slot2_start_hour) : null;
@@ -481,16 +515,20 @@ export async function getRiderShiftsForStore(
           slot2StartHour: s2Start,
           slot2EndHour: s2End,
         });
-        const totalPlanned = row.total_planned_hours != null && Number(row.total_planned_hours) > 0
+        const totalPlanned = isRowUnassigned
+          ? 0
+          : row.total_planned_hours != null && Number(row.total_planned_hours) > 0
           ? Math.max(Number(row.total_planned_hours), calcHours)
           : calcHours;
 
-        const effectiveShift = classifyShiftType({
-          slot1StartHour: s1Start,
-          slot1EndHour: s1End,
-          slot2StartHour: s2Start,
-          slot2EndHour: s2End,
-        });
+        const effectiveShift: ShiftType = isRowUnassigned
+          ? 'UNASSIGNED'
+          : classifyShiftType({
+              slot1StartHour: s1Start,
+              slot1EndHour: s1End,
+              slot2StartHour: s2Start,
+              slot2EndHour: s2End,
+            });
 
         shiftMap.set(norm, {
           riderName: cleanName || row.rider_name,
@@ -530,14 +568,29 @@ export async function getRiderShiftsForStore(
           const cleanName = cleanRiderDisplayName(item.riderName);
           const norm = normalizeRiderName(cleanName || item.normalizedName);
           if (!norm) continue;
+          const isItemUnassigned =
+            item.shiftType === 'UNASSIGNED' ||
+            (item.totalPlannedHours != null && Number(item.totalPlannedHours) <= 0);
           const calcHours = calculatePlannedHours(item);
-          const totalPlanned = item.totalPlannedHours != null && Number(item.totalPlannedHours) > 0
+          const totalPlanned = isItemUnassigned
+            ? 0
+            : item.totalPlannedHours != null && Number(item.totalPlannedHours) > 0
             ? Math.max(Number(item.totalPlannedHours), calcHours)
             : calcHours;
-          const effectiveShift = classifyShiftType(item);
+          const effectiveShift: ShiftType = isItemUnassigned ? 'UNASSIGNED' : classifyShiftType(item);
           const existing = shiftMap.get(norm);
+          const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
 
           if (!existing) {
+            // If Supabase query succeeded and returned no row for this rider, only keep the local
+            // entry if it is a very recent edit after the reset cutoff (prevents resurrecting deleted shifts)
+            const isRecentPendingLocalEdit =
+              !remoteQuerySucceeded ||
+              (localUpdated > REMOTE_SHIFTS_RESET_CUTOFF_MS && Date.now() - localUpdated < 60_000);
+            if (!isRecentPendingLocalEdit) {
+              continue;
+            }
+
             const mergedItem: RiderShiftConfig = {
               ...item,
               riderName: cleanName || item.riderName,
@@ -551,7 +604,6 @@ export async function getRiderShiftsForStore(
             shiftMap.set(norm, mergedItem);
             unsyncedToRemote.push(mergedItem);
           } else {
-            const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
             const remoteUpdated = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
             if (localUpdated > 0 && localUpdated >= remoteUpdated) {
               const mergedItem: RiderShiftConfig = {
@@ -616,12 +668,16 @@ export async function getRiderShiftsForStore(
       }
     }
 
-    // Write merged map back to localStorage so local cache reflects latest remote + local state
-    if (shiftMap.size > 0 && storage) {
-      storage.setItem(
-        `${LOCAL_STORAGE_PREFIX}${storeId}`,
-        JSON.stringify(Array.from(shiftMap.values()))
-      );
+    // Write merged map back to localStorage (or clear it if remote is empty)
+    if (storage) {
+      if (shiftMap.size > 0) {
+        storage.setItem(
+          `${LOCAL_STORAGE_PREFIX}${storeId}`,
+          JSON.stringify(Array.from(shiftMap.values()))
+        );
+      } else if (remoteQuerySucceeded) {
+        storage.removeItem(`${LOCAL_STORAGE_PREFIX}${storeId}`);
+      }
     }
   } catch (err) {
     console.warn('Could not read rider shifts from localStorage:', err);
@@ -676,11 +732,13 @@ export function cacheSingleRiderShiftLocally(params: {
   const { storeId, shift } = params;
   const nowIso = new Date().toISOString();
   const norm = shift.normalizedName || normalizeRiderName(shift.riderName);
+  const isUnassigned =
+    shift.shiftType === 'UNASSIGNED' || (shift.totalPlannedHours != null && shift.totalPlannedHours <= 0);
   const normalizedShift: RiderShiftConfig = {
     ...shift,
     normalizedName: norm,
-    shiftType: classifyShiftType(shift),
-    totalPlannedHours: calculatePlannedHours(shift),
+    shiftType: isUnassigned ? 'UNASSIGNED' : classifyShiftType(shift),
+    totalPlannedHours: isUnassigned ? 0 : calculatePlannedHours(shift),
     updatedAt: nowIso,
   };
 
@@ -756,7 +814,9 @@ export async function saveRiderShiftsForStore(params: {
   // Normalize all shifts with classifyShiftType and stamp updatedAt on modified shifts
   const normalizedShifts = shifts.map((s) => {
     const norm = s.normalizedName || normalizeRiderName(s.riderName);
-    const effectiveShiftType = classifyShiftType(s);
+    const isUnassigned =
+      s.shiftType === 'UNASSIGNED' || (s.totalPlannedHours != null && s.totalPlannedHours <= 0);
+    const effectiveShiftType: ShiftType = isUnassigned ? 'UNASSIGNED' : classifyShiftType(s);
     const prev = prevMap.get(norm);
     const isModified =
       !prev ||
@@ -774,6 +834,7 @@ export async function saveRiderShiftsForStore(params: {
       ...s,
       normalizedName: norm,
       shiftType: effectiveShiftType,
+      totalPlannedHours: isUnassigned ? 0 : s.totalPlannedHours,
       updatedAt: isModified ? nowIso : prev?.updatedAt || s.updatedAt || null,
     };
 
@@ -921,11 +982,13 @@ export async function saveSingleRiderShift(params: {
   const { storeId, shift } = params;
   const nowIso = new Date().toISOString();
   const norm = shift.normalizedName || normalizeRiderName(shift.riderName);
+  const isUnassigned =
+    shift.shiftType === 'UNASSIGNED' || (shift.totalPlannedHours != null && shift.totalPlannedHours <= 0);
   const normalizedShift: RiderShiftConfig = {
     ...shift,
     normalizedName: norm,
-    shiftType: classifyShiftType(shift),
-    totalPlannedHours: calculatePlannedHours(shift),
+    shiftType: isUnassigned ? 'UNASSIGNED' : classifyShiftType(shift),
+    totalPlannedHours: isUnassigned ? 0 : calculatePlannedHours(shift),
     updatedAt: nowIso,
   };
 
@@ -1129,7 +1192,8 @@ export function getActiveRidersWithoutShift(
     const rawName = typeof item === 'string' ? item : item.name;
     if (!rawName) continue;
     const norm = normalizeRiderName(rawName);
-    if (!shiftsMap || !shiftsMap.has(norm)) {
+    const shift = shiftsMap?.get(norm);
+    if (!shift || shift.shiftType === 'UNASSIGNED' || (shift.totalPlannedHours ?? 0) <= 0) {
       missing.push(rawName);
     }
   }

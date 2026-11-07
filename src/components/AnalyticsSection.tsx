@@ -99,7 +99,8 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     if (!activeRoster?.activeNamesSet) return 0;
     let count = 0;
     for (const norm of activeRoster.activeNamesSet) {
-      if (!riderShiftsMap?.has(norm)) {
+      const shift = riderShiftsMap?.get(norm);
+      if (!shift || shift.shiftType === 'UNASSIGNED' || (shift.totalPlannedHours ?? 0) <= 0) {
         count++;
       }
     }

@@ -1111,7 +1111,13 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 const isRiderActive = activeNamesSet
                   ? activeNamesSet.has(normName)
                   : false;
-                const riderShift = riderShiftsMap?.get(normName);
+                const rawRiderShift = riderShiftsMap?.get(normName);
+                const riderShift =
+                  rawRiderShift &&
+                  rawRiderShift.shiftType !== 'UNASSIGNED' &&
+                  (rawRiderShift.totalPlannedHours ?? 0) > 0
+                    ? rawRiderShift
+                    : undefined;
                 const effectiveShiftType = riderShift ? classifyShiftType(riderShift) : undefined;
                 const shiftPlannedHours = riderShift
                   ? Math.max(riderShift.totalPlannedHours ?? 0, calculatePlannedHours(riderShift))
@@ -1142,12 +1148,12 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             <strong className="rider-name-text" title={row.riderName}>
                               {row.riderName}
                             </strong>
-                            {riderShift?.onboardedBy && (
+                            {rawRiderShift?.onboardedBy && (
                               <span
                                 className="rider-onboarded-tag"
-                                title={`Onboarded by ${riderShift.onboardedBy}`}
+                                title={`Onboarded by ${rawRiderShift.onboardedBy}`}
                               >
-                                👤 {riderShift.onboardedBy}
+                                👤 {rawRiderShift.onboardedBy}
                               </span>
                             )}
                             {/* Visual Cue for DNR tracking both Non_abusive and Potential_abuse with counts */}
