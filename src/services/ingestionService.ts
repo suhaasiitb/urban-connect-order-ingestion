@@ -236,7 +236,7 @@ export async function submitConfirmedOrderBatch(params: {
     derived_fields: r.derived_fields,
   }));
 
-  const INGEST_CHUNK_SIZE = 250;
+  const INGEST_CHUNK_SIZE = 500;
   const MIN_RETRY_CHUNK_SIZE = 25;
 
   interface ChunkAccumulator {
@@ -269,7 +269,6 @@ export async function submitConfirmedOrderBatch(params: {
 
   const runRpcSlice = async (
     slice: typeof rpcRecords,
-    checksum: string,
     forceFlag: boolean,
     partMeta: Record<string, unknown>
   ): Promise<{ ok: true } | { ok: false; error_message: string }> => {
@@ -277,7 +276,7 @@ export async function submitConfirmedOrderBatch(params: {
       p_store_id: storeId,
       p_uploaded_by: userId,
       p_original_filename: validation.filename,
-      p_file_checksum_sha256: checksum,
+      p_file_checksum_sha256: validation.file_checksum_sha256,
       p_records: slice,
       p_force_reprocess: forceFlag,
       p_processing_metadata: {
@@ -297,13 +296,13 @@ export async function submitConfirmedOrderBatch(params: {
         const left = slice.slice(0, mid);
         const right = slice.slice(mid);
 
-        const leftRes = await runRpcSlice(left, `${checksum}:sub1`, true, {
+        const leftRes = await runRpcSlice(left, true, {
           ...partMeta,
           sub_split: '1/2',
         });
         if (!leftRes.ok) return leftRes;
 
-        return runRpcSlice(right, checksum, true, {
+        return runRpcSlice(right, true, {
           ...partMeta,
           sub_split: '2/2',
         });
@@ -347,14 +346,9 @@ export async function submitConfirmedOrderBatch(params: {
     for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
       const start = chunkIdx * INGEST_CHUNK_SIZE;
       const slice = rpcRecords.slice(start, start + INGEST_CHUNK_SIZE);
-      const isLastChunk = chunkIdx === totalChunks - 1;
-      const chunkChecksum =
-        totalChunks === 1 || isLastChunk
-          ? validation.file_checksum_sha256
-          : `${validation.file_checksum_sha256}:part:${chunkIdx + 1}of${totalChunks}`;
-      const chunkForce = totalChunks === 1 ? forceReprocess : true;
+      const chunkForce = chunkIdx === 0 ? forceReprocess : true;
 
-      const sliceRes = await runRpcSlice(slice, chunkChecksum, chunkForce, {
+      const sliceRes = await runRpcSlice(slice, chunkForce, {
         chunk_index: chunkIdx + 1,
         total_chunks: totalChunks,
         total_file_rows: rpcRecords.length,
