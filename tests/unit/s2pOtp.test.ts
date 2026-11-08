@@ -527,4 +527,78 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
     expect(slot11?.dsrPct).toBe(100.0);
     expect(slot11?.avgS2p).toBe(0.45);
   });
+
+  it('strictly filters out any prior-day rows when querying Today (Ongoing) single-day window', () => {
+    const mixedRpcRows = [
+      {
+        order_date: '2026-11-08',
+        slot_hour: 9,
+        orders_count: 40,
+        riders_count: 15,
+        s2p_sum: 20,
+        s2p_count: 40,
+        otp_achieved_count: 38,
+        otp_breached_count: 2,
+        completed_orders_count: 40,
+        day_distinct_riders: 18,
+        period_distinct_riders: 212,
+      },
+      {
+        order_date: '2026-11-07',
+        slot_hour: 9,
+        orders_count: 1864,
+        riders_count: 109,
+        s2p_sum: 13830,
+        s2p_count: 1864,
+        otp_achieved_count: 1644,
+        otp_breached_count: 220,
+        completed_orders_count: 1840,
+        day_distinct_riders: 109,
+        period_distinct_riders: 212,
+      },
+    ];
+
+    const rpcSummary = buildSummaryFromRpcRows(mixedRpcRows, {
+      storeId: 'tpe2-store',
+      startDate: '2026-11-08',
+      endDate: '2026-11-08',
+    });
+
+    expect(rpcSummary.periodDays).toBe(1);
+    expect(rpcSummary.days).toHaveLength(1);
+    expect(rpcSummary.days[0].dateStr).toBe('2026-11-08');
+    expect(rpcSummary.overallTotalOrders).toBe(40);
+    expect(rpcSummary.overallDistinctRiders).toBe(18);
+
+    const mixedRawOrders = [
+      {
+        rider_number: 'R1',
+        slot_hour: 9,
+        order_date: '2026-11-08',
+        s2p_minutes: 0.5,
+        otp_plus_3_performance: 'OTP Achieved',
+        status: 'Completed',
+      },
+      {
+        rider_number: 'R2',
+        slot_hour: 9,
+        order_date: '2026-11-07',
+        s2p_minutes: 7.42,
+        otp_plus_3_performance: 'OTP Breached',
+        status: 'Completed',
+      },
+    ];
+
+    const rawSummary = buildSummaryFromRawOrders(mixedRawOrders, {
+      storeId: 'tpe2-store',
+      startDate: '2026-11-08',
+      endDate: '2026-11-08',
+    });
+
+    expect(rawSummary.periodDays).toBe(1);
+    expect(rawSummary.days).toHaveLength(1);
+    expect(rawSummary.days[0].dateStr).toBe('2026-11-08');
+    expect(rawSummary.overallTotalOrders).toBe(1);
+    expect(rawSummary.overallDistinctRiders).toBe(1);
+  });
 });

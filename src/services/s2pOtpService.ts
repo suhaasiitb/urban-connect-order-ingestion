@@ -178,8 +178,11 @@ export function buildSummaryFromRpcRows(
   const { storeId, startDate, endDate } = params;
 
   const dateMap = new Map<string, RpcSlotMetricRow[]>();
+  const filteredRows: RpcSlotMetricRow[] = [];
   for (const r of rows) {
     const d = String(r.order_date).slice(0, 10);
+    if (!d || d < startDate || d > endDate) continue;
+    filteredRows.push(r);
     let list = dateMap.get(d);
     if (!list) {
       list = [];
@@ -330,7 +333,10 @@ export function buildSummaryFromRpcRows(
     Math.round((Date.UTC(eY, eM - 1, eD) - Date.UTC(sY, sM - 1, sD)) / 86400000) + 1
   );
 
-  const overallDistinctRiders = Number(rows[0]?.period_distinct_riders || maxDayDistinctRiders);
+  const overallDistinctRiders =
+    filteredRows.length !== rows.length && days.length === 1
+      ? days[0].distinctRidersCount
+      : Number(filteredRows[0]?.period_distinct_riders || maxDayDistinctRiders);
 
   return {
     storeId,
@@ -378,8 +384,8 @@ export function buildSummaryFromRawOrders(
   const dayRidersMap = new Map<string, Set<string>>();
 
   for (const ord of allOrders) {
-    const d = ord.order_date;
-    if (!d) continue;
+    const d = ord.order_date ? String(ord.order_date).slice(0, 10) : '';
+    if (!d || d < startDate || d > endDate) continue;
 
     let slotsMap = dateMap.get(d);
     if (!slotsMap) {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
 import type { UserProfile } from '../services/authService';
 import {
@@ -74,6 +74,24 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   const [loading, setLoading] = useState(false);
   const [loadSource, setLoadSource] = useState<'cache' | 'rpc' | 'client' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const latestRequestIdRef = useRef<number>(0);
+
+  // Strictly ensure the displayed summary matches the currently selected store and [startDate, endDate] window
+  const activeSummary = useMemo<S2POtpSummaryResult | null>(() => {
+    if (!summary) return null;
+    if (selectedStore && summary.storeId !== selectedStore.id) return null;
+    if (summary.startDate !== startDate || summary.endDate !== endDate) return null;
+    const filteredDays = summary.days.filter(
+      (d) => d.dateStr >= startDate && d.dateStr <= endDate
+    );
+    if (filteredDays.length === summary.days.length) {
+      return summary;
+    }
+    return {
+      ...summary,
+      days: filteredDays,
+    };
+  }, [summary, selectedStore, startDate, endDate]);
 
   // Tracks if orders have been uploaded for today in the selected store
   const [hasTodayOrders, setHasTodayOrders] = useState<boolean>(false);
@@ -212,6 +230,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       const queryEnd = overrideEnd ?? endDate;
       const activePreset = overridePreset ?? selectedPreset;
 
+      latestRequestIdRef.current += 1;
+      const requestId = latestRequestIdRef.current;
+
       setLoading(true);
       setError(null);
       // Immediately reset summary so prior multi-day data is never displayed with the new date range
@@ -227,19 +248,34 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         forceRefresh: forceRefresh || isTodayQuery,
       });
 
+      // Discard stale responses from earlier in-flight requests (e.g. 7-day query resolving after Today query)
+      if (requestId !== latestRequestIdRef.current) {
+        return;
+      }
+
       setLoading(false);
       if (res.error) {
         setError(res.error);
       } else if (res.data) {
-        setSummary(res.data);
+        const filteredDays = res.data.days.filter(
+          (d) => d.dateStr >= queryStart && d.dateStr <= queryEnd
+        );
+        const strictData: S2POtpSummaryResult = {
+          ...res.data,
+          startDate: queryStart,
+          endDate: queryEnd,
+          days: filteredDays,
+        };
+        setSummary(strictData);
         setLoadSource(res.source ?? null);
         // Safely auto-expand the date if there's at least 1 date (e.g. Today)
         if (
-          res.data.days &&
-          res.data.days.length > 0 &&
-          (res.data.days.length === 1 || activePreset === 'today')
+          strictData.days.length > 0 &&
+          (strictData.days.length === 1 || activePreset === 'today')
         ) {
-          setExpandedDates(new Set([res.data.days[0].dateStr]));
+          setExpandedDates(new Set([strictData.days[0].dateStr]));
+        } else {
+          setExpandedDates(new Set());
         }
       }
     },
@@ -251,6 +287,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   }, [loadData]);
 
   const handleSelectPreset = (preset: PresetValue, forceIncludeToday?: boolean) => {
+    latestRequestIdRef.current += 1;
     setSelectedPreset(preset);
     setShowCustomRange(false);
     const shouldIncludeToday = forceIncludeToday !== undefined ? forceIncludeToday : includeToday;
@@ -273,6 +310,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
     // Immediately clear previous summary so prior multi-day data is never displayed
     setSummary(null);
+    setExpandedDates(preset === 'today' ? new Set([todayStr]) : new Set());
     setStartDate(newStart);
     setEndDate(newEnd);
     setCustomStart(newStart);
@@ -285,6 +323,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   };
 
   const handleToggleIncludeToday = (checked: boolean) => {
+    latestRequestIdRef.current += 1;
     setIncludeToday(checked);
     if (typeof selectedPreset === 'number' && selectedPreset > 1) {
       const range = getDateRangeForDays(selectedPreset, timeZone, checked);
@@ -301,6 +340,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
   const handleApplyCustomDate = () => {
     if (customStart && customEnd) {
+      latestRequestIdRef.current += 1;
       setSummary(null);
       setStartDate(customStart);
       setEndDate(customEnd);
@@ -324,11 +364,11 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   };
 
   const toggleAllDates = () => {
-    if (!summary) return;
-    if (expandedDates.size === summary.days.length) {
+    if (!activeSummary) return;
+    if (expandedDates.size === activeSummary.days.length) {
       setExpandedDates(new Set());
     } else {
-      setExpandedDates(new Set(summary.days.map((d) => d.dateStr)));
+      setExpandedDates(new Set(activeSummary.days.map((d) => d.dateStr)));
     }
   };
 
@@ -340,8 +380,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   };
 
   const handleExport = () => {
-    if (!summary || !selectedStore) return;
-    exportS2POtpToExcel(summary, selectedStore.store_code);
+    if (!activeSummary || !selectedStore) return;
+    exportS2POtpToExcel(activeSummary, selectedStore.store_code);
   };
 
   const isTodayInRange = startDate <= todayStr && todayStr <= endDate;
@@ -412,7 +452,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                       handleSelectPreset(Number(val) as PresetValue);
                     }
                   }}
-                  disabled={loading}
                 >
                   {PRESET_ITEMS.map((item) => (
                     <option key={item.id} value={item.id}>
@@ -429,18 +468,20 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               </div>
 
               {/* Include Today Toggle for Multi-day Presets */}
-              <label
-                className="flex-row items-center gap-xs ml-sm text-xs cursor-pointer select-none text-slate"
-                title="Include today's ongoing / partial day data in multi-day range"
-                style={{ fontWeight: 500 }}
-              >
-                <input
-                  type="checkbox"
-                  checked={includeToday}
-                  onChange={(e) => handleToggleIncludeToday(e.target.checked)}
-                />
-                <span>Include Today (Ongoing)</span>
-              </label>
+              {typeof selectedPreset === 'number' && selectedPreset > 1 && (
+                <label
+                  className="flex-row items-center gap-xs ml-sm text-xs cursor-pointer select-none text-slate"
+                  title="Include today's ongoing / partial day data in multi-day range"
+                  style={{ fontWeight: 500 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={includeToday}
+                    onChange={(e) => handleToggleIncludeToday(e.target.checked)}
+                  />
+                  <span>Include Today (Ongoing)</span>
+                </label>
+              )}
             </div>
 
             {showCustomRange && (
@@ -482,10 +523,10 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={toggleAllDates}
-              disabled={!summary || summary.days.length === 0}
+              disabled={!activeSummary || activeSummary.days.length === 0}
               title="Expand or collapse all date rows"
             >
-              {expandedDates.size === (summary?.days.length ?? 0)
+              {expandedDates.size === (activeSummary?.days.length ?? 0)
                 ? 'Collapse All Days'
                 : 'Expand All Days'}
             </button>
@@ -520,7 +561,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               type="button"
               className="btn-export-excel"
               onClick={handleExport}
-              disabled={!summary || summary.days.length === 0}
+              disabled={!activeSummary || activeSummary.days.length === 0}
               title="Download full Excel workbook with S2P, OTP+3 & DPH pivots"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -578,13 +619,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           </div>
           <strong
             className={`kpi-value ${
-              (summary?.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'
+              (activeSummary?.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'
             }`}
           >
-            {loading ? '...' : `${(summary?.overallDsrPct ?? 0).toFixed(2)}%`}
+            {loading ? '...' : `${(activeSummary?.overallDsrPct ?? 0).toFixed(2)}%`}
           </strong>
           <span className="kpi-sub">
-            Completed: {(summary?.overallCompletedOrders ?? 0).toLocaleString()} of {(summary?.overallTotalOrders ?? 0).toLocaleString()} orders
+            Completed: {(activeSummary?.overallCompletedOrders ?? 0).toLocaleString()} of {(activeSummary?.overallTotalOrders ?? 0).toLocaleString()} orders
           </span>
         </div>
 
@@ -595,13 +636,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           </div>
           <strong
             className={`kpi-value ${
-              (summary?.overallAvgS2p ?? 0) > 0.60 ? 'text-red' : 'text-green'
+              (activeSummary?.overallAvgS2p ?? 0) > 0.60 ? 'text-red' : 'text-green'
             }`}
           >
-            {loading ? '...' : `${summary?.overallAvgS2p.toFixed(2) ?? '0.00'} min`}
+            {loading ? '...' : `${activeSummary?.overallAvgS2p.toFixed(2) ?? '0.00'} min`}
           </strong>
           <span className="kpi-sub">
-            Staging-to-Pickup duration across {summary?.periodDays ?? 1} {(summary?.periodDays ?? 1) === 1 ? 'day' : 'days'}
+            Staging-to-Pickup duration across {activeSummary?.periodDays ?? 1} {(activeSummary?.periodDays ?? 1) === 1 ? 'day' : 'days'}
           </span>
         </div>
 
@@ -612,14 +653,14 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           </div>
           <strong
             className={`kpi-value ${
-              (summary?.overallOtpAchievedPct ?? 0) < 98.0 ? 'text-red' : 'text-green'
+              (activeSummary?.overallOtpAchievedPct ?? 0) < 98.0 ? 'text-red' : 'text-green'
             }`}
           >
-            {loading ? '...' : `${summary?.overallOtpAchievedPct.toFixed(2) ?? '0.00'}%`}
+            {loading ? '...' : `${activeSummary?.overallOtpAchievedPct.toFixed(2) ?? '0.00'}%`}
           </strong>
           <span className="kpi-sub">
-            Achieved: {summary?.overallOtpAchievedPct.toFixed(1)}% | Breached:{' '}
-            {summary?.overallOtpBreachedPct.toFixed(1)}%
+            Achieved: {activeSummary?.overallOtpAchievedPct.toFixed(1)}% | Breached:{' '}
+            {activeSummary?.overallOtpBreachedPct.toFixed(1)}%
           </span>
         </div>
 
@@ -630,10 +671,10 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           </div>
           <strong
             className={`kpi-value ${
-              (summary?.overallAvgDph ?? 0) > 2.1 ? 'text-red' : 'text-green'
+              (activeSummary?.overallAvgDph ?? 0) > 2.1 ? 'text-red' : 'text-green'
             }`}
           >
-            {loading ? '...' : summary?.overallAvgDph.toFixed(1) ?? '0.0'}
+            {loading ? '...' : activeSummary?.overallAvgDph.toFixed(1) ?? '0.0'}
           </strong>
           <span className="kpi-sub">
             Orders per active rider working hour (turn-up)
@@ -645,10 +686,10 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
             <span className="kpi-label">Total Volume &amp; Riders</span>
           </div>
           <strong className="kpi-value text-slate">
-            {loading ? '...' : `${summary?.overallTotalOrders.toLocaleString() ?? '0'}`}
+            {loading ? '...' : `${activeSummary?.overallTotalOrders.toLocaleString() ?? '0'}`}
           </strong>
           <span className="kpi-sub">
-            Delivered by {summary?.overallDistinctRiders ?? 0} active riders in period
+            Delivered by {activeSummary?.overallDistinctRiders ?? 0} active riders in period
           </span>
         </div>
       </div>
@@ -675,7 +716,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                 <span>Highlight SNOP Breach</span>
               </button>
               <div className="badge badge-info">
-                {summary?.days.length ?? 0} active days detected ({startDate} to {endDate})
+                {activeSummary?.days.length ?? 0} active days detected ({startDate} to {endDate})
               </div>
             </div>
           </div>
@@ -692,20 +733,20 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           </div>
         )}
 
-        {loading && !summary && (
+        {loading && !activeSummary && (
           <div className="p-xl text-center text-slate">
             <span className="spinner-sm mr-xs" aria-hidden="true" />
             Loading S2P, OTP & DPH performance metrics...
           </div>
         )}
 
-        {!loading && (!summary || summary.days.length === 0) && (
+        {!loading && (!activeSummary || activeSummary.days.length === 0) && (
           <div className="p-xl text-center text-slate">
             No order records found for store {selectedStore?.store_code} between {startDate} and {endDate}.
           </div>
         )}
 
-        {summary && summary.days.length > 0 && (
+        {activeSummary && activeSummary.days.length > 0 && (
           <div className={`s2p-daily-table-container ${loading ? 'opacity-70' : ''}`}>
             <table className="s2p-daily-table">
               <thead>
@@ -726,7 +767,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {summary.days.map((day) => {
+                {activeSummary.days.map((day) => {
                   const isExpanded = expandedDates.has(day.dateStr);
                   const activeView = slotViewModes[day.dateStr] || 'all';
                   const impactedSlots = getDphImpactedSlots(day.slots);
@@ -1146,37 +1187,37 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               </tbody>
               <tfoot>
                 {(() => {
-                  const periodSnopTotal = summary.days.reduce((sum, d) => sum + getDaySnopPlan(d), 0);
-                  const periodBreach = summary.overallTotalOrders - periodSnopTotal;
+                  const periodSnopTotal = activeSummary.days.reduce((sum, d) => sum + getDaySnopPlan(d), 0);
+                  const periodBreach = activeSummary.overallTotalOrders - periodSnopTotal;
                   return (
                     <tr className="s2p-overall-grand-total">
                       <td colSpan={3} className="font-bold">
-                        Period Grand Total ({summary.periodDays} {summary.periodDays === 1 ? 'Day' : 'Days'})
+                        Period Grand Total ({activeSummary.periodDays} {activeSummary.periodDays === 1 ? 'Day' : 'Days'})
                       </td>
                       {showSnopBreach && (
                         <td className="text-right font-bold">{periodSnopTotal.toLocaleString()}</td>
                       )}
-                      <td className="text-right font-bold">{summary.overallTotalOrders.toLocaleString()}</td>
+                      <td className="text-right font-bold">{activeSummary.overallTotalOrders.toLocaleString()}</td>
                       {showSnopBreach && (
                         <td className="text-right">{renderBreachCellContent(periodBreach, periodSnopTotal)}</td>
                       )}
                       <td className="text-right font-bold">
-                        <span className={(summary.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
-                          {(summary.overallDsrPct ?? 0).toFixed(1)}%
+                        <span className={(activeSummary.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
+                          {(activeSummary.overallDsrPct ?? 0).toFixed(1)}%
                         </span>
                       </td>
-                      <td className="text-right font-bold">{summary.overallDistinctRiders} riders</td>
+                      <td className="text-right font-bold">{activeSummary.overallDistinctRiders} riders</td>
                       <td className="text-right font-bold">
-                        <span className={`dph-pill ${getDphHeatmapClass(summary.overallAvgDph)}`}>
-                          {summary.overallAvgDph.toFixed(1)}
+                        <span className={`dph-pill ${getDphHeatmapClass(activeSummary.overallAvgDph)}`}>
+                          {activeSummary.overallAvgDph.toFixed(1)}
                         </span>
                       </td>
                       <td className="text-center font-normal text-muted" />
-                      <td className={`text-right font-bold ${getS2pBadgeClass(summary.overallAvgS2p)}`}>
-                        {summary.overallAvgS2p.toFixed(2)} min
+                      <td className={`text-right font-bold ${getS2pBadgeClass(activeSummary.overallAvgS2p)}`}>
+                        {activeSummary.overallAvgS2p.toFixed(2)} min
                       </td>
                       <td className="text-right font-bold text-green">
-                        {summary.overallOtpAchievedPct.toFixed(2)}%
+                        {activeSummary.overallOtpAchievedPct.toFixed(2)}%
                       </td>
                       <td />
                     </tr>
