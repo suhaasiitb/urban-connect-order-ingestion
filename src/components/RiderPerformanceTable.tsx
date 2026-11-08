@@ -87,6 +87,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const [customEnd, setCustomEnd] = useState(endDate);
   const [avgMode, setAvgMode] = useState<'period' | 'active'>('period');
   const [dateOrder, setDateOrder] = useState<'desc' | 'asc'>('desc');
+  const [referralViewMode, setReferralViewMode] = useState<'ALL' | 'ACTIVE_ONLY'>('ALL');
 
   const presets = [0, 1, 3, 7, 10, 14, 20, 30];
 
@@ -113,6 +114,34 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
 
   const filteredRows = useMemo(() => {
     let result = [...data.rows];
+
+    // If viewing referral tagged delivery partners and ALL view mode is chosen,
+    // include referral partners from store shift records who had 0 deliveries in this date range
+    if (activeShiftFilter === 'WITH_REFERRAL' && referralViewMode === 'ALL' && riderShiftsMap) {
+      const existingNorms = new Set(result.map((r) => normalizeRiderName(r.riderName)));
+      for (const [norm, shift] of riderShiftsMap.entries()) {
+        const hasReferral = Boolean(
+          (shift.referredBy && shift.referredBy.trim()) ||
+            (shift.referredPhone && shift.referredPhone.trim())
+        );
+        if (hasReferral && !existingNorms.has(norm)) {
+          result.push({
+            riderName: shift.riderName,
+            dailyMetrics: {},
+            workingDays: 0,
+            totalHours: 0,
+            totalOrders: 0,
+            totalDistanceKm: 0,
+            avgHours: 0,
+            avgOrders: 0,
+            avgDistanceKm: 0,
+            activeAvgHours: 0,
+            activeAvgOrders: 0,
+            activeAvgDistanceKm: 0,
+          });
+        }
+      }
+    }
 
     // Search query filter
     if (searchQuery.trim()) {
@@ -285,7 +314,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr]);
+  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr]);
 
   const compliantShiftCount = useMemo(() => {
     return filteredRows.filter((r) => {
@@ -560,7 +589,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     </option>
                   )}
                   <option value="WITH_REFERRAL">
-                    🎁 Referral Tagged ({referralTaggedCount})
+                    🎁 Referral Tagged ({totalStoreReferralCount > referralTaggedCount ? `${referralTaggedCount}/${totalStoreReferralCount}` : referralTaggedCount})
                   </option>
                   <option value="Morning Shift">Morning (6 AM – 3 PM)</option>
                   <option value="2nd Shift">2nd Shift (3 PM – 12 AM)</option>
@@ -736,10 +765,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   title={
                     activeShiftFilter === 'WITH_REFERRAL'
                       ? 'Currently viewing referral tagged riders. Click to restore all riders view'
-                      : referralTaggedCount > 0
-                      ? `Filter table to show only Referral Tagged delivery partners (${referralTaggedCount} active in this period) to analyze their performance`
                       : totalStoreReferralCount > 0
-                      ? `Filter table to Referral Tagged delivery partners (${totalStoreReferralCount} in store records)`
+                      ? `Filter table to Referral Tagged delivery partners (${totalStoreReferralCount} total registered: ${referralTaggedCount} active with deliveries in this period, ${Math.max(totalStoreReferralCount - referralTaggedCount, 0)} zero turn-up)`
                       : 'No referral tagged riders found in store'
                   }
                 >
@@ -747,7 +774,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   <span>Referral Tagged</span>
                   {(referralTaggedCount > 0 || totalStoreReferralCount > 0) && (
                     <span className="badge-referral-pill">
-                      {referralTaggedCount || totalStoreReferralCount}
+                      {totalStoreReferralCount > referralTaggedCount
+                        ? `${referralTaggedCount}/${totalStoreReferralCount}`
+                        : (referralTaggedCount || totalStoreReferralCount)}
                     </span>
                   )}
                 </button>
@@ -886,22 +915,49 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
             <span className="alert-referral-icon">🎁</span>
             <div>
               <strong>
-                Referral Tagged Riders ({filteredRows.length} shown
-                {totalStoreReferralCount > filteredRows.length && `, ${totalStoreReferralCount} in store records`})
+                Referral Tagged Riders ({filteredRows.length} shown of {totalStoreReferralCount} registered)
               </strong>
               <p className="alert-referral-sub">
-                Showing delivery partners who were referred through our Referral Program. Evaluate their active days, orders, working hours, and shift compliance.
+                <strong>{referralTaggedCount}</strong> delivered orders in this period ({startDate} to {endDate})
+                {totalStoreReferralCount > referralTaggedCount && (
+                  <span>
+                    {' '}• <strong>{totalStoreReferralCount - referralTaggedCount}</strong> had 0 deliveries / turn-up
+                  </span>
+                )}
+                . Evaluate active days, orders, working hours, and shift compliance.
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm btn-clear-referral-filter"
-            onClick={() => setShiftFilter('ALL')}
-            title="Show all riders"
-          >
-            Show All Riders
-          </button>
+          <div className="alert-referral-actions flex-row items-center gap-xs">
+            {totalStoreReferralCount > referralTaggedCount && (
+              <div className="segmented-control segmented-control-sm">
+                <button
+                  type="button"
+                  className={`segmented-btn ${referralViewMode === 'ALL' ? 'active' : ''}`}
+                  onClick={() => setReferralViewMode('ALL')}
+                  title="Show all registered referral riders, including those with 0 turn-up in this period"
+                >
+                  All ({totalStoreReferralCount})
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${referralViewMode === 'ACTIVE_ONLY' ? 'active' : ''}`}
+                  onClick={() => setReferralViewMode('ACTIVE_ONLY')}
+                  title="Show only referral riders who delivered orders in this period"
+                >
+                  Active ({referralTaggedCount})
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm btn-clear-referral-filter"
+              onClick={() => setShiftFilter('ALL')}
+              title="Show all riders"
+            >
+              Show All Riders
+            </button>
+          </div>
         </div>
       )}
 
@@ -1410,13 +1466,23 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
 
                     {/* Active Working Days */}
                     <td className="td-active-days text-center">
-                      <span
-                        className="active-days-pill"
-                        title={`Active on ${row.workingDays} out of ${periodDays} calendar days in period`}
-                      >
-                        <strong className="active-days-num">{row.workingDays}</strong>
-                        <span className="active-days-denom">/{periodDays}d</span>
-                      </span>
+                      {row.workingDays === 0 ? (
+                        <span
+                          className="active-days-pill badge-zero-turnup"
+                          title="Zero order deliveries or login hours recorded in selected period"
+                        >
+                          <strong className="active-days-num">0</strong>
+                          <span className="active-days-denom">/{periodDays}d</span>
+                        </span>
+                      ) : (
+                        <span
+                          className="active-days-pill"
+                          title={`Active on ${row.workingDays} out of ${periodDays} calendar days in period`}
+                        >
+                          <strong className="active-days-num">{row.workingDays}</strong>
+                          <span className="active-days-denom">/{periodDays}d</span>
+                        </span>
+                      )}
                     </td>
 
                     {/* Individual Day Breakdown Columns (Only when Expanded) */}

@@ -120,6 +120,20 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     }).length;
   }, [pivotResult.rows, riderShiftsMap]);
 
+  const totalStoreReferralCount = React.useMemo(() => {
+    if (!riderShiftsMap) return 0;
+    let count = 0;
+    for (const shift of riderShiftsMap.values()) {
+      if (
+        (shift.referredBy && shift.referredBy.trim()) ||
+        (shift.referredPhone && shift.referredPhone.trim())
+      ) {
+        count++;
+      }
+    }
+    return count;
+  }, [riderShiftsMap]);
+
   // New Rider Onboarding State (Last 7 Days)
   const [onboardingCohortDays, setOnboardingCohortDays] = useState<number>(7);
   const [onboardingStartDate, setOnboardingStartDate] = useState<string>('');
@@ -527,16 +541,23 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                   </span>
                 ) : (
                   <span className="badge badge-secondary" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
-                    0 Tagged
+                    {totalStoreReferralCount > 0 ? `${totalStoreReferralCount} Tagged` : '0 Tagged'}
                   </span>
                 )}
               </div>
               <strong className={`kpi-value ${referralTaggedCount > 0 ? 'text-purple' : 'text-slate'}`}>
                 {referralTaggedCount}
+                {totalStoreReferralCount > referralTaggedCount && (
+                  <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--color-ash-gray, #64748b)' }}>
+                    {' '}/ {totalStoreReferralCount}
+                  </span>
+                )}
               </strong>
               <span className="kpi-sub">
                 {referralTaggedCount > 0
-                  ? `${referralTaggedCount} rider${referralTaggedCount > 1 ? 's' : ''} with referral tag`
+                  ? `${referralTaggedCount} active in period • ${Math.max(totalStoreReferralCount - referralTaggedCount, 0)} zero turn-up`
+                  : totalStoreReferralCount > 0
+                  ? `${totalStoreReferralCount} registered in store (0 delivered in period)`
                   : 'No active riders from referrals'}
               </span>
             </div>
