@@ -225,9 +225,9 @@ export async function submitConfirmedOrderBatch(params: {
   }
 
   // 1. Primary Ingestion Path: Direct Database RPC ingest_order_batch
-  // Calls public.ingest_order_batch natively via authenticated Supabase client.
-  // This verifies authorization against public.admin_users (Superadmin) or public.store_users (Store operator)
-  // directly in PostgreSQL without requiring Edge Function redeployment.
+  // Calls public.ingest_order_batch natively via authenticated Supabase client in safe chunks
+  // (250 rows per chunk with automatic sub-chunk splitting if a statement timeout occurs)
+  // so large daily CSV/Excel uploads never hit PostgREST's 8-second statement_timeout.
   const rpcRecords = validation.rows.map((r) => ({
     source_row_number: r.source_row_number,
     source_row_hash: r.source_row_hash,
@@ -236,63 +236,179 @@ export async function submitConfirmedOrderBatch(params: {
     derived_fields: r.derived_fields,
   }));
 
-  try {
+  const INGEST_CHUNK_SIZE = 250;
+  const MIN_RETRY_CHUNK_SIZE = 25;
+
+  interface ChunkAccumulator {
+    batch_id: string | null;
+    prior_batch_id: string | null;
+    already_processed: boolean;
+    status: 'Succeeded' | 'Duplicate Skipped' | 'Failed';
+    min_order_date: string | null;
+    max_order_date: string | null;
+    inserted_count: number;
+    updated_count: number;
+    unchanged_count: number;
+    rejected_count: number;
+    failed_count: number;
+  }
+
+  const acc: ChunkAccumulator = {
+    batch_id: null,
+    prior_batch_id: null,
+    already_processed: false,
+    status: 'Succeeded',
+    min_order_date: validation.min_order_date,
+    max_order_date: validation.max_order_date,
+    inserted_count: 0,
+    updated_count: 0,
+    unchanged_count: 0,
+    rejected_count: 0,
+    failed_count: 0,
+  };
+
+  const runRpcSlice = async (
+    slice: typeof rpcRecords,
+    checksum: string,
+    forceFlag: boolean,
+    partMeta: Record<string, unknown>
+  ): Promise<{ ok: true } | { ok: false; error_message: string }> => {
     const { data: rpcData, error: rpcErr } = await supabase.rpc('ingest_order_batch', {
       p_store_id: storeId,
       p_uploaded_by: userId,
       p_original_filename: validation.filename,
-      p_file_checksum_sha256: validation.file_checksum_sha256,
-      p_records: rpcRecords,
-      p_force_reprocess: forceReprocess,
+      p_file_checksum_sha256: checksum,
+      p_records: slice,
+      p_force_reprocess: forceFlag,
       p_processing_metadata: {
         client_version: '1.0.0',
         uploaded_by_email: session.user.email,
         timezone: 'Asia/Kolkata',
+        ...partMeta,
       },
     });
 
-    if (!rpcErr && rpcData && typeof rpcData === 'object') {
+    if (rpcErr) {
+      const isTimeout = /statement timeout|canceling statement|timed out|timeout/i.test(
+        rpcErr.message || ''
+      );
+      if (isTimeout && slice.length > MIN_RETRY_CHUNK_SIZE) {
+        const mid = Math.ceil(slice.length / 2);
+        const left = slice.slice(0, mid);
+        const right = slice.slice(mid);
+
+        const leftRes = await runRpcSlice(left, `${checksum}:sub1`, true, {
+          ...partMeta,
+          sub_split: '1/2',
+        });
+        if (!leftRes.ok) return leftRes;
+
+        return runRpcSlice(right, checksum, true, {
+          ...partMeta,
+          sub_split: '2/2',
+        });
+      }
+      return { ok: false, error_message: rpcErr.message };
+    }
+
+    if (rpcData && typeof rpcData === 'object') {
       const res = rpcData as Record<string, unknown>;
+      if (typeof res.batch_id === 'string') acc.batch_id = res.batch_id;
+      if (typeof res.prior_batch_id === 'string') acc.prior_batch_id = res.prior_batch_id;
+      if (res.already_processed) {
+        acc.already_processed = true;
+        acc.status = 'Duplicate Skipped';
+      }
+      if (typeof res.min_order_date === 'string') {
+        if (!acc.min_order_date || res.min_order_date < acc.min_order_date) {
+          acc.min_order_date = res.min_order_date;
+        }
+      }
+      if (typeof res.max_order_date === 'string') {
+        if (!acc.max_order_date || res.max_order_date > acc.max_order_date) {
+          acc.max_order_date = res.max_order_date;
+        }
+      }
+      acc.inserted_count += typeof res.inserted_count === 'number' ? res.inserted_count : 0;
+      acc.updated_count += typeof res.updated_count === 'number' ? res.updated_count : 0;
+      acc.unchanged_count += typeof res.unchanged_count === 'number' ? res.unchanged_count : 0;
+      acc.rejected_count += typeof res.rejected_count === 'number' ? res.rejected_count : 0;
+      acc.failed_count += typeof res.failed_count === 'number' ? res.failed_count : 0;
+      return { ok: true };
+    }
+
+    return { ok: false, error_message: 'Unexpected empty response from ingest_order_batch RPC.' };
+  };
+
+  try {
+    const totalChunks = Math.max(1, Math.ceil(rpcRecords.length / INGEST_CHUNK_SIZE));
+    let rpcFailedError: string | null = null;
+
+    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+      const start = chunkIdx * INGEST_CHUNK_SIZE;
+      const slice = rpcRecords.slice(start, start + INGEST_CHUNK_SIZE);
+      const isLastChunk = chunkIdx === totalChunks - 1;
+      const chunkChecksum =
+        totalChunks === 1 || isLastChunk
+          ? validation.file_checksum_sha256
+          : `${validation.file_checksum_sha256}:part:${chunkIdx + 1}of${totalChunks}`;
+      const chunkForce = totalChunks === 1 ? forceReprocess : true;
+
+      const sliceRes = await runRpcSlice(slice, chunkChecksum, chunkForce, {
+        chunk_index: chunkIdx + 1,
+        total_chunks: totalChunks,
+        total_file_rows: rpcRecords.length,
+      });
+
+      if (!sliceRes.ok) {
+        rpcFailedError = sliceRes.error_message;
+        break;
+      }
+
+      if (acc.already_processed) {
+        break;
+      }
+    }
+
+    if (!rpcFailedError) {
       return {
         ok: true,
-        batch_id: typeof res.batch_id === 'string' ? res.batch_id : null,
-        prior_batch_id: typeof res.prior_batch_id === 'string' ? res.prior_batch_id : null,
-        already_processed: Boolean(res.already_processed),
-        status: (res.status as 'Succeeded' | 'Duplicate Skipped' | 'Failed') || 'Succeeded',
+        batch_id: acc.batch_id,
+        prior_batch_id: acc.prior_batch_id,
+        already_processed: acc.already_processed,
+        status: acc.status,
         store_id: storeId,
         store_code: storeCode,
-        min_order_date: typeof res.min_order_date === 'string' ? res.min_order_date : validation.min_order_date,
-        max_order_date: typeof res.max_order_date === 'string' ? res.max_order_date : validation.max_order_date,
-        total_rows: typeof res.total_rows === 'number' ? res.total_rows : validation.total_rows_detected,
-        inserted_count: typeof res.inserted_count === 'number' ? res.inserted_count : 0,
-        updated_count: typeof res.updated_count === 'number' ? res.updated_count : 0,
-        unchanged_count: typeof res.unchanged_count === 'number' ? res.unchanged_count : 0,
-        rejected_count: typeof res.rejected_count === 'number' ? res.rejected_count : 0,
-        failed_count: typeof res.failed_count === 'number' ? res.failed_count : 0,
+        min_order_date: acc.min_order_date,
+        max_order_date: acc.max_order_date,
+        total_rows: validation.total_rows_detected,
+        inserted_count: acc.inserted_count,
+        updated_count: acc.updated_count,
+        unchanged_count: acc.unchanged_count,
+        rejected_count: acc.rejected_count,
+        failed_count: acc.failed_count,
         file_warnings: validation.file_warnings,
       };
     }
 
-    if (rpcErr) {
-      return {
-        ok: false,
-        batch_id: null,
-        prior_batch_id: null,
-        already_processed: false,
-        status: 'Failed',
-        store_id: storeId,
-        store_code: storeCode,
-        min_order_date: validation.min_order_date,
-        max_order_date: validation.max_order_date,
-        total_rows: validation.total_rows_detected,
-        inserted_count: 0,
-        updated_count: 0,
-        unchanged_count: 0,
-        rejected_count: validation.invalid_rows_count,
-        failed_count: 0,
-        error_message: rpcErr.message,
-      };
-    }
+    return {
+      ok: false,
+      batch_id: acc.batch_id,
+      prior_batch_id: acc.prior_batch_id,
+      already_processed: false,
+      status: 'Failed',
+      store_id: storeId,
+      store_code: storeCode,
+      min_order_date: validation.min_order_date,
+      max_order_date: validation.max_order_date,
+      total_rows: validation.total_rows_detected,
+      inserted_count: acc.inserted_count,
+      updated_count: acc.updated_count,
+      unchanged_count: acc.unchanged_count,
+      rejected_count: validation.invalid_rows_count,
+      failed_count: 0,
+      error_message: rpcFailedError,
+    };
   } catch (directRpcErr) {
     const msg = directRpcErr instanceof Error ? directRpcErr.message : String(directRpcErr);
     console.warn('Direct RPC execution caught exception, falling back to edge function:', msg);
