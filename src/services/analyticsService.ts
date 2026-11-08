@@ -525,14 +525,32 @@ export function exportRiderPerformanceToExcel(
   useActiveAvg = false,
   activeNamesSet?: Set<string>,
   phoneByNameMap?: Map<string, string>,
-  riderShiftsMap?: Map<string, { shiftType: string; timings?: string; onboardedBy?: string | null }>
+  riderShiftsMap?: Map<
+    string,
+    {
+      shiftType: string;
+      timings?: string;
+      onboardedBy?: string | null;
+      referredBy?: string | null;
+      referredPhone?: string | null;
+    }
+  >
 ): void {
   const wb = XLSX.utils.book_new();
 
   // Row 1: Group headers
-  // [Rider Name, Rider Number, Active, Shift, Timings, Onboarded By, Date1, '', '', Date2, '', '', ... Avg, '', '', Totals, '']
-  const row1: string[] = ['Rider Name', 'Rider Number', 'Active', 'Shift', 'Timings', 'Onboarded By'];
-  const row2: string[] = ['', '', '', '', '', ''];
+  // [Rider Name, Rider Number, Active, Shift, Timings, Onboarded By, Referred By, Referred Mobile No, Date1, '', '', Date2, '', '', ... Avg, '', '', Totals, '']
+  const row1: string[] = [
+    'Rider Name',
+    'Rider Number',
+    'Active',
+    'Shift',
+    'Timings',
+    'Onboarded By',
+    'Referred By',
+    'Referred Mobile No',
+  ];
+  const row2: string[] = ['', '', '', '', '', '', '', ''];
 
   for (const col of pivot.dateColumns) {
     row1.push(col.formattedHeader, '', '');
@@ -553,6 +571,8 @@ export function exportRiderPerformanceToExcel(
     const shiftName = shift?.shiftType ?? 'Not Set';
     const shiftTimings = shift?.timings ?? '';
     const onboardedBy = shift?.onboardedBy ?? '';
+    const referredBy = shift?.referredBy ?? '';
+    const referredPhone = shift?.referredPhone ?? '';
     const rowVals: Array<string | number> = [
       row.riderName,
       phone,
@@ -560,6 +580,8 @@ export function exportRiderPerformanceToExcel(
       shiftName,
       shiftTimings,
       onboardedBy,
+      referredBy,
+      referredPhone,
     ];
 
     for (const col of pivot.dateColumns) {
@@ -582,7 +604,7 @@ export function exportRiderPerformanceToExcel(
 
   // Set merge ranges for top-tier headers
   const merges: XLSX.Range[] = [];
-  let colIdx = 6;
+  let colIdx = 8;
   for (let i = 0; i < pivot.dateColumns.length; i++) {
     merges.push({
       s: { r: 0, c: colIdx },

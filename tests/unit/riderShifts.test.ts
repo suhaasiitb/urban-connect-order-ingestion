@@ -479,5 +479,66 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
       expect(map.get('rohan more')?.referredBy).toBe('Atharva');
       expect(map.get('rohan more')?.referredPhone).toBe('9988776655');
     });
+
+    it('accurately identifies and filters riders with referral tagging for performance review', () => {
+      const mockShiftsMap = new Map<string, RiderShiftConfig>([
+        [
+          'sagar patil',
+          {
+            riderName: 'Sagar Patil',
+            normalizedName: 'sagar patil',
+            shiftType: 'Morning Shift',
+            slot1StartHour: 6,
+            slot1EndHour: 15,
+            totalPlannedHours: 9,
+            referredBy: 'Sunil',
+            referredPhone: '9123456789',
+          },
+        ],
+        [
+          'abhay gore',
+          {
+            riderName: 'Abhay Gore',
+            normalizedName: 'abhay gore',
+            shiftType: 'Morning Shift',
+            slot1StartHour: 6,
+            slot1EndHour: 15,
+            totalPlannedHours: 9,
+            referredBy: null,
+            referredPhone: '',
+          },
+        ],
+        [
+          'kiran sharma',
+          {
+            riderName: 'Kiran Sharma',
+            normalizedName: 'kiran sharma',
+            shiftType: '2nd Shift',
+            slot1StartHour: 15,
+            slot1EndHour: 24,
+            totalPlannedHours: 9,
+            referredBy: '',
+            referredPhone: '9876543210',
+          },
+        ],
+      ]);
+
+      const testRiders = ['Sagar Patil', 'Abhay Gore', 'Kiran Sharma', 'Unknown Rider'];
+
+      const isReferralTagged = (name: string): boolean => {
+        const norm = name.trim().toLowerCase();
+        const shift = mockShiftsMap.get(norm);
+        return Boolean(
+          shift &&
+            ((shift.referredBy && shift.referredBy.trim()) ||
+              (shift.referredPhone && shift.referredPhone.trim()))
+        );
+      };
+
+      const referralRiders = testRiders.filter(isReferralTagged);
+      expect(referralRiders).toEqual(['Sagar Patil', 'Kiran Sharma']);
+      expect(isReferralTagged('Abhay Gore')).toBe(false);
+      expect(isReferralTagged('Unknown Rider')).toBe(false);
+    });
   });
 });

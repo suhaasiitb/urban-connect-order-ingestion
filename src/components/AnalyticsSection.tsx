@@ -107,6 +107,19 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
     return count;
   }, [activeRoster, riderShiftsMap]);
 
+  const referralTaggedCount = React.useMemo(() => {
+    if (!pivotResult.rows.length || !riderShiftsMap) return 0;
+    return pivotResult.rows.filter((r) => {
+      const norm = normalizeRiderName(r.riderName);
+      const shift = riderShiftsMap.get(norm);
+      return Boolean(
+        shift &&
+          ((shift.referredBy && shift.referredBy.trim()) ||
+            (shift.referredPhone && shift.referredPhone.trim()))
+      );
+    }).length;
+  }, [pivotResult.rows, riderShiftsMap]);
+
   // New Rider Onboarding State (Last 7 Days)
   const [onboardingCohortDays, setOnboardingCohortDays] = useState<number>(7);
   const [onboardingStartDate, setOnboardingStartDate] = useState<string>('');
@@ -491,6 +504,40 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
                 {activeWithoutShiftCount > 0
                   ? `${activeWithoutShiftCount} active riders need shift assigned`
                   : 'All active riders have shifts set'}
+              </span>
+            </div>
+
+            {/* Referral Tagged KPI Card */}
+            <div
+              className={`kpi-card kpi-card-interactive ${tableShiftFilter === 'WITH_REFERRAL' ? 'kpi-card-active' : ''}`}
+              onClick={() => {
+                setTableShiftFilter((prev) => (prev === 'WITH_REFERRAL' ? 'ALL' : 'WITH_REFERRAL'));
+              }}
+              title="Click to filter table to delivery partners tagged in Referral Program"
+            >
+              <div className="kpi-header-row">
+                <span className="kpi-label">Referral Tagged</span>
+                {tableShiftFilter === 'WITH_REFERRAL' ? (
+                  <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                    Filtered
+                  </span>
+                ) : referralTaggedCount > 0 ? (
+                  <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                    {referralTaggedCount} Active
+                  </span>
+                ) : (
+                  <span className="badge badge-secondary" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                    0 Tagged
+                  </span>
+                )}
+              </div>
+              <strong className={`kpi-value ${referralTaggedCount > 0 ? 'text-purple' : 'text-slate'}`}>
+                {referralTaggedCount}
+              </strong>
+              <span className="kpi-sub">
+                {referralTaggedCount > 0
+                  ? `${referralTaggedCount} rider${referralTaggedCount > 1 ? 's' : ''} with referral tag`
+                  : 'No active riders from referrals'}
               </span>
             </div>
           </div>

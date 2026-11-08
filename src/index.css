@@ -6280,6 +6280,60 @@ input[type='text'].perf-search-input:focus {
   background: #b45309;
 }
 
+/* Referral Tagged Delivery Partners Toggle Button */
+.btn-referral-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+  background-color: #ffffff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.btn-referral-toggle:hover {
+  background-color: #faf5ff;
+  color: #7e22ce;
+  border-color: #d8b4fe;
+}
+
+.btn-referral-toggle.has-referrals {
+  border-color: #c084fc;
+  color: #7e22ce;
+  background-color: #faf5ff;
+}
+
+.btn-referral-toggle-active {
+  background-color: #f3e8ff !important;
+  color: #6b21a8 !important;
+  border-color: #9333ea !important;
+  box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.2);
+}
+
+.btn-referral-toggle .badge-referral-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #9333ea;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+}
+
+.btn-referral-toggle-active .badge-referral-pill {
+  background: #6b21a8;
+}
+
 /* Missing Shift Actionable Warning Banner */
 .alert-missing-shift-banner {
   display: flex;
@@ -6331,6 +6385,48 @@ input[type='text'].perf-search-input:focus {
 
 .btn-fill-shifts:hover {
   background: #c2410c !important;
+}
+
+/* Referral Tagged Filter Information Banner */
+.alert-box-referral-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  margin-bottom: 0.85rem;
+  border-radius: 8px;
+  background: #faf5ff;
+  border: 1px solid #d8b4fe;
+  color: #6b21a8;
+  flex-wrap: wrap;
+}
+
+.alert-referral-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  flex: 1;
+}
+
+.alert-referral-icon {
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.alert-referral-sub {
+  margin: 0.2rem 0 0 0;
+  font-size: 0.8rem;
+  color: #7e22ce;
+}
+
+.btn-clear-referral-filter {
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  padding: 0.35rem 0.75rem !important;
+  border-radius: 6px !important;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* Inline Fill Shift button in table cell */
@@ -6385,6 +6481,30 @@ input[type='text'].perf-search-input:focus {
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;
+}
+
+/* Referral Tagged Delivery Partner Tag in Table Rows */
+.rider-referral-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  background: #faf5ff;
+  color: #6b21a8;
+  border: 1px solid #e9d5ff;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/* Subtle row highlight for Referral Tagged riders */
+.row-referral-tagged {
+  background-color: #fdf4ff !important;
+}
+
+.row-referral-tagged td {
+  border-bottom-color: #fae8ff !important;
 }
 
 .shift-onboarder-select {
@@ -8330,7 +8450,8 @@ html[data-theme="dark"] .perf-highlights-group {
 }
 
 html[data-theme="dark"] .btn-dnr-toggle,
-html[data-theme="dark"] .btn-shift-warning-toggle {
+html[data-theme="dark"] .btn-shift-warning-toggle,
+html[data-theme="dark"] .btn-referral-toggle {
   background: transparent;
   color: var(--color-ash-gray);
   border: 1px solid var(--color-graphite);
@@ -8344,10 +8465,22 @@ html[data-theme="dark"] .btn-shift-warning-toggle:hover {
   border-color: rgba(245, 166, 35, 0.5);
 }
 
+html[data-theme="dark"] .btn-referral-toggle:hover {
+  background: rgba(168, 85, 247, 0.12);
+  color: #c084fc;
+  border-color: rgba(168, 85, 247, 0.5);
+}
+
 html[data-theme="dark"] .btn-shift-warning-toggle.has-warning {
   background: rgba(245, 166, 35, 0.08);
   color: var(--color-amber-signal);
   border-color: rgba(245, 166, 35, 0.45);
+}
+
+html[data-theme="dark"] .btn-referral-toggle.has-referrals {
+  background: rgba(168, 85, 247, 0.08);
+  color: #d8b4fe;
+  border-color: rgba(168, 85, 247, 0.45);
 }
 
 html[data-theme="dark"] .btn-dnr-toggle-active,
@@ -8356,6 +8489,23 @@ html[data-theme="dark"] .btn-shift-warning-active {
   color: var(--color-ghost-white) !important;
   border-color: var(--color-amber-signal) !important;
   box-shadow: 0 0 0 1px var(--color-amber-signal) !important;
+}
+
+html[data-theme="dark"] .btn-referral-toggle-active {
+  background: rgba(168, 85, 247, 0.22) !important;
+  color: #f3e8ff !important;
+  border-color: #c084fc !important;
+  box-shadow: 0 0 0 1px #c084fc !important;
+}
+
+html[data-theme="dark"] .btn-referral-toggle .badge-referral-pill {
+  background: #a855f7;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .btn-referral-toggle-active .badge-referral-pill {
+  background: #c084fc;
+  color: #000000;
 }
 
 /* Toolbar Action Buttons — Basedash Button Rules */
@@ -8450,6 +8600,28 @@ html[data-theme="dark"] .btn-fill-shifts {
   color: var(--color-void-black) !important;
   border-color: var(--color-ghost-white) !important;
   box-shadow: none !important;
+}
+
+/* Referral Tagged Filter Information Banner */
+html[data-theme="dark"] .alert-box-referral-banner {
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .alert-referral-sub {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .btn-clear-referral-filter {
+  background: transparent !important;
+  color: var(--color-ghost-white) !important;
+  border: 1px solid var(--color-steel-gray) !important;
+}
+
+html[data-theme="dark"] .btn-clear-referral-filter:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: var(--color-ghost-white) !important;
 }
 
 /* Main Pivot Table Container & Grid */
@@ -8569,6 +8741,25 @@ html[data-theme="dark"] .rider-onboarded-tag {
   color: var(--color-lavender-pulse);
   border: 1px solid rgba(153, 132, 216, 0.4);
   border-radius: var(--radius-badges);
+}
+
+html[data-theme="dark"] .rider-referral-tag {
+  background: rgba(168, 85, 247, 0.15);
+  color: #e9d5ff;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  border-radius: var(--radius-badges);
+}
+
+html[data-theme="dark"] .row-referral-tagged {
+  background-color: rgba(168, 85, 247, 0.07) !important;
+}
+
+html[data-theme="dark"] .row-referral-tagged:hover {
+  background-color: rgba(168, 85, 247, 0.14) !important;
+}
+
+html[data-theme="dark"] .row-referral-tagged td {
+  border-bottom-color: rgba(168, 85, 247, 0.18) !important;
 }
 
 /* Active & Shift Badges */

@@ -174,6 +174,14 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           const dnr = dnrSummary?.riderSummariesMap.get(norm);
           return Boolean(dnr && dnr.isFrequentExploiter);
         }
+        if (activeShiftFilter === 'WITH_REFERRAL') {
+          const shift = riderShiftsMap?.get(norm);
+          return Boolean(
+            shift &&
+              ((shift.referredBy && shift.referredBy.trim()) ||
+                (shift.referredPhone && shift.referredPhone.trim()))
+          );
+        }
         return effectiveType === activeShiftFilter;
       });
     }
@@ -332,6 +340,32 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     return count;
   }, [activeNamesSet, riderShiftsMap]);
 
+  const referralTaggedCount = useMemo(() => {
+    return data.rows.filter((r) => {
+      const norm = normalizeRiderName(r.riderName);
+      const shift = riderShiftsMap?.get(norm);
+      return Boolean(
+        shift &&
+          ((shift.referredBy && shift.referredBy.trim()) ||
+            (shift.referredPhone && shift.referredPhone.trim()))
+      );
+    }).length;
+  }, [data.rows, riderShiftsMap]);
+
+  const totalStoreReferralCount = useMemo(() => {
+    if (!riderShiftsMap) return 0;
+    let count = 0;
+    for (const shift of riderShiftsMap.values()) {
+      if (
+        (shift.referredBy && shift.referredBy.trim()) ||
+        (shift.referredPhone && shift.referredPhone.trim())
+      ) {
+        count++;
+      }
+    }
+    return count;
+  }, [riderShiftsMap]);
+
   const inactiveRidersCount = useMemo(() => {
     return data.rows.length - activeRidersCount;
   }, [data.rows.length, activeRidersCount]);
@@ -360,7 +394,13 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const handleExport = () => {
     const shiftsExportMap = new Map<
       string,
-      { shiftType: string; timings?: string; onboardedBy?: string | null }
+      {
+        shiftType: string;
+        timings?: string;
+        onboardedBy?: string | null;
+        referredBy?: string | null;
+        referredPhone?: string | null;
+      }
     >();
     if (riderShiftsMap) {
       for (const [norm, cfg] of riderShiftsMap.entries()) {
@@ -368,6 +408,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           shiftType: cfg.shiftType,
           timings: formatShiftTimings(cfg),
           onboardedBy: cfg.onboardedBy || null,
+          referredBy: cfg.referredBy || null,
+          referredPhone: cfg.referredPhone || null,
         });
       }
     }
@@ -517,6 +559,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                       ⚠️ Missing Shifts ({activeMissingShiftCount})
                     </option>
                   )}
+                  <option value="WITH_REFERRAL">
+                    🎁 Referral Tagged ({referralTaggedCount})
+                  </option>
                   <option value="Morning Shift">Morning (6 AM – 3 PM)</option>
                   <option value="2nd Shift">2nd Shift (3 PM – 12 AM)</option>
                   <option value="Split Shift">Split Shift</option>
@@ -680,6 +725,32 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     </span>
                   )}
                 </button>
+
+                {/* Referral Tagged Delivery Partners Toggle Button */}
+                <button
+                  type="button"
+                  className={`btn-referral-toggle ${activeShiftFilter === 'WITH_REFERRAL' ? 'btn-referral-toggle-active' : ''} ${referralTaggedCount > 0 || totalStoreReferralCount > 0 ? 'has-referrals' : ''}`}
+                  onClick={() => {
+                    setShiftFilter(activeShiftFilter === 'WITH_REFERRAL' ? 'ALL' : 'WITH_REFERRAL');
+                  }}
+                  title={
+                    activeShiftFilter === 'WITH_REFERRAL'
+                      ? 'Currently viewing referral tagged riders. Click to restore all riders view'
+                      : referralTaggedCount > 0
+                      ? `Filter table to show only Referral Tagged delivery partners (${referralTaggedCount} active in this period) to analyze their performance`
+                      : totalStoreReferralCount > 0
+                      ? `Filter table to Referral Tagged delivery partners (${totalStoreReferralCount} in store records)`
+                      : 'No referral tagged riders found in store'
+                  }
+                >
+                  <span className="referral-toggle-icon">🎁</span>
+                  <span>Referral Tagged</span>
+                  {(referralTaggedCount > 0 || totalStoreReferralCount > 0) && (
+                    <span className="badge-referral-pill">
+                      {referralTaggedCount || totalStoreReferralCount}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -805,6 +876,32 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               <span>⚡ Fill Shift Data ({filteredRows.length || totalActiveRosterMissingShiftCount} Riders)</span>
             </button>
           )}
+        </div>
+      )}
+
+      {/* Referral Tagged Filter Information Banner */}
+      {activeShiftFilter === 'WITH_REFERRAL' && (
+        <div className="alert-box alert-box-referral-banner" role="alert">
+          <div className="alert-referral-left">
+            <span className="alert-referral-icon">🎁</span>
+            <div>
+              <strong>
+                Referral Tagged Riders ({filteredRows.length} shown
+                {totalStoreReferralCount > filteredRows.length && `, ${totalStoreReferralCount} in store records`})
+              </strong>
+              <p className="alert-referral-sub">
+                Showing delivery partners who were referred through our Referral Program. Evaluate their active days, orders, working hours, and shift compliance.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm btn-clear-referral-filter"
+            onClick={() => setShiftFilter('ALL')}
+            title="Show all riders"
+          >
+            Show All Riders
+          </button>
         </div>
       )}
 
@@ -1128,6 +1225,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 const riderDnr = dnrSummary?.riderSummariesMap.get(normName);
                 const hasDnr = Boolean(riderDnr && riderDnr.totalDnrCount > 0);
                 const isFrequentExploiter = Boolean(riderDnr?.isFrequentExploiter);
+                const hasReferralTag = Boolean(
+                  rawRiderShift &&
+                    ((rawRiderShift.referredBy && rawRiderShift.referredBy.trim()) ||
+                      (rawRiderShift.referredPhone && rawRiderShift.referredPhone.trim()))
+                );
 
                 return (
                   <tr
@@ -1138,7 +1240,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                           ? 'row-dnr-highlight row-dnr-frequent'
                           : 'row-dnr-highlight'
                         : ''
-                    }`}
+                    } ${hasReferralTag ? 'row-referral-tagged' : ''}`}
                   >
                     {/* Sticky Rider Name & Stacked Phone Number */}
                     <td className="td-rider-name sticky-col text-center">
@@ -1154,6 +1256,14 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                                 title={`Onboarded by ${rawRiderShift.onboardedBy}`}
                               >
                                 👤 {rawRiderShift.onboardedBy}
+                              </span>
+                            )}
+                            {hasReferralTag && (
+                              <span
+                                className="rider-referral-tag"
+                                title={`Referred by ${rawRiderShift?.referredBy || 'Referral'}${rawRiderShift?.referredPhone ? ` (${rawRiderShift.referredPhone})` : ''}`}
+                              >
+                                🎁 Ref: {rawRiderShift?.referredBy || rawRiderShift?.referredPhone}
                               </span>
                             )}
                             {/* Visual Cue for DNR tracking both Non_abusive and Potential_abuse with counts */}
