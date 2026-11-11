@@ -362,27 +362,48 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
         </div>
       )}
 
-      {/* 3. Data Not Available State */}
+      {/* 3. Data Not Available / Pending Actual Orders State */}
       {!loading && summary && !summary.hasOrderData && (
         <div className="section-card perf-card text-center p-xl my-md">
           <div className="mb-sm" style={{ fontSize: '2.5rem' }} aria-hidden="true">
-            📋
+            {summary.hasAttendanceData ? '⏳' : '📋'}
           </div>
           <h3 className="section-title editorial-serif-heading text-lg font-bold mb-xs">
-            Data Not Available
-          </h3>
-          <p className="section-subtitle max-w-lg mx-auto mb-md" style={{ color: 'var(--color-slate-400, #94a3b8)' }}>
-            No order delivery data is available for <strong>{summary.formattedDate || formatDateLabel(selectedDate)}</strong> for store <strong>{selectedStore.store_name}</strong>.
             {summary.hasAttendanceData
-              ? ' Attendance was marked for this date, but delivered order records have not been uploaded yet.'
-              : ' Order data has not been uploaded for this date.'}
-          </p>
+              ? 'Actual Order Data Not Uploaded Yet'
+              : 'Data Not Available'}
+          </h3>
+          <div className="section-subtitle max-w-lg mx-auto mb-md" style={{ color: 'var(--color-slate-400, #94a3b8)' }}>
+            {summary.hasAttendanceData ? (
+              <>
+                <p className="mb-xs">
+                  Attendance and shift schedules are saved for <strong>{summary.formattedDate || formatDateLabel(selectedDate)}</strong> ({summary.plannedPresentCount} {summary.plannedPresentCount === 1 ? 'rider' : 'riders'} planned in turn-up), but delivered order records have not been uploaded yet for store <strong>{selectedStore.store_name}</strong>.
+                </p>
+                <p className="text-xs text-muted m-0">
+                  The <strong>Hourly Slot Planning Table</strong> displays your forward schedule (attendance &amp; shifts), whereas <strong>Plan vs Actual Audit</strong> cross-checks scheduled shifts against completed customer orders. Once order data for this date is uploaded in Data Ingestion, actual turn-up and rider adherence will calculate here automatically.
+                </p>
+              </>
+            ) : (
+              <p className="m-0">
+                No order delivery or attendance data is available for <strong>{summary.formattedDate || formatDateLabel(selectedDate)}</strong> for store <strong>{selectedStore.store_name}</strong>.
+              </p>
+            )}
+          </div>
 
           <div className="flex-row items-center justify-center gap-sm flex-wrap mt-md">
-            {availableDates.length > 0 && availableDates[0] !== selectedDate && (
+            {summary.hasAttendanceData && onNavigateToForwardPlan && (
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
+                onClick={onNavigateToForwardPlan}
+              >
+                ‹ View Planned Turn-Up in Forward Plan
+              </button>
+            )}
+            {availableDates.length > 0 && availableDates[0] !== selectedDate && (
+              <button
+                type="button"
+                className={summary.hasAttendanceData && onNavigateToForwardPlan ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm'}
                 onClick={() => setSelectedDate(availableDates[0])}
               >
                 Go to Latest Available ({formatDateLabel(availableDates[0])})
