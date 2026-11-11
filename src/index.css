@@ -1359,6 +1359,11 @@ select {
   text-align: center !important;
 }
 
+.mx-auto {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
 .pt-md {
   padding-top: 1.25rem !important;
 }
