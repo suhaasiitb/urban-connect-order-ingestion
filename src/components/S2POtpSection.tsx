@@ -614,23 +614,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       <div className="kpi-grid mt-md">
         <div className="kpi-card">
           <div className="kpi-header-row">
-            <span className="kpi-label">DSR (Delivery Success Rate)</span>
-            <span className="kpi-target-badge">Target: &gt; 99%</span>
-          </div>
-          <strong
-            className={`kpi-value ${
-              (activeSummary?.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'
-            }`}
-          >
-            {loading ? '...' : `${(activeSummary?.overallDsrPct ?? 0).toFixed(2)}%`}
-          </strong>
-          <span className="kpi-sub">
-            Completed: {(activeSummary?.overallCompletedOrders ?? 0).toLocaleString()} of {(activeSummary?.overallTotalOrders ?? 0).toLocaleString()} orders
-          </span>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-header-row">
             <span className="kpi-label">Average S2P Time</span>
             <span className="kpi-target-badge">Target: ≤ 0.60 min</span>
           </div>
@@ -678,6 +661,23 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           </strong>
           <span className="kpi-sub">
             Orders per active rider working hour (turn-up)
+          </span>
+        </div>
+
+        <div className="kpi-card">
+          <div className="kpi-header-row">
+            <span className="kpi-label">DSR (Delivery Success Rate)</span>
+            <span className="kpi-target-badge">Target: &gt; 99%</span>
+          </div>
+          <strong
+            className={`kpi-value ${
+              (activeSummary?.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'
+            }`}
+          >
+            {loading ? '...' : `${(activeSummary?.overallDsrPct ?? 0).toFixed(2)}%`}
+          </strong>
+          <span className="kpi-sub">
+            Completed: {(activeSummary?.overallCompletedOrders ?? 0).toLocaleString()} of {(activeSummary?.overallTotalOrders ?? 0).toLocaleString()} orders
           </span>
         </div>
 
