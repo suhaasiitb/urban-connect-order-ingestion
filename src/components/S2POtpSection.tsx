@@ -942,12 +942,12 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                         {showSnopBreach && <th className="text-center">SNOP Plan</th>}
                                         <th className="text-center">Orders</th>
                                         {showSnopBreach && <th className="text-center">Breach</th>}
-                                        <th className="text-center">DSR %</th>
                                         <th className="text-center">Actual Riders Turn-up</th>
                                         <th className="text-center">DPH</th>
                                         <th className="text-center">AVERAGE of S2P (min)</th>
                                         <th className="text-center">OTP Achieved %</th>
                                         <th className="text-center">OTP Breached %</th>
+                                        <th className="text-center">DSR %</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -964,14 +964,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                             {showSnopBreach && (
                                               <td className="text-center">{renderBreachCellContent(slotBreach, slotSnop)}</td>
                                             )}
-                                            <td className="text-center font-semibold">
-                                              <span
-                                                className={(s.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
-                                                title={`Completed: ${(s.completedOrdersCount ?? 0).toLocaleString()} / ${s.ordersCount.toLocaleString()}`}
-                                              >
-                                                {(s.dsrPct ?? 0).toFixed(1)}%
-                                              </span>
-                                            </td>
                                             <td className="text-center">{s.ridersCount}</td>
                                             <td className="text-center">
                                               <span className={`dph-pill ${getDphHeatmapClass(s.dph)}`}>
@@ -987,6 +979,14 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                             <td className="text-center text-red">
                                               {s.otpBreachedPct > 0 ? `${s.otpBreachedPct.toFixed(2)}%` : '0.00%'}
                                             </td>
+                                            <td className="text-center font-semibold">
+                                              <span
+                                                className={(s.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
+                                                title={`Completed: ${(s.completedOrdersCount ?? 0).toLocaleString()} / ${s.ordersCount.toLocaleString()}`}
+                                              >
+                                                {(s.dsrPct ?? 0).toFixed(1)}%
+                                              </span>
+                                            </td>
                                           </tr>
                                         );
                                       })}
@@ -1001,11 +1001,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                         {showSnopBreach && (
                                           <td className="text-center">{renderBreachCellContent(dayBreach, daySnopPlan)}</td>
                                         )}
-                                        <td className="text-center font-bold">
-                                          <span className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
-                                            {(day.dsrPct ?? 0).toFixed(1)}%
-                                          </span>
-                                        </td>
                                         <td className="text-center font-bold">{day.distinctRidersCount}</td>
                                         <td className="text-center font-bold">
                                           <span className={`dph-pill ${getDphHeatmapClass(day.avgDph)}`}>
@@ -1020,6 +1015,11 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                         </td>
                                         <td className="text-center font-bold text-red">
                                           {day.avgOtpBreachedPct.toFixed(2)}%
+                                        </td>
+                                        <td className="text-center font-bold">
+                                          <span className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
+                                            {(day.dsrPct ?? 0).toFixed(1)}%
+                                          </span>
                                         </td>
                                       </tr>
                                     </tfoot>
