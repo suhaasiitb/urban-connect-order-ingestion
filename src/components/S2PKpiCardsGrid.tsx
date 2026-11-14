@@ -6,6 +6,7 @@ interface S2PKpiCardsGridProps {
   loading?: boolean;
   className?: string;
   compact?: boolean;
+  dphTarget?: number;
 }
 
 /**
@@ -17,6 +18,7 @@ export const S2PKpiCardsGrid: React.FC<S2PKpiCardsGridProps> = ({
   loading = false,
   className = 'kpi-grid mt-md',
   compact = false,
+  dphTarget = 2.1,
 }) => {
   const periodDays = summary?.periodDays ?? 1;
 
@@ -64,11 +66,11 @@ export const S2PKpiCardsGrid: React.FC<S2PKpiCardsGridProps> = ({
       <div className="kpi-card">
         <div className="kpi-header-row">
           <span className="kpi-label">Deliveries Per Hour (DPH)</span>
-          {!compact && <span className="kpi-target-badge">Target: ≤ 2.1</span>}
+          {!compact && <span className="kpi-target-badge">Target: ≤ {dphTarget.toFixed(1)}</span>}
         </div>
         <strong
           className={`kpi-value ${
-            (summary?.overallAvgDph ?? 0) > 2.1 ? 'text-red' : 'text-green'
+            (summary?.overallAvgDph ?? 0) > dphTarget ? 'text-red' : 'text-green'
           }`}
         >
           {loading ? '...' : (summary?.overallAvgDph ?? 0).toFixed(1)}

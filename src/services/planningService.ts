@@ -104,8 +104,16 @@ export const LOCAL_STORAGE_DPH_PREFIX = 'urban_connect_planning_dph_';
 export const DEFAULT_STORE_DPH: Record<string, number> = {
   TMK7: 2.1,
   TPH1: 2.1,
-  TPE2: 2.1,
+  TPE2: 1.8,
 };
+
+/**
+ * Returns the default DPH requirement for a store (TPE2 = 1.8, others = 2.1).
+ */
+export function getDefaultStoreDph(siteCode?: string): number {
+  const norm = (siteCode || '').toUpperCase().trim();
+  return DEFAULT_STORE_DPH[norm] ?? 2.1;
+}
 
 /**
  * Calculates Required Riders for a given slot.

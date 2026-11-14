@@ -10,6 +10,7 @@ import { supabase } from '../config/supabaseClient';
 import {
   type SnopForecastRecord,
   fetchStoreSnopForecast,
+  getDefaultStoreDph,
   getStoredSnopRecords,
 } from '../services/planningService';
 import {
@@ -57,6 +58,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   currentUser,
 }) => {
   const selectedStore = stores.find((s) => s.id === selectedStoreId) ?? stores[0];
+  const dphTarget = getDefaultStoreDph(selectedStore?.store_code);
   const timeZone = selectedStore?.timezone || 'Asia/Kolkata';
   const todayStr = getTodayDateString(timeZone);
 
@@ -390,9 +392,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   // Helper to color-code DPH heatmap badge class
   const getDphHeatmapClass = (dph: number): string => {
     if (dph <= 0) return 'dph-heat-none';
-    if (dph >= 2.6) return 'dph-heat-critical';
-    if (dph >= 2.3) return 'dph-heat-high';
-    if (dph >= 2.0) return 'dph-heat-elevated';
+    if (dph >= dphTarget + 0.5) return 'dph-heat-critical';
+    if (dph >= dphTarget + 0.2) return 'dph-heat-high';
+    if (dph > dphTarget) return 'dph-heat-elevated';
     return 'dph-heat-normal';
   };
 
@@ -612,7 +614,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       )}
 
       {/* 2. Top Summary KPI Cards */}
-      <S2PKpiCardsGrid summary={activeSummary} loading={loading} />
+      <S2PKpiCardsGrid summary={activeSummary} loading={loading} dphTarget={dphTarget} />
 
       {/* 3. Daily Summary Table with Expandable Slot Drill-Downs */}
       <div className="section-card perf-card mt-md">
@@ -690,7 +692,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                 {activeSummary.days.map((day) => {
                   const isExpanded = expandedDates.has(day.dateStr);
                   const activeView = slotViewModes[day.dateStr] || 'all';
-                  const impactedSlots = getDphImpactedSlots(day.slots);
+                  const impactedSlots = getDphImpactedSlots(day.slots, dphTarget);
                   const daySnopPlan = getDaySnopPlan(day);
                   const dayBreach = day.totalOrders - daySnopPlan;
 
@@ -764,7 +766,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                           {impactedSlots.length > 0 ? (
                             <span
                               className="dph-impacted-slots"
-                              title={`Slots with DPH > 2.1: ${impactedSlots.join(', ')}`}
+                              title={`Slots with DPH > ${dphTarget.toFixed(1)}: ${impactedSlots.join(', ')}`}
                             >
                               {impactedSlots.join(', ')}
                             </span>

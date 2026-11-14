@@ -10,6 +10,7 @@
 import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
 import { getTodayDateString } from './analyticsService';
+import { getDefaultStoreDph } from './planningService';
 
 export interface SlotPerformanceMetrics {
   slotHour: number; // 0 to 23
@@ -892,7 +893,11 @@ export async function fetchS2POtpAnalytics(params: {
 /**
  * Exports the S2P, OTP+3 & DPH analytics data to an Excel workbook matching the pivot layouts.
  */
-export function exportS2POtpToExcel(summary: S2POtpSummaryResult, storeCode: string): void {
+export function exportS2POtpToExcel(
+  summary: S2POtpSummaryResult,
+  storeCode: string,
+  dphTarget = getDefaultStoreDph(storeCode)
+): void {
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Daily Summary
@@ -905,14 +910,14 @@ export function exportS2POtpToExcel(summary: S2POtpSummaryResult, storeCode: str
     'Actual Riders Turn-up',
     'Total Rider Slot Hours',
     'DPH (Deliveries/Hour)',
-    'DPH Impacted Slots (>2.1)',
+    `DPH Impacted Slots (>${dphTarget.toFixed(1)})`,
     'AVERAGE of S2P (min)',
     'OTP+3 Achieved %',
   ];
 
   const dailyRows: Array<Array<string | number>> = [dailySummaryHeaders];
   for (const day of summary.days) {
-    const impactedSlots = getDphImpactedSlots(day.slots).join(', ');
+    const impactedSlots = getDphImpactedSlots(day.slots, dphTarget).join(', ');
     dailyRows.push([
       day.dateStr,
       day.dayOfWeek,

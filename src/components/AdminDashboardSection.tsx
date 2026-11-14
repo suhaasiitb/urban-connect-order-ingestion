@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
 import { formatDateToHeader, getTodayDateString } from '../services/analyticsService';
+import { getDefaultStoreDph } from '../services/planningService';
 import {
   type S2POtpSummaryResult,
   fetchS2POtpAnalytics,
@@ -177,6 +178,7 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
               loading={isLoading}
               className="kpi-grid"
               compact
+              dphTarget={getDefaultStoreDph(store.store_code)}
             />
           </section>
         );
