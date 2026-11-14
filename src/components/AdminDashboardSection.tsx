@@ -102,8 +102,8 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
   }, [loadAllStoresToday]);
 
   return (
-    <div className="analytics-container">
-      <div className="section-card">
+    <div className="analytics-container admin-dashboard-container">
+      <div className="section-card admin-dashboard-header-card">
         <div className="flex-row items-center justify-between flex-wrap gap-sm">
           <div>
             <h2 className="section-title editorial-serif-heading">
@@ -117,7 +117,7 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
           </div>
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary btn-sm"
             onClick={() => void loadAllStoresToday(true)}
             disabled={refreshing}
           >
@@ -127,7 +127,7 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
       </div>
 
       {orderedStores.length === 0 && (
-        <div className="section-card mt-md">
+        <div className="section-card mt-sm">
           <p className="subtitle">No active stores found.</p>
         </div>
       )}
@@ -139,11 +139,11 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
         const hasOrdersToday = (summary?.overallTotalOrders ?? 0) > 0;
 
         return (
-          <section key={store.id} className="section-card perf-card mt-md">
+          <section key={store.id} className="section-card perf-card admin-dashboard-store-card">
             <div className="flex-row items-center justify-between flex-wrap gap-sm">
               <div className="flex-row items-center gap-sm flex-wrap">
                 <span className="badge badge-info">{store.store_code}</span>
-                <h3 className="section-title editorial-serif-heading" style={{ margin: 0 }}>
+                <h3 className="section-title editorial-serif-heading" style={{ margin: 0, fontSize: '1.05rem' }}>
                   {store.store_name}
                 </h3>
                 {!isLoading && (
@@ -175,7 +175,8 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
             <S2PKpiCardsGrid
               summary={summary}
               loading={isLoading}
-              className="kpi-grid mt-sm"
+              className="kpi-grid"
+              compact
             />
           </section>
         );

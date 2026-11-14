@@ -12377,6 +12377,72 @@ html[data-theme="dark"] .theme-desc {
   }
 }
 
+/* ==============================================================================
+   Admin Executive Dashboard — Ultra-Compact Multi-Store KPI Grid
+   ============================================================================== */
+
+.admin-dashboard-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.admin-dashboard-header-card {
+  padding: 0.65rem 1rem !important;
+}
+
+.admin-dashboard-header-card .section-title {
+  font-size: 1.12rem;
+  margin-bottom: 0.1rem;
+}
+
+.admin-dashboard-header-card .section-subtitle {
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.admin-dashboard-store-card {
+  padding: 0.65rem 1rem !important;
+  gap: 0.5rem !important;
+}
+
+.admin-compact-kpi-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 0.55rem !important;
+}
+
+.admin-compact-kpi-grid .kpi-card {
+  padding: 0.5rem 0.7rem !important;
+  border-radius: 8px !important;
+}
+
+.admin-compact-kpi-grid .kpi-label {
+  font-size: 0.66rem !important;
+  letter-spacing: 0.03em !important;
+}
+
+.admin-compact-kpi-grid .kpi-value {
+  font-size: 1.28rem !important;
+  margin: 0.18rem 0 0 !important;
+  line-height: 1.1 !important;
+}
+
+.admin-kpi-inline-riders {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+html[data-theme="dark"] .admin-kpi-inline-riders {
+  color: #94a3b8;
+}
+
+@media (max-width: 1024px) {
+  .admin-compact-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)) !important;
+  }
+}
+
 
 
 
