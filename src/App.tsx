@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { AdminDashboardSection } from './components/AdminDashboardSection';
 import { AnalyticsSection } from './components/AnalyticsSection';
 import { LoginScreen } from './components/LoginScreen';
 import { PlanningSection } from './components/PlanningSection';
@@ -30,7 +31,7 @@ export const App: React.FC = () => {
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [storesError, setStoresError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'upload' | 'analytics' | 's2p_otp' | 'planning'>('analytics');
+  const [activeView, setActiveView] = useState<'dashboard' | 'upload' | 'analytics' | 's2p_otp' | 'planning'>('dashboard');
 
   // Sub-section states synchronized with the auto-retractable side panel
   const [planningSubView, setPlanningSubView] = useState<'FORWARD_PLAN' | 'PLAN_VS_ACTUAL_AUDIT'>('FORWARD_PLAN');
@@ -96,6 +97,7 @@ export const App: React.FC = () => {
         }
         setCurrentUser(res.user);
         if (res.user) {
+          setActiveView(res.user.role === 'admin' ? 'dashboard' : 'analytics');
           await loadStoresForUser(res.user);
           if (!hasUserSavedThemePreference(res.user.user_id)) {
             setShowThemePrompt(true);
@@ -133,6 +135,7 @@ export const App: React.FC = () => {
   const handleLoginSuccess = async (loggedInUser: UserProfile) => {
     setAuthError(null);
     setCurrentUser(loggedInUser);
+    setActiveView(loggedInUser.role === 'admin' ? 'dashboard' : 'analytics');
     await loadStoresForUser(loggedInUser);
 
     // If the user has not selected their theme preference yet, gently prompt them
@@ -303,6 +306,45 @@ export const App: React.FC = () => {
           </div>
 
           <div className="side-panel-scroll">
+            {/* Admin-only Group 0: Main Dashboard */}
+            {currentUser.role === 'admin' && (
+              <div className={`side-nav-group ${activeView === 'dashboard' ? 'group-active' : ''}`}>
+                <button
+                  type="button"
+                  className={`side-nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveView('dashboard');
+                    setIsMobileNavOpen(false);
+                  }}
+                  title="All Stores Today Dashboard"
+                >
+                  <span className="side-nav-icon" aria-hidden="true">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="14" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" />
+                    </svg>
+                  </span>
+                  <span className="side-nav-label">Dashboard</span>
+                </button>
+
+                <div className="side-subnav-list">
+                  <button
+                    type="button"
+                    className={`side-subnav-item ${activeView === 'dashboard' ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveView('dashboard');
+                      setIsMobileNavOpen(false);
+                    }}
+                  >
+                    <span className="subnav-dot" />
+                    <span className="side-subnav-label">All Stores (Today)</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Group 1: S2P & OTP */}
             <div className={`side-nav-group ${activeView === 's2p_otp' ? 'group-active' : ''}`}>
               <button
@@ -634,6 +676,16 @@ export const App: React.FC = () => {
             <div className="alert alert-error mb-md" role="alert">
               <strong>Store Master Error:</strong> {storesError}
             </div>
+          )}
+
+          {activeView === 'dashboard' && currentUser.role === 'admin' && (
+            <AdminDashboardSection
+              stores={stores}
+              onOpenStoreS2POtp={(storeId) => {
+                setSelectedStoreId(storeId);
+                setActiveView('s2p_otp');
+              }}
+            />
           )}
 
           {activeView === 's2p_otp' && (

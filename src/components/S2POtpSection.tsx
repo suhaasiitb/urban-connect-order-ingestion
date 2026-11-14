@@ -20,6 +20,7 @@ import {
   getDayOfWeekName,
   getDphImpactedSlots,
 } from '../services/s2pOtpService';
+import { S2PKpiCardsGrid } from './S2PKpiCardsGrid';
 
 interface S2POtpSectionProps {
   stores: StoreMaster[];
@@ -611,88 +612,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       )}
 
       {/* 2. Top Summary KPI Cards */}
-      <div className="kpi-grid mt-md">
-        <div className="kpi-card">
-          <div className="kpi-header-row">
-            <span className="kpi-label">Average S2P Time</span>
-            <span className="kpi-target-badge">Target: ≤ 0.60 min</span>
-          </div>
-          <strong
-            className={`kpi-value ${
-              (activeSummary?.overallAvgS2p ?? 0) > 0.60 ? 'text-red' : 'text-green'
-            }`}
-          >
-            {loading ? '...' : `${activeSummary?.overallAvgS2p.toFixed(2) ?? '0.00'} min`}
-          </strong>
-          <span className="kpi-sub">
-            Staging-to-Pickup duration across {activeSummary?.periodDays ?? 1} {(activeSummary?.periodDays ?? 1) === 1 ? 'day' : 'days'}
-          </span>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-header-row">
-            <span className="kpi-label">OTP+3 Performance</span>
-            <span className="kpi-target-badge">Target: ≥ 98%</span>
-          </div>
-          <strong
-            className={`kpi-value ${
-              (activeSummary?.overallOtpAchievedPct ?? 0) < 98.0 ? 'text-red' : 'text-green'
-            }`}
-          >
-            {loading ? '...' : `${activeSummary?.overallOtpAchievedPct.toFixed(2) ?? '0.00'}%`}
-          </strong>
-          <span className="kpi-sub">
-            Achieved: {activeSummary?.overallOtpAchievedPct.toFixed(1)}% | Breached:{' '}
-            {activeSummary?.overallOtpBreachedPct.toFixed(1)}%
-          </span>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-header-row">
-            <span className="kpi-label">Deliveries Per Hour (DPH)</span>
-            <span className="kpi-target-badge">Target: ≤ 2.1</span>
-          </div>
-          <strong
-            className={`kpi-value ${
-              (activeSummary?.overallAvgDph ?? 0) > 2.1 ? 'text-red' : 'text-green'
-            }`}
-          >
-            {loading ? '...' : activeSummary?.overallAvgDph.toFixed(1) ?? '0.0'}
-          </strong>
-          <span className="kpi-sub">
-            Orders per active rider working hour (turn-up)
-          </span>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-header-row">
-            <span className="kpi-label">DSR (Delivery Success Rate)</span>
-            <span className="kpi-target-badge">Target: &gt; 99%</span>
-          </div>
-          <strong
-            className={`kpi-value ${
-              (activeSummary?.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'
-            }`}
-          >
-            {loading ? '...' : `${(activeSummary?.overallDsrPct ?? 0).toFixed(2)}%`}
-          </strong>
-          <span className="kpi-sub">
-            Completed: {(activeSummary?.overallCompletedOrders ?? 0).toLocaleString()} of {(activeSummary?.overallTotalOrders ?? 0).toLocaleString()} orders
-          </span>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-header-row">
-            <span className="kpi-label">Total Volume &amp; Riders</span>
-          </div>
-          <strong className="kpi-value text-slate">
-            {loading ? '...' : `${activeSummary?.overallTotalOrders.toLocaleString() ?? '0'}`}
-          </strong>
-          <span className="kpi-sub">
-            Delivered by {activeSummary?.overallDistinctRiders ?? 0} active riders in period
-          </span>
-        </div>
-      </div>
+      <S2PKpiCardsGrid summary={activeSummary} loading={loading} />
 
       {/* 3. Daily Summary Table with Expandable Slot Drill-Downs */}
       <div className="section-card perf-card mt-md">
