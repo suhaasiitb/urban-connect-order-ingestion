@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getTodayDateString } from '../../src/services/analyticsService';
 import {
   buildSummaryFromRawOrders,
   buildSummaryFromRpcRows,
@@ -340,7 +341,7 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
     expect(rpcSummary.days[0].slots[0].dsrPct).toBe(99.0);
     expect(rpcSummary.days[0].slots[1].dsrPct).toBe(100.0);
 
-    // 2. Test buildSummaryFromRawOrders with order status field
+    // 2. Test buildSummaryFromRawOrders with past-day order statuses (CANCELLED excluded from past DSR)
     const rawOrders = [
       {
         rider_number: 'R1',
@@ -364,7 +365,15 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
         order_date: '2026-10-20',
         s2p_minutes: 0.6,
         otp_plus_3_performance: 'Not Applicable',
-        status: 'Cancelled',
+        status: 'RTO_DELIVERED',
+      },
+      {
+        rider_number: 'R4',
+        slot_hour: 9,
+        order_date: '2026-10-20',
+        s2p_minutes: 0.6,
+        otp_plus_3_performance: 'Not Applicable',
+        status: 'Cancelled', // Excluded from past-day DSR
       },
     ];
 
@@ -374,12 +383,36 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
       endDate: '2026-10-20',
     });
 
-    expect(rawSummary.overallTotalOrders).toBe(3);
+    expect(rawSummary.overallTotalOrders).toBe(4);
     expect(rawSummary.overallCompletedOrders).toBe(2);
-    // 2/3 = 66.67%
+    expect(rawSummary.overallDsrEligibleOrders).toBe(3);
+    // 2 / 3 (excluding Cancelled) = 66.67%
     expect(rawSummary.overallDsrPct).toBe(66.67);
     expect(rawSummary.days[0].completedOrdersCount).toBe(2);
     expect(rawSummary.days[0].dsrPct).toBe(66.67);
+
+    // 3. Test current-day DSR: only COMPLETED and RTO_DELIVERED count; IN STORE, TO CX, CX HANDOVER, CANCELLED excluded
+    const todayStr = getTodayDateString('Asia/Kolkata');
+    const todayOrders = [
+      { rider_number: 'R1', slot_hour: 9, order_date: todayStr, s2p_minutes: 0.4, otp_plus_3_performance: 'OTP Achieved', status: 'COMPLETED' },
+      { rider_number: 'R2', slot_hour: 9, order_date: todayStr, s2p_minutes: 0.5, otp_plus_3_performance: 'OTP Achieved', status: 'COMPLETED' },
+      { rider_number: 'R3', slot_hour: 9, order_date: todayStr, s2p_minutes: 0.5, otp_plus_3_performance: 'Not Applicable', status: 'RTO_DELIVERED' },
+      { rider_number: 'R4', slot_hour: 9, order_date: todayStr, s2p_minutes: null, otp_plus_3_performance: 'Not Applicable', status: 'IN STORE' },
+      { rider_number: 'R5', slot_hour: 9, order_date: todayStr, s2p_minutes: 0.3, otp_plus_3_performance: 'Not Applicable', status: 'TO CX' },
+      { rider_number: 'R6', slot_hour: 9, order_date: todayStr, s2p_minutes: 0.3, otp_plus_3_performance: 'Not Applicable', status: 'CX HANDOVER' },
+      { rider_number: 'R7', slot_hour: 9, order_date: todayStr, s2p_minutes: null, otp_plus_3_performance: 'Not Applicable', status: 'CANCELLED' },
+    ];
+
+    const todaySummary = buildSummaryFromRawOrders(todayOrders, {
+      storeId: 'test-store',
+      startDate: todayStr,
+      endDate: todayStr,
+    });
+
+    expect(todaySummary.overallTotalOrders).toBe(7);
+    expect(todaySummary.overallCompletedOrders).toBe(2);
+    expect(todaySummary.overallDsrEligibleOrders).toBe(3);
+    expect(todaySummary.overallDsrPct).toBe(66.67);
   });
 
   it('correctly aggregates partial/ongoing day metrics (e.g. slots 6-10 uploaded so far)', () => {
