@@ -95,7 +95,7 @@ export const S2PKpiCardsGrid: React.FC<S2PKpiCardsGridProps> = ({
         {!compact && (
           <span className="kpi-sub">
             Completed: {(summary?.overallCompletedOrders ?? 0).toLocaleString()} of{' '}
-            {(summary?.overallTotalOrders ?? 0).toLocaleString()} orders
+            {(summary?.overallDsrEligibleOrders ?? summary?.overallTotalOrders ?? 0).toLocaleString()} orders
           </span>
         )}
       </div>

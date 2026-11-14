@@ -24,7 +24,8 @@ export interface SlotPerformanceMetrics {
   otpAchievedPct: number; // % of row
   otpBreachedPct: number; // % of row
   completedOrdersCount: number;
-  dsrPct: number; // Delivery Success Rate (% Completed)
+  dsrEligibleOrdersCount: number;
+  dsrPct: number; // Delivery Success Rate (% Completed of DSR-eligible orders)
 }
 
 export interface DailyPerformanceSummary {
@@ -42,7 +43,8 @@ export interface DailyPerformanceSummary {
   avgOtpAchievedPct: number; // Day OTP Achieved %
   avgOtpBreachedPct: number; // Day OTP Breached %
   completedOrdersCount: number;
-  dsrPct: number; // Delivery Success Rate (% Completed)
+  dsrEligibleOrdersCount: number;
+  dsrPct: number; // Delivery Success Rate (% Completed of DSR-eligible orders)
   slots: SlotPerformanceMetrics[];
 }
 
@@ -60,7 +62,8 @@ export interface S2POtpSummaryResult {
   overallOtpAchievedPct: number;
   overallOtpBreachedPct: number;
   overallCompletedOrders: number;
-  overallDsrPct: number; // Delivery Success Rate (% Completed)
+  overallDsrEligibleOrders: number;
+  overallDsrPct: number; // Delivery Success Rate (% Completed of DSR-eligible orders)
 }
 
 export interface FetchS2POtpAnalyticsResult {
@@ -164,6 +167,7 @@ interface RpcSlotMetricRow {
   otp_achieved_count: number | string;
   otp_breached_count: number | string;
   completed_orders_count?: number | string;
+  dsr_eligible_orders_count?: number | string;
   day_distinct_riders?: number | string;
   period_distinct_riders?: number | string;
 }
@@ -201,6 +205,7 @@ export function buildSummaryFromRpcRows(
   let overallOtpAchieved = 0;
   let overallOtpBreached = 0;
   let overallCompletedOrders = 0;
+  let overallDsrEligibleOrders = 0;
   let maxDayDistinctRiders = 0;
 
   for (const dateStr of sortedDates) {
@@ -214,6 +219,7 @@ export function buildSummaryFromRpcRows(
     let dayOtpAchieved = 0;
     let dayOtpBreached = 0;
     let dayCompletedOrders = 0;
+    let dayDsrEligibleOrders = 0;
     let dayDistinctRiders = Number(slotRows[0]?.day_distinct_riders || 0);
 
     const slotMetrics: SlotPerformanceMetrics[] = [];
@@ -234,8 +240,11 @@ export function buildSummaryFromRpcRows(
       const otpBreachedPct = otpTotal > 0 ? Math.round((otpBr / otpTotal) * 10000) / 100 : 0.0;
 
       const completedOrdersCount = Number(r.completed_orders_count || 0);
+      const dsrEligibleOrdersCount = Number(r.dsr_eligible_orders_count ?? ordersCount);
       const dsrPct =
-        ordersCount > 0 ? Math.round((completedOrdersCount / ordersCount) * 10000) / 100 : 0.0;
+        dsrEligibleOrdersCount > 0
+          ? Math.round((completedOrdersCount / dsrEligibleOrdersCount) * 10000) / 100
+          : 0.0;
 
       slotMetrics.push({
         slotHour,
@@ -250,6 +259,7 @@ export function buildSummaryFromRpcRows(
         otpAchievedPct,
         otpBreachedPct,
         completedOrdersCount,
+        dsrEligibleOrdersCount,
         dsrPct,
       });
 
@@ -260,6 +270,7 @@ export function buildSummaryFromRpcRows(
       dayOtpAchieved += otpAch;
       dayOtpBreached += otpBr;
       dayCompletedOrders += completedOrdersCount;
+      dayDsrEligibleOrders += dsrEligibleOrdersCount;
     }
 
     if (dayDistinctRiders === 0) {
@@ -277,7 +288,9 @@ export function buildSummaryFromRpcRows(
     const dayAvgOtpBreachedPct =
       dayOtpTotal > 0 ? Math.round((dayOtpBreached / dayOtpTotal) * 10000) / 100 : 0.0;
     const dayDsrPct =
-      dayOrders > 0 ? Math.round((dayCompletedOrders / dayOrders) * 10000) / 100 : 0.0;
+      dayDsrEligibleOrders > 0
+        ? Math.round((dayCompletedOrders / dayDsrEligibleOrders) * 10000) / 100
+        : 0.0;
 
     days.push({
       dateStr,
@@ -294,6 +307,7 @@ export function buildSummaryFromRpcRows(
       avgOtpAchievedPct: dayAvgOtpAchievedPct,
       avgOtpBreachedPct: dayAvgOtpBreachedPct,
       completedOrdersCount: dayCompletedOrders,
+      dsrEligibleOrdersCount: dayDsrEligibleOrders,
       dsrPct: dayDsrPct,
       slots: slotMetrics,
     });
@@ -305,6 +319,7 @@ export function buildSummaryFromRpcRows(
     overallOtpAchieved += dayOtpAchieved;
     overallOtpBreached += dayOtpBreached;
     overallCompletedOrders += dayCompletedOrders;
+    overallDsrEligibleOrders += dayDsrEligibleOrders;
   }
 
   const overallAvgDph =
@@ -322,8 +337,8 @@ export function buildSummaryFromRpcRows(
     overallOtpTotal > 0 ? Math.round((overallOtpBreached / overallOtpTotal) * 10000) / 100 : 0.0;
 
   const overallDsrPct =
-    overallTotalOrders > 0
-      ? Math.round((overallCompletedOrders / overallTotalOrders) * 10000) / 100
+    overallDsrEligibleOrders > 0
+      ? Math.round((overallCompletedOrders / overallDsrEligibleOrders) * 10000) / 100
       : 0.0;
 
   const [sY, sM, sD] = startDate.split('-').map(Number);
@@ -352,6 +367,7 @@ export function buildSummaryFromRpcRows(
     overallOtpAchievedPct,
     overallOtpBreachedPct,
     overallCompletedOrders,
+    overallDsrEligibleOrders,
     overallDsrPct,
   };
 }
@@ -364,6 +380,7 @@ export function buildSummaryFromRawOrders(
   params: { storeId: string; startDate: string; endDate: string }
 ): S2POtpSummaryResult {
   const { storeId, startDate, endDate } = params;
+  const todayStr = getTodayDateString('Asia/Kolkata');
 
   const dateMap = new Map<
     string,
@@ -377,6 +394,7 @@ export function buildSummaryFromRawOrders(
         otpAchieved: number;
         otpBreached: number;
         completedOrders: number;
+        dsrEligibleOrders: number;
       }
     >
   >();
@@ -414,6 +432,7 @@ export function buildSummaryFromRawOrders(
         otpAchieved: 0,
         otpBreached: 0,
         completedOrders: 0,
+        dsrEligibleOrders: 0,
       };
       slotsMap.set(slot, slotData);
     }
@@ -435,8 +454,16 @@ export function buildSummaryFromRawOrders(
       slotData.otpBreached += 1;
     }
 
-    if (ord.status && ord.status.trim().toLowerCase() === 'completed') {
+    const statusNorm = ord.status ? ord.status.trim().toUpperCase() : '';
+    if (statusNorm === 'COMPLETED') {
       slotData.completedOrders += 1;
+    }
+    const isDsrEligible =
+      d === todayStr
+        ? statusNorm === 'COMPLETED' || statusNorm === 'RTO_DELIVERED'
+        : statusNorm !== 'CANCELLED';
+    if (isDsrEligible) {
+      slotData.dsrEligibleOrders += 1;
     }
   }
 
@@ -450,6 +477,7 @@ export function buildSummaryFromRawOrders(
   let overallOtpAchieved = 0;
   let overallOtpBreached = 0;
   let overallCompletedOrders = 0;
+  let overallDsrEligibleOrders = 0;
   const globalDistinctRidersSet = new Set<string>();
 
   for (const dateStr of sortedDates) {
@@ -463,6 +491,7 @@ export function buildSummaryFromRawOrders(
     let dayOtpAchieved = 0;
     let dayOtpBreached = 0;
     let dayCompletedOrders = 0;
+    let dayDsrEligibleOrders = 0;
 
     const slotMetrics: SlotPerformanceMetrics[] = [];
 
@@ -480,8 +509,11 @@ export function buildSummaryFromRawOrders(
       const otpBreachedPct = otpTotal > 0 ? Math.round((otpBr / otpTotal) * 10000) / 100 : 0.0;
 
       const completedOrdersCount = item.completedOrders;
+      const dsrEligibleOrdersCount = item.dsrEligibleOrders;
       const dsrPct =
-        ordersCount > 0 ? Math.round((completedOrdersCount / ordersCount) * 10000) / 100 : 0.0;
+        dsrEligibleOrdersCount > 0
+          ? Math.round((completedOrdersCount / dsrEligibleOrdersCount) * 10000) / 100
+          : 0.0;
 
       slotMetrics.push({
         slotHour,
@@ -496,6 +528,7 @@ export function buildSummaryFromRawOrders(
         otpAchievedPct,
         otpBreachedPct,
         completedOrdersCount,
+        dsrEligibleOrdersCount,
         dsrPct,
       });
 
@@ -506,6 +539,7 @@ export function buildSummaryFromRawOrders(
       dayOtpAchieved += otpAch;
       dayOtpBreached += otpBr;
       dayCompletedOrders += completedOrdersCount;
+      dayDsrEligibleOrders += dsrEligibleOrdersCount;
 
       for (const r of item.ridersSet) {
         globalDistinctRidersSet.add(r);
@@ -521,7 +555,9 @@ export function buildSummaryFromRawOrders(
     const dayAvgOtpBreachedPct =
       dayOtpTotal > 0 ? Math.round((dayOtpBreached / dayOtpTotal) * 10000) / 100 : 0.0;
     const dayDsrPct =
-      dayOrders > 0 ? Math.round((dayCompletedOrders / dayOrders) * 10000) / 100 : 0.0;
+      dayDsrEligibleOrders > 0
+        ? Math.round((dayCompletedOrders / dayDsrEligibleOrders) * 10000) / 100
+        : 0.0;
 
     days.push({
       dateStr,
@@ -538,6 +574,7 @@ export function buildSummaryFromRawOrders(
       avgOtpAchievedPct: dayAvgOtpAchievedPct,
       avgOtpBreachedPct: dayAvgOtpBreachedPct,
       completedOrdersCount: dayCompletedOrders,
+      dsrEligibleOrdersCount: dayDsrEligibleOrders,
       dsrPct: dayDsrPct,
       slots: slotMetrics,
     });
@@ -549,6 +586,7 @@ export function buildSummaryFromRawOrders(
     overallOtpAchieved += dayOtpAchieved;
     overallOtpBreached += dayOtpBreached;
     overallCompletedOrders += dayCompletedOrders;
+    overallDsrEligibleOrders += dayDsrEligibleOrders;
   }
 
   const overallAvgDph =
@@ -566,8 +604,8 @@ export function buildSummaryFromRawOrders(
     overallOtpTotal > 0 ? Math.round((overallOtpBreached / overallOtpTotal) * 10000) / 100 : 0.0;
 
   const overallDsrPct =
-    overallTotalOrders > 0
-      ? Math.round((overallCompletedOrders / overallTotalOrders) * 10000) / 100
+    overallDsrEligibleOrders > 0
+      ? Math.round((overallCompletedOrders / overallDsrEligibleOrders) * 10000) / 100
       : 0.0;
 
   const [sY, sM, sD] = startDate.split('-').map(Number);
@@ -591,6 +629,7 @@ export function buildSummaryFromRawOrders(
     overallOtpAchievedPct,
     overallOtpBreachedPct,
     overallCompletedOrders,
+    overallDsrEligibleOrders,
     overallDsrPct,
   };
 }
