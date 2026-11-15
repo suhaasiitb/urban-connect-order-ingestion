@@ -12474,6 +12474,168 @@ html[data-theme="dark"] .otp-breach-trigger:hover {
   border-color: rgba(248, 113, 113, 0.5);
 }
 
+/* Frequent OTP Breach Highlight & Filter Toggle Button */
+.btn-otp-breach-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+  background-color: #ffffff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.btn-otp-breach-toggle:hover,
+.btn-otp-breach-toggle.has-breaches:hover {
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.btn-otp-breach-toggle-active {
+  background-color: #fee2e2 !important;
+  color: #991b1b !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+}
+
+.otp-breach-toggle-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.badge-otp-breach-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+}
+
+.btn-otp-breach-toggle-active .badge-otp-breach-pill {
+  background: #991b1b;
+}
+
+.alert-box-otp-breach-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  margin-bottom: 0.75rem;
+  border-radius: 8px;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #7f1d1d;
+}
+
+.alert-otp-breach-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.alert-otp-breach-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.alert-otp-breach-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: #991b1b;
+}
+
+.btn-clear-otp-breach {
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #fca5a5;
+  background-color: #ffffff;
+  color: #991b1b;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+
+.btn-clear-otp-breach:hover {
+  background-color: #fee2e2;
+}
+
+.badge-otp-breach-cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 9999px;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+html[data-theme="dark"] .btn-otp-breach-toggle {
+  background-color: #1e293b;
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
+html[data-theme="dark"] .btn-otp-breach-toggle:hover,
+html[data-theme="dark"] .btn-otp-breach-toggle.has-breaches:hover {
+  background-color: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+html[data-theme="dark"] .btn-otp-breach-toggle-active {
+  background-color: rgba(239, 68, 68, 0.24) !important;
+  color: #fecaca !important;
+  border-color: #f87171 !important;
+}
+
+html[data-theme="dark"] .alert-box-otp-breach-banner {
+  background-color: rgba(127, 29, 29, 0.28);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+}
+
+html[data-theme="dark"] .alert-otp-breach-sub {
+  color: #fca5a5;
+}
+
+html[data-theme="dark"] .btn-clear-otp-breach {
+  background-color: rgba(30, 41, 59, 0.9);
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+}
+
+html[data-theme="dark"] .btn-clear-otp-breach:hover {
+  background-color: rgba(239, 68, 68, 0.25);
+}
+
+html[data-theme="dark"] .badge-otp-breach-cue {
+  background-color: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.38);
+  color: #fca5a5;
+}
+
+
 
 
 

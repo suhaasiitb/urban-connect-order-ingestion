@@ -75,6 +75,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     onSelectShiftFilter?.(newVal);
   };
   const [highlightDnr, setHighlightDnr] = useState<boolean>(false);
+  const [filterOtpBreach, setFilterOtpBreach] = useState<boolean>(false);
   const [selectedDnrRider, setSelectedDnrRider] = useState<RiderDnrSummary | null>(null);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<boolean>(false);
   const [individualModalRider, setIndividualModalRider] = useState<string | null>(null);
@@ -215,7 +216,24 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
       });
     }
 
+    // OTP Breach Highlight filter: >= 1 breach across > 1 distinct day in the selected period
+    if (filterOtpBreach) {
+      result = result.filter(
+        (r) => (r.otpBreachedCount ?? 0) >= 1 && (r.otpBreachedDays ?? 0) > 1
+      );
+    }
+
     result.sort((a: RiderPivotRow, b: RiderPivotRow) => {
+      // When OTP Breach Highlight is active, sort highest-to-lowest by breach count, then breached days, then total orders
+      if (filterOtpBreach) {
+        const breachDiff = (b.otpBreachedCount ?? 0) - (a.otpBreachedCount ?? 0);
+        if (breachDiff !== 0) return breachDiff;
+        const daysDiff = (b.otpBreachedDays ?? 0) - (a.otpBreachedDays ?? 0);
+        if (daysDiff !== 0) return daysDiff;
+        const ordersDiff = b.totalOrders - a.totalOrders;
+        if (ordersDiff !== 0) return ordersDiff;
+      }
+
       // When Highlight DNR is active, sort riders with DNR cases to the top
       if (highlightDnr) {
         const normA = normalizeRiderName(a.riderName);
@@ -314,7 +332,13 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr]);
+  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr, filterOtpBreach]);
+
+  const frequentOtpBreachCount = useMemo(() => {
+    return data.rows.filter(
+      (r) => (r.otpBreachedCount ?? 0) >= 1 && (r.otpBreachedDays ?? 0) > 1
+    ).length;
+  }, [data.rows]);
 
   const compliantShiftCount = useMemo(() => {
     return filteredRows.filter((r) => {
@@ -780,6 +804,28 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     </span>
                   )}
                 </button>
+
+                {/* Frequent OTP Breach Highlight & Filter Toggle Button */}
+                <button
+                  type="button"
+                  className={`btn-otp-breach-toggle ${filterOtpBreach ? 'btn-otp-breach-toggle-active' : ''} ${frequentOtpBreachCount > 0 ? 'has-breaches' : ''}`}
+                  onClick={() => setFilterOtpBreach(!filterOtpBreach)}
+                  title={
+                    filterOtpBreach
+                      ? 'Showing riders with >= 1 OTP breach across > 1 day in this period, sorted highest-to-lowest. Click to show all riders'
+                      : frequentOtpBreachCount > 0
+                      ? `Filter to ${frequentOtpBreachCount} rider(s) with >= 1 OTP breach across > 1 day in ${startDate} to ${endDate}`
+                      : 'No riders with OTP breaches across > 1 day in this period'
+                  }
+                >
+                  <span className="otp-breach-toggle-icon">⏱️</span>
+                  <span>OTP Breach</span>
+                  {frequentOtpBreachCount > 0 && (
+                    <span className="badge-otp-breach-pill">
+                      {frequentOtpBreachCount}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -905,6 +951,31 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               <span>⚡ Fill Shift Data ({filteredRows.length || totalActiveRosterMissingShiftCount} Riders)</span>
             </button>
           )}
+        </div>
+      )}
+
+      {/* OTP Breach Filter Information Banner */}
+      {filterOtpBreach && (
+        <div className="alert-box alert-box-otp-breach-banner" role="alert">
+          <div className="alert-otp-breach-left">
+            <span className="alert-otp-breach-icon">⏱️</span>
+            <div>
+              <strong>
+                Frequent OTP Breach Riders ({filteredRows.length} shown)
+              </strong>
+              <p className="alert-otp-breach-sub">
+                Riders with <strong>&ge; 1 OTP breach</strong> spread across <strong>&gt; 1 day</strong> in{' '}
+                <strong>{startDate} &rarr; {endDate}</strong>, sorted highest-to-lowest by breach count.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-clear-otp-breach"
+            onClick={() => setFilterOtpBreach(false)}
+          >
+            Show All Riders
+          </button>
         </div>
       )}
 
@@ -1306,6 +1377,18 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             <strong className="rider-name-text" title={row.riderName}>
                               {row.riderName}
                             </strong>
+                            {filterOtpBreach &&
+                              (row.otpBreachedCount ?? 0) >= 1 &&
+                              (row.otpBreachedDays ?? 0) > 1 && (
+                                <span
+                                  className="badge-otp-breach-cue"
+                                  title={`${row.otpBreachedCount} OTP ${row.otpBreachedCount === 1 ? 'breach' : 'breaches'} across ${row.otpBreachedDays} distinct days in ${startDate} to ${endDate}`}
+                                >
+                                  ⏱️ {row.otpBreachedCount}{' '}
+                                  {row.otpBreachedCount === 1 ? 'breach' : 'breaches'} &middot;{' '}
+                                  {row.otpBreachedDays} days
+                                </span>
+                              )}
                             {rawRiderShift?.onboardedBy && (
                               <span
                                 className="rider-onboarded-tag"

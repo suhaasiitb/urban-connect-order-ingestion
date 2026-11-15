@@ -13,15 +13,18 @@ export interface RiderDailyMetric {
   orders: number;
   distanceKm: number; // One-way distance in km (LM Distance in meters / 1000)
   distanceMeters?: number; // Exact sum of distance in meters
+  otpBreachedCount?: number; // Count of OTP Breached orders on this day
 }
 
 export interface RiderPivotRow {
   riderName: string;
-  dailyMetrics: Record<string, RiderDailyMetric>; // dateStr -> { hours, orders, distanceKm, distanceMeters }
+  dailyMetrics: Record<string, RiderDailyMetric>; // dateStr -> { hours, orders, distanceKm, distanceMeters, otpBreachedCount }
   workingDays: number;
   totalHours: number;
   totalOrders: number;
   totalDistanceKm: number; // Total km delivered in period
+  otpBreachedCount?: number; // Total OTP Breached orders in selected period
+  otpBreachedDays?: number; // Number of distinct days in period with >= 1 OTP breach
   avgHours: number; // Period average (totalHours / periodDays)
   avgOrders: number; // Period average (totalOrders / periodDays)
   avgDistanceKm: number; // Period average daily distance (totalDistanceKm / periodDays)
@@ -187,6 +190,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
       hours: number;
       orders: number;
       distance_meters: number;
+      otp_breached_count: number;
     }> = [];
     let rpcSucceeded = false;
 
@@ -201,6 +205,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
         hours: number;
         orders: number;
         distance_meters: number;
+        otp_breached_count: number;
       }> = [];
 
       let rpcRanSuccessfully = false;
@@ -219,9 +224,10 @@ export async function fetchRiderPerformanceAnalytics(params: {
         }
 
         if (Array.isArray(rpcData) && rpcData.length > 0) {
-          // If the RPC returned data but does NOT yet have the distance_meters field (pre-migration),
-          // fallback to client-side aggregation from public.orders to guarantee distance is populated
-          if ((rpcData[0] as Record<string, unknown>).distance_meters === undefined) {
+          // If the RPC returned data but does NOT yet have distance_meters or otp_breached_count (pre-migration),
+          // fallback to client-side aggregation from public.orders to guarantee all fields are populated
+          const firstRow = rpcData[0] as Record<string, unknown>;
+          if (firstRow.distance_meters === undefined || firstRow.otp_breached_count === undefined) {
             rpcRanSuccessfully = false;
             break;
           }
@@ -235,6 +241,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
               hours: Number(item.hours || 0),
               orders: Number(item.orders || 0),
               distance_meters: Number(item.distance_meters || 0),
+              otp_breached_count: Number(item.otp_breached_count || 0),
             });
           }
           if (rpcData.length < RPC_PAGE_SIZE) {
@@ -268,12 +275,13 @@ export async function fetchRiderPerformanceAnalytics(params: {
         order_id: string;
         distance_meters?: number | null;
         lm_distance?: number | null;
+        otp_plus_3_performance?: string | null;
       }> = [];
 
       while (hasMore) {
         const { data: pageRows, error: ordersError } = await supabase
           .from('orders')
-          .select('rider_name, slot_hour, order_date, order_id, distance_meters, lm_distance')
+          .select('rider_name, slot_hour, order_date, order_id, distance_meters, lm_distance, otp_plus_3_performance')
           .eq('store_id', storeId)
           .gte('order_date', startDate)
           .lte('order_date', endDate)
@@ -298,10 +306,11 @@ export async function fetchRiderPerformanceAnalytics(params: {
         }
       }
 
-      // Group by (normalized rider_name, order_date) and compute COUNTUNIQUE(slot_hour), COUNT(order_id), and SUM(distance_meters)
+      // Group by (normalized rider_name, order_date) and compute COUNTUNIQUE(slot_hour), COUNT(order_id), SUM(distance_meters), and OTP Breached count
       const riderDateSlots = new Map<string, Set<number>>();
       const riderDateOrders = new Map<string, number>();
       const riderDateDistanceMeters = new Map<string, number>();
+      const riderDateOtpBreached = new Map<string, number>();
       const canonicalDisplayByNorm = new Map<string, string>();
 
       for (const row of orderRows) {
@@ -333,6 +342,10 @@ export async function fetchRiderPerformanceAnalytics(params: {
         if (Number.isFinite(dist) && dist > 0) {
           riderDateDistanceMeters.set(key, (riderDateDistanceMeters.get(key) ?? 0) + dist);
         }
+
+        if (row.otp_plus_3_performance === 'OTP Breached') {
+          riderDateOtpBreached.set(key, (riderDateOtpBreached.get(key) ?? 0) + 1);
+        }
       }
 
       for (const [key, slots] of riderDateSlots.entries()) {
@@ -340,12 +353,14 @@ export async function fetchRiderPerformanceAnalytics(params: {
         const rider_name = canonicalDisplayByNorm.get(normName) || normName;
         const orders = riderDateOrders.get(key) ?? 0;
         const distance_meters = riderDateDistanceMeters.get(key) ?? 0;
+        const otp_breached_count = riderDateOtpBreached.get(key) ?? 0;
         rawAggregated.push({
           rider_name,
           order_date,
           hours: slots.size,
           orders,
           distance_meters,
+          otp_breached_count,
         });
       }
     }
@@ -387,6 +402,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
       }
 
       const distMeters = item.distance_meters || 0;
+      const otpBreached = item.otp_breached_count || 0;
       const existingMetric = entry.dailyMetrics[item.order_date];
       if (existingMetric) {
         const newMeters = (existingMetric.distanceMeters || 0) + distMeters;
@@ -395,6 +411,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
           orders: existingMetric.orders + item.orders,
           distanceMeters: newMeters,
           distanceKm: Math.round((newMeters / 1000) * 10) / 10,
+          otpBreachedCount: (existingMetric.otpBreachedCount || 0) + otpBreached,
         };
       } else {
         entry.dailyMetrics[item.order_date] = {
@@ -402,6 +419,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
           orders: item.orders,
           distanceMeters: distMeters,
           distanceKm: Math.round((distMeters / 1000) * 10) / 10,
+          otpBreachedCount: otpBreached,
         };
       }
     }
@@ -418,6 +436,8 @@ export async function fetchRiderPerformanceAnalytics(params: {
       let totalHours = 0;
       let totalOrders = 0;
       let totalDistanceMeters = 0;
+      let otpBreachedCount = 0;
+      let otpBreachedDays = 0;
 
       for (const m of Object.values(entry.dailyMetrics)) {
         if (m.orders > 0 || m.hours > 0 || (m.distanceKm && m.distanceKm > 0)) {
@@ -425,6 +445,11 @@ export async function fetchRiderPerformanceAnalytics(params: {
           totalHours += m.hours;
           totalOrders += m.orders;
           totalDistanceMeters += (m.distanceMeters ?? (m.distanceKm * 1000));
+        }
+        const dayBreaches = m.otpBreachedCount ?? 0;
+        if (dayBreaches > 0) {
+          otpBreachedCount += dayBreaches;
+          otpBreachedDays += 1;
         }
       }
 
@@ -459,6 +484,8 @@ export async function fetchRiderPerformanceAnalytics(params: {
         totalHours,
         totalOrders,
         totalDistanceKm,
+        otpBreachedCount,
+        otpBreachedDays,
         avgHours,
         avgOrders,
         avgDistanceKm,
