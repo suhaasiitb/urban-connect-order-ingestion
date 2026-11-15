@@ -20,20 +20,23 @@ interface StoreTodayState {
 }
 
 const PREFERRED_STORE_ORDER = ['TMK7', 'TPH1', 'TPE2'];
+const EXCLUDED_DASHBOARD_STORES = new Set(['TPI4']);
 
 export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
   stores,
   onOpenStoreS2POtp,
 }) => {
   const orderedStores = useMemo(() => {
-    return [...stores].sort((a, b) => {
-      const idxA = PREFERRED_STORE_ORDER.indexOf(a.store_code);
-      const idxB = PREFERRED_STORE_ORDER.indexOf(b.store_code);
-      const rankA = idxA === -1 ? Number.MAX_SAFE_INTEGER : idxA;
-      const rankB = idxB === -1 ? Number.MAX_SAFE_INTEGER : idxB;
-      if (rankA !== rankB) return rankA - rankB;
-      return a.store_code.localeCompare(b.store_code);
-    });
+    return [...stores]
+      .filter((s) => !EXCLUDED_DASHBOARD_STORES.has(s.store_code.toUpperCase()))
+      .sort((a, b) => {
+        const idxA = PREFERRED_STORE_ORDER.indexOf(a.store_code);
+        const idxB = PREFERRED_STORE_ORDER.indexOf(b.store_code);
+        const rankA = idxA === -1 ? Number.MAX_SAFE_INTEGER : idxA;
+        const rankB = idxB === -1 ? Number.MAX_SAFE_INTEGER : idxB;
+        if (rankA !== rankB) return rankA - rankB;
+        return a.store_code.localeCompare(b.store_code);
+      });
   }, [stores]);
 
   const [storeStates, setStoreStates] = useState<Record<string, StoreTodayState>>({});
@@ -102,6 +105,45 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
     void loadAllStoresToday(false);
   }, [loadAllStoresToday]);
 
+  const isAnyStoreLoading = useMemo(() => {
+    if (orderedStores.length === 0) return false;
+    return orderedStores.some((s) => storeStates[s.id]?.loading ?? true);
+  }, [orderedStores, storeStates]);
+
+  const combinedSummary = useMemo<S2POtpSummaryResult>(() => {
+    const activeSummaries = orderedStores
+      .map((s) => storeStates[s.id]?.summary)
+      .filter((sum): sum is S2POtpSummaryResult => Boolean(sum && sum.overallTotalOrders > 0));
+
+    const count = activeSummaries.length;
+    const avg = (getter: (s: S2POtpSummaryResult) => number): number =>
+      count > 0 ? activeSummaries.reduce((acc, s) => acc + getter(s), 0) / count : 0;
+
+    const totalOrders = activeSummaries.reduce((acc, s) => acc + s.overallTotalOrders, 0);
+    const totalRiders = activeSummaries.reduce((acc, s) => acc + s.overallDistinctRiders, 0);
+    const totalCompleted = activeSummaries.reduce((acc, s) => acc + s.overallCompletedOrders, 0);
+    const totalDsrEligible = activeSummaries.reduce((acc, s) => acc + s.overallDsrEligibleOrders, 0);
+    const avgOtp = avg((s) => s.overallOtpAchievedPct);
+
+    return {
+      storeId: 'ALL_STORES',
+      startDate: primaryTodayStr,
+      endDate: primaryTodayStr,
+      periodDays: 1,
+      days: [],
+      overallTotalOrders: totalOrders,
+      overallDistinctRiders: totalRiders,
+      overallTotalRiderSlotHours: 0,
+      overallAvgDph: Math.round(avg((s) => s.overallAvgDph) * 10) / 10,
+      overallAvgS2p: Math.round(avg((s) => s.overallAvgS2p) * 100) / 100,
+      overallOtpAchievedPct: Math.round(avgOtp * 100) / 100,
+      overallOtpBreachedPct: count > 0 ? Math.round((100 - avgOtp) * 100) / 100 : 0,
+      overallCompletedOrders: totalCompleted,
+      overallDsrEligibleOrders: totalDsrEligible,
+      overallDsrPct: Math.round(avg((s) => s.overallDsrPct) * 100) / 100,
+    };
+  }, [orderedStores, storeStates, primaryTodayStr]);
+
   return (
     <div className="analytics-container admin-dashboard-container">
       <div className="section-card admin-dashboard-header-card">
@@ -111,7 +153,7 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
               Executive Dashboard — All Stores (Today)
             </h2>
             <p className="section-subtitle">
-              Current-day KPI snapshot for {orderedStores.map((s) => s.store_code).join(', ')} ·{' '}
+              Average metrics &amp; combined volume across {orderedStores.map((s) => s.store_code).join(', ')} ·{' '}
               {formatDateToHeader(primaryTodayStr)} ({primaryTodayStr})
               {lastUpdatedAt ? ` · Updated ${lastUpdatedAt}` : ''}
             </p>
@@ -125,6 +167,13 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
             {refreshing ? 'Refreshing...' : '↻ Refresh All'}
           </button>
         </div>
+
+        <S2PKpiCardsGrid
+          summary={combinedSummary}
+          loading={isAnyStoreLoading}
+          className="kpi-grid mt-sm"
+          compact
+        />
       </div>
 
       {orderedStores.length === 0 && (
