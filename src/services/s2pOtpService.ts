@@ -1001,6 +1001,7 @@ export function exportS2POtpToExcel(
 
 export interface OtpBreachedOrderRecord {
   orderId: string;
+  orderDate?: string;
   riderName: string;
   riderNumber: string;
   slotHour: number;
@@ -1009,41 +1010,87 @@ export interface OtpBreachedOrderRecord {
   timeDiffMinutes: number; // Arrival Time ETA - Actual Arrival Time (negative for breached orders)
 }
 
+function normalizeBreachRiderName(name: string): string {
+  return name.replace(/\*+/g, '').trim().toLowerCase();
+}
+
 /**
- * Fetches individual OTP+3 Breached orders for a store/date (and optional slotHour),
- * returning rider details and (Arrival Time ETA - Actual Arrival Time) in minutes.
+ * Fetches individual OTP+3 Breached orders for a store/date (or date range and optional riderName/slotHour),
+ * returning rider details, order date, and (Arrival Time ETA - Actual Arrival Time) in minutes.
  */
 export async function fetchOtpBreachedOrders(params: {
   storeId: string;
-  orderDate: string;
+  orderDate?: string;
+  startDate?: string;
+  endDate?: string;
+  riderName?: string;
   slotHour?: number | null;
 }): Promise<{ orders: OtpBreachedOrderRecord[]; error?: string }> {
-  const { storeId, orderDate, slotHour } = params;
+  const { storeId, orderDate, startDate, endDate, riderName, slotHour } = params;
+  const rangeStart = startDate || orderDate;
+  const rangeEnd = endDate || orderDate;
+  if (!storeId || !rangeStart || !rangeEnd) {
+    return { orders: [] };
+  }
+
   try {
-    let query = supabase
-      .from('orders')
-      .select('order_id, rider_name, rider_number, slot_hour, arrival_eta_minutes, actual_arrival_minutes')
-      .eq('store_id', storeId)
-      .eq('order_date', orderDate)
-      .eq('otp_plus_3_performance', 'OTP Breached')
-      .limit(1000);
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let hasMore = true;
+    const rawRows: Array<{
+      order_id: string | null;
+      order_date: string | null;
+      rider_name: string | null;
+      rider_number: string | null;
+      slot_hour: number | null;
+      arrival_eta_minutes: number | null;
+      actual_arrival_minutes: number | null;
+    }> = [];
 
-    if (slotHour !== undefined && slotHour !== null) {
-      query = query.eq('slot_hour', slotHour);
+    while (hasMore) {
+      let query = supabase
+        .from('orders')
+        .select('order_id, order_date, rider_name, rider_number, slot_hour, arrival_eta_minutes, actual_arrival_minutes')
+        .eq('store_id', storeId)
+        .eq('otp_plus_3_performance', 'OTP Breached')
+        .gte('order_date', rangeStart)
+        .lte('order_date', rangeEnd)
+        .range(from, from + PAGE_SIZE - 1);
+
+      if (slotHour !== undefined && slotHour !== null) {
+        query = query.eq('slot_hour', slotHour);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        return { orders: [], error: error.message };
+      }
+
+      if (data && data.length > 0) {
+        rawRows.push(...data);
+        if (data.length < PAGE_SIZE) {
+          hasMore = false;
+        } else {
+          from += PAGE_SIZE;
+        }
+      } else {
+        hasMore = false;
+      }
     }
 
-    const { data, error } = await query;
-    if (error) {
-      return { orders: [], error: error.message };
-    }
+    const targetRiderNorm = riderName ? normalizeBreachRiderName(riderName) : null;
+    const filteredRows = targetRiderNorm
+      ? rawRows.filter((r) => r.rider_name && normalizeBreachRiderName(String(r.rider_name)) === targetRiderNorm)
+      : rawRows;
 
-    const orders: OtpBreachedOrderRecord[] = (data ?? []).map((r) => {
+    const orders: OtpBreachedOrderRecord[] = filteredRows.map((r) => {
       const arrivalEta = Number(r.arrival_eta_minutes ?? 0);
       const actualArrival = Number(r.actual_arrival_minutes ?? 0);
       const diff = Math.round((arrivalEta - actualArrival) * 100) / 100;
       return {
         orderId: String(r.order_id ?? ''),
-        riderName: String(r.rider_name || r.rider_number || 'Unknown Rider'),
+        orderDate: r.order_date ? String(r.order_date) : undefined,
+        riderName: String(r.rider_name || r.rider_number || 'Unknown Rider').replace(/\*+/g, '').trim(),
         riderNumber: String(r.rider_number ?? ''),
         slotHour: Number(r.slot_hour ?? 0),
         arrivalEtaMinutes: Math.round(arrivalEta * 100) / 100,
@@ -1052,8 +1099,17 @@ export async function fetchOtpBreachedOrders(params: {
       };
     });
 
-    // Sort most-breached (most negative timeDiffMinutes) first
-    orders.sort((a, b) => a.timeDiffMinutes - b.timeDiffMinutes);
+    // In range/rider mode, sort newest date first, then most-breached (most negative timeDiffMinutes) first
+    if (startDate && endDate) {
+      orders.sort((a, b) => {
+        const dateCmp = (b.orderDate ?? '').localeCompare(a.orderDate ?? '');
+        if (dateCmp !== 0) return dateCmp;
+        return a.timeDiffMinutes - b.timeDiffMinutes;
+      });
+    } else {
+      // Single-day/slot mode: sort most-breached (most negative timeDiffMinutes) first
+      orders.sort((a, b) => a.timeDiffMinutes - b.timeDiffMinutes);
+    }
     return { orders };
   } catch (err) {
     return {

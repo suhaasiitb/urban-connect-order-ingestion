@@ -16,6 +16,7 @@ import {
 import { type RiderDnrSummary, type StoreDnrSummary } from '../services/dnrService';
 import { RiderDnrResolutionModal } from './RiderDnrResolutionModal';
 import { IndividualRiderShiftModal } from './IndividualRiderShiftModal';
+import { OtpBreachedRidersModal } from './OtpBreachedRidersModal';
 
 interface RiderPerformanceTableProps {
   data: RiderPerformancePivotResult;
@@ -76,6 +77,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   };
   const [highlightDnr, setHighlightDnr] = useState<boolean>(false);
   const [filterOtpBreach, setFilterOtpBreach] = useState<boolean>(false);
+  const [otpBreachModalRider, setOtpBreachModalRider] = useState<string | null>(null);
   const [selectedDnrRider, setSelectedDnrRider] = useState<RiderDnrSummary | null>(null);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<boolean>(false);
   const [individualModalRider, setIndividualModalRider] = useState<string | null>(null);
@@ -1380,14 +1382,16 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             {filterOtpBreach &&
                               (row.otpBreachedCount ?? 0) >= 1 &&
                               (row.otpBreachedDays ?? 0) > 1 && (
-                                <span
-                                  className="badge-otp-breach-cue"
-                                  title={`${row.otpBreachedCount} OTP ${row.otpBreachedCount === 1 ? 'breach' : 'breaches'} across ${row.otpBreachedDays} distinct days in ${startDate} to ${endDate}`}
+                                <button
+                                  type="button"
+                                  className="badge-otp-breach-cue badge-otp-breach-cue-btn"
+                                  onClick={() => setOtpBreachModalRider(row.riderName)}
+                                  title={`${row.otpBreachedCount} OTP ${row.otpBreachedCount === 1 ? 'breach' : 'breaches'} across ${row.otpBreachedDays} distinct days in ${startDate} to ${endDate}. Click to view order-level breach details.`}
                                 >
                                   ⏱️ {row.otpBreachedCount}{' '}
                                   {row.otpBreachedCount === 1 ? 'breach' : 'breaches'} &middot;{' '}
                                   {row.otpBreachedDays} days
-                                </span>
+                                </button>
                               )}
                             {rawRiderShift?.onboardedBy && (
                               <span
@@ -1787,6 +1791,19 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           onSaved={() => {
             onRefresh();
           }}
+        />
+      )}
+
+      {/* Rider OTP+3 Breached Orders Modal */}
+      {otpBreachModalRider && storeId && (
+        <OtpBreachedRidersModal
+          isOpen={Boolean(otpBreachModalRider)}
+          onClose={() => setOtpBreachModalRider(null)}
+          storeId={storeId}
+          storeCode={storeCode}
+          startDate={startDate}
+          endDate={endDate}
+          riderName={otpBreachModalRider}
         />
       )}
 

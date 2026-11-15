@@ -12635,6 +12635,22 @@ html[data-theme="dark"] .badge-otp-breach-cue {
   color: #fca5a5;
 }
 
+.badge-otp-breach-cue-btn {
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.badge-otp-breach-cue-btn:hover {
+  background-color: #fee2e2;
+  border-color: #f87171;
+  transform: translateY(-1px);
+}
+
+html[data-theme="dark"] .badge-otp-breach-cue-btn:hover {
+  background-color: rgba(239, 68, 68, 0.28);
+  border-color: rgba(248, 113, 113, 0.65);
+}
+
 
 
 
