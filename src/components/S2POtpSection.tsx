@@ -22,6 +22,7 @@ import {
   getDphImpactedSlots,
 } from '../services/s2pOtpService';
 import { S2PKpiCardsGrid } from './S2PKpiCardsGrid';
+import { OtpBreachedRidersModal } from './OtpBreachedRidersModal';
 
 interface S2POtpSectionProps {
   stores: StoreMaster[];
@@ -107,6 +108,11 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
   // Toggle for displaying SNOP Plan (left of Orders) and Breach (SNOP Plan - Orders, right of Orders)
   const [showSnopBreach, setShowSnopBreach] = useState<boolean>(false);
+  const [otpBreachedModal, setOtpBreachedModal] = useState<{
+    orderDate: string;
+    formattedDate: string;
+    slotHour: number | null;
+  } | null>(null);
   const [snopRecords, setSnopRecords] = useState<SnopForecastRecord[]>(() =>
     getStoredSnopRecords(selectedStore?.store_code || 'TMK7')
   );
@@ -899,7 +905,31 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                               {s.otpAchievedPct.toFixed(2)}%
                                             </td>
                                             <td className="text-center text-red">
-                                              {s.otpBreachedPct > 0 ? `${s.otpBreachedPct.toFixed(2)}%` : '0.00%'}
+                                              {s.otpBreachedPct > 0 ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setOtpBreachedModal({
+                                                      orderDate: day.dateStr,
+                                                      formattedDate: day.formattedDate,
+                                                      slotHour: s.slotHour,
+                                                    })
+                                                  }
+                                                  className="text-red font-semibold"
+                                                  style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    padding: 0,
+                                                    cursor: 'pointer',
+                                                    textDecoration: 'underline',
+                                                  }}
+                                                  title={`Click to view ${s.otpBreachedCount} breached order(s) for Slot ${s.slotHour}`}
+                                                >
+                                                  {s.otpBreachedPct.toFixed(2)}%
+                                                </button>
+                                              ) : (
+                                                '0.00%'
+                                              )}
                                             </td>
                                             <td className="text-center font-semibold">
                                               <span
@@ -936,7 +966,31 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                           {day.avgOtpAchievedPct.toFixed(2)}%
                                         </td>
                                         <td className="text-center font-bold text-red">
-                                          {day.avgOtpBreachedPct.toFixed(2)}%
+                                          {day.avgOtpBreachedPct > 0 ? (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setOtpBreachedModal({
+                                                  orderDate: day.dateStr,
+                                                  formattedDate: day.formattedDate,
+                                                  slotHour: null,
+                                                })
+                                              }
+                                              className="font-bold text-red"
+                                              style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                padding: 0,
+                                                cursor: 'pointer',
+                                                textDecoration: 'underline',
+                                              }}
+                                              title={`Click to view all ${day.otpBreachedCount} breached order(s) on ${day.formattedDate}`}
+                                            >
+                                              {day.avgOtpBreachedPct.toFixed(2)}%
+                                            </button>
+                                          ) : (
+                                            `${day.avgOtpBreachedPct.toFixed(2)}%`
+                                          )}
                                         </td>
                                         <td className="text-center font-bold">
                                           <span className={(day.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>
@@ -1011,7 +1065,31 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                               {s.otpAchievedPct.toFixed(2)}%
                                             </td>
                                             <td className="text-center text-red">
-                                              {s.otpBreachedPct > 0 ? `${s.otpBreachedPct.toFixed(2)}%` : ''}
+                                              {s.otpBreachedPct > 0 ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setOtpBreachedModal({
+                                                      orderDate: day.dateStr,
+                                                      formattedDate: day.formattedDate,
+                                                      slotHour: s.slotHour,
+                                                    })
+                                                  }
+                                                  className="text-red font-semibold"
+                                                  style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    padding: 0,
+                                                    cursor: 'pointer',
+                                                    textDecoration: 'underline',
+                                                  }}
+                                                  title={`Click to view ${s.otpBreachedCount} breached order(s) for Slot ${s.slotHour}`}
+                                                >
+                                                  {s.otpBreachedPct.toFixed(2)}%
+                                                </button>
+                                              ) : (
+                                                ''
+                                              )}
                                             </td>
                                           </tr>
                                         ))}
@@ -1023,7 +1101,31 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                             {day.avgOtpAchievedPct.toFixed(2)}%
                                           </td>
                                           <td className="text-center font-bold text-red">
-                                            {day.avgOtpBreachedPct.toFixed(2)}%
+                                            {day.avgOtpBreachedPct > 0 ? (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setOtpBreachedModal({
+                                                    orderDate: day.dateStr,
+                                                    formattedDate: day.formattedDate,
+                                                    slotHour: null,
+                                                  })
+                                                }
+                                                className="font-bold text-red"
+                                                style={{
+                                                  background: 'none',
+                                                  border: 'none',
+                                                  padding: 0,
+                                                  cursor: 'pointer',
+                                                  textDecoration: 'underline',
+                                                }}
+                                                title={`Click to view all ${day.otpBreachedCount} breached order(s) on ${day.formattedDate}`}
+                                              >
+                                                {day.avgOtpBreachedPct.toFixed(2)}%
+                                              </button>
+                                            ) : (
+                                              `${day.avgOtpBreachedPct.toFixed(2)}%`
+                                            )}
                                           </td>
                                         </tr>
                                       </tfoot>
@@ -1150,6 +1252,18 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           </div>
         )}
       </div>
+
+      {selectedStore && otpBreachedModal && (
+        <OtpBreachedRidersModal
+          isOpen={Boolean(otpBreachedModal)}
+          onClose={() => setOtpBreachedModal(null)}
+          storeId={selectedStore.id}
+          storeCode={selectedStore.store_code}
+          orderDate={otpBreachedModal.orderDate}
+          formattedDate={otpBreachedModal.formattedDate}
+          slotHour={otpBreachedModal.slotHour}
+        />
+      )}
     </div>
   );
 };

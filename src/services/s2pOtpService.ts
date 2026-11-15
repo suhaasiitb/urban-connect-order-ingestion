@@ -998,3 +998,67 @@ export function exportS2POtpToExcel(
   const filename = `S2P_OTP_DPH_${storeCode}_${summary.startDate}_to_${summary.endDate}.xlsx`;
   XLSX.writeFile(wb, filename);
 }
+
+export interface OtpBreachedOrderRecord {
+  orderId: string;
+  riderName: string;
+  riderNumber: string;
+  slotHour: number;
+  arrivalEtaMinutes: number;
+  actualArrivalMinutes: number;
+  timeDiffMinutes: number; // Arrival Time ETA - Actual Arrival Time (negative for breached orders)
+}
+
+/**
+ * Fetches individual OTP+3 Breached orders for a store/date (and optional slotHour),
+ * returning rider details and (Arrival Time ETA - Actual Arrival Time) in minutes.
+ */
+export async function fetchOtpBreachedOrders(params: {
+  storeId: string;
+  orderDate: string;
+  slotHour?: number | null;
+}): Promise<{ orders: OtpBreachedOrderRecord[]; error?: string }> {
+  const { storeId, orderDate, slotHour } = params;
+  try {
+    let query = supabase
+      .from('orders')
+      .select('order_id, rider_name, rider_number, slot_hour, arrival_eta_minutes, actual_arrival_minutes')
+      .eq('store_id', storeId)
+      .eq('order_date', orderDate)
+      .eq('otp_plus_3_performance', 'OTP Breached')
+      .limit(1000);
+
+    if (slotHour !== undefined && slotHour !== null) {
+      query = query.eq('slot_hour', slotHour);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      return { orders: [], error: error.message };
+    }
+
+    const orders: OtpBreachedOrderRecord[] = (data ?? []).map((r) => {
+      const arrivalEta = Number(r.arrival_eta_minutes ?? 0);
+      const actualArrival = Number(r.actual_arrival_minutes ?? 0);
+      const diff = Math.round((arrivalEta - actualArrival) * 100) / 100;
+      return {
+        orderId: String(r.order_id ?? ''),
+        riderName: String(r.rider_name || r.rider_number || 'Unknown Rider'),
+        riderNumber: String(r.rider_number ?? ''),
+        slotHour: Number(r.slot_hour ?? 0),
+        arrivalEtaMinutes: Math.round(arrivalEta * 100) / 100,
+        actualArrivalMinutes: Math.round(actualArrival * 100) / 100,
+        timeDiffMinutes: diff,
+      };
+    });
+
+    // Sort most-breached (most negative timeDiffMinutes) first
+    orders.sort((a, b) => a.timeDiffMinutes - b.timeDiffMinutes);
+    return { orders };
+  } catch (err) {
+    return {
+      orders: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
