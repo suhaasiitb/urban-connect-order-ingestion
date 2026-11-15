@@ -5,7 +5,7 @@
 // and saves to Supabase + localStorage with real-time slot turn-up reflection.
 // ==============================================================================
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { UserProfile } from '../services/authService';
 import {
   type RiderAttendanceRecord,
@@ -44,16 +44,18 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const wasOpenRef = useRef(false);
 
-  // Sync state whenever modal opens or initialRecords change
+  // Sync state ONLY when modal transitions from closed -> open (so background reloads never wipe unsaved edits)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       setRecords(initialRecords);
       setSearchQuery('');
       setFilterShift('ALL');
       setFilterStatus('ALL');
       setSaveError(null);
     }
+    wasOpenRef.current = isOpen;
   }, [isOpen, initialRecords]);
 
   // Derived attendance counts

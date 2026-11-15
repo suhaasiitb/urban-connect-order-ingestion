@@ -380,16 +380,29 @@ export async function fetchStoreRiderAttendance(params: {
     return buildAttendanceSummary(normWh, attendanceDate, [], storeId);
   }
 
-  // 2. Fetch shifts and Supabase store_rider_attendance in parallel
+  // 2. Fetch shifts, active roster, and Supabase store_rider_attendance in parallel
   let shifts = params.shiftsMap;
   const shiftsPromise =
     !shifts && storeId
       ? getRiderShiftsForStore(storeId).catch(() => undefined)
       : Promise.resolve(shifts);
 
+  const activeRidersPromise =
+    params.activeRiders !== undefined
+      ? Promise.resolve(params.activeRiders)
+      : storeId
+      ? getActiveRidersRoster(storeId, normWh)
+          .then((roster) => roster.riders)
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+
+  let mergedBaseRecords: RiderAttendanceRecord[] | null = null;
+  let resolvedActiveRiders: Array<{ name: string; phone?: string }> | undefined = params.activeRiders;
+
   try {
-    const [resolvedShifts, res] = await Promise.all([
+    const [resolvedShifts, fetchedActiveRiders, res] = await Promise.all([
       shiftsPromise,
+      activeRidersPromise,
       withTimeout(
         supabase
           .from('store_rider_attendance')
@@ -402,6 +415,7 @@ export async function fetchStoreRiderAttendance(params: {
       ),
     ]);
     shifts = resolvedShifts;
+    resolvedActiveRiders = fetchedActiveRiders;
     const data = res?.data;
     const error = res?.error;
 
@@ -432,35 +446,82 @@ export async function fetchStoreRiderAttendance(params: {
       const remoteFirstUpdate = records.find((r) => r.updatedAt)?.updatedAt;
       const cachedTime = cachedFirstUpdate ? new Date(cachedFirstUpdate).getTime() : 0;
       const remoteTime = remoteFirstUpdate ? new Date(remoteFirstUpdate).getTime() : 0;
-      const baseRecords =
+      mergedBaseRecords =
         cached && cached.length > 0 && cachedTime > remoteTime ? cached : records;
-
-      const synced = shifts ? syncAttendanceWithLatestShifts(baseRecords, shifts) : baseRecords;
-
-      // Cache locally
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          const key = getStoreAttendanceStorageKey(normWh, attendanceDate);
-          window.localStorage.setItem(key, JSON.stringify(synced));
-        }
-      } catch {
-        // Storage fail
-      }
-
-      return buildAttendanceSummary(normWh, attendanceDate, synced, storeId);
     }
   } catch (err) {
     console.warn(`Supabase fetchStoreRiderAttendance error for ${normWh}:`, err);
   }
 
   // Fallback to localStorage cache if Supabase returned no rows or was unreachable
-  if (cached && cached.length > 0) {
-    const synced = shifts ? syncAttendanceWithLatestShifts(cached, shifts) : cached;
-    return buildAttendanceSummary(normWh, attendanceDate, synced, storeId);
+  if (!mergedBaseRecords && cached && cached.length > 0) {
+    mergedBaseRecords = cached;
+  }
+
+  // If we have saved/cached records, merge in any newly added active riders from the active roster
+  if (mergedBaseRecords && mergedBaseRecords.length > 0) {
+    const syncedBase = shifts
+      ? syncAttendanceWithLatestShifts(mergedBaseRecords, shifts)
+      : mergedBaseRecords;
+
+    const byNorm = new Map<string, RiderAttendanceRecord>();
+    for (const rec of syncedBase) {
+      const norm = rec.normalizedName || normalizeRiderName(rec.riderName);
+      if (norm && !byNorm.has(norm)) {
+        byNorm.set(norm, { ...rec, normalizedName: norm });
+      }
+    }
+
+    if (resolvedActiveRiders && resolvedActiveRiders.length > 0) {
+      const defaultMorning = SHIFT_PRESETS['Morning Shift'];
+      for (const r of resolvedActiveRiders) {
+        const norm = normalizeRiderName(r.name);
+        if (!norm) continue;
+        const existing = byNorm.get(norm);
+        if (existing) {
+          if (!existing.phone && r.phone) {
+            existing.phone = r.phone;
+          }
+        } else {
+          const shift = shifts?.get(norm);
+          byNorm.set(norm, {
+            storeId,
+            warehouseId: normWh,
+            attendanceDate,
+            riderName: r.name,
+            normalizedName: norm,
+            phone: r.phone || null,
+            shiftType: shift ? shift.shiftType : 'Morning Shift',
+            slot1StartHour: shift ? shift.slot1StartHour : defaultMorning.slot1Start,
+            slot1EndHour: shift ? shift.slot1EndHour : defaultMorning.slot1End,
+            slot2StartHour: shift?.slot2StartHour ?? null,
+            slot2EndHour: shift?.slot2EndHour ?? null,
+            onboardedBy: shift?.onboardedBy || null,
+            status: 'unmarked',
+            isPresent: false,
+          });
+        }
+      }
+    }
+
+    const mergedList = Array.from(byNorm.values()).sort((a, b) =>
+      a.riderName.localeCompare(b.riderName)
+    );
+
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const key = getStoreAttendanceStorageKey(normWh, attendanceDate);
+        window.localStorage.setItem(key, JSON.stringify(mergedList));
+      }
+    } catch {
+      // Storage fail
+    }
+
+    return buildAttendanceSummary(normWh, attendanceDate, mergedList, storeId);
   }
 
   // 3. Fallback: Initialize an unmarked roster for this date
-  let ridersList = params.activeRiders;
+  let ridersList = resolvedActiveRiders;
 
   // If active riders not passed, load them
   if (!ridersList && storeId) {
@@ -553,21 +614,25 @@ export async function saveStoreRiderAttendance(params: {
     return { ok: false, count: 0, presentCount: 0, error: 'Cannot save empty attendance roster.' };
   }
 
-  // Normalize records
-  const normalizedRecords: RiderAttendanceRecord[] = records.map((r) => {
+  // Normalize & deduplicate records by normalizedName so upsert never conflicts
+  const dedupedMap = new Map<string, RiderAttendanceRecord>();
+  for (const r of records) {
+    const norm = r.normalizedName || normalizeRiderName(r.riderName);
+    if (!norm) continue;
     const isPresent = r.status === 'present';
-    return {
+    dedupedMap.set(norm, {
       ...r,
       storeId: r.storeId || storeId,
       warehouseId: normWh,
       attendanceDate,
-      normalizedName: r.normalizedName || normalizeRiderName(r.riderName),
+      normalizedName: norm,
       status: r.status,
       isPresent,
       updatedAt: nowIso,
       updatedBy,
-    };
-  });
+    });
+  }
+  const normalizedRecords = Array.from(dedupedMap.values());
 
   const presentCount = normalizedRecords.filter((r) => r.isPresent).length;
 
@@ -595,7 +660,7 @@ export async function saveStoreRiderAttendance(params: {
     }
   }
 
-  // 3. Persist to Supabase database (skip in mock/test store env)
+  // 3. Persist to Supabase database in parallel upsert chunks (skip in mock/test store env)
   if (!storeId || !storeId.startsWith('test-')) {
     try {
       const isValidUuid = (id?: string | null): boolean =>
@@ -603,19 +668,9 @@ export async function saveStoreRiderAttendance(params: {
 
       const targetStoreId = isValidUuid(storeId) ? storeId : null;
 
-      // Delete existing rows for warehouse + date to maintain clean atomic state
-      await withTimeout(
-        supabase
-          .from('store_rider_attendance')
-          .delete()
-          .eq('warehouse_id', normWh)
-          .eq('attendance_date', attendanceDate),
-        2000,
-        { error: null }
-      );
-
-      // Upsert new records in chunks of 200
-      const chunkSize = 200;
+      // Single-step parallel upsert in chunks of 500 (no blocking DELETE round-trip)
+      const chunkSize = 500;
+      const upsertPromises: Array<Promise<{ error: { message: string } | null }>> = [];
       for (let i = 0; i < normalizedRecords.length; i += chunkSize) {
         const chunk = normalizedRecords.slice(i, i + chunkSize).map((r) => ({
           store_id: isValidUuid(r.storeId) ? r.storeId : targetStoreId,
@@ -636,14 +691,17 @@ export async function saveStoreRiderAttendance(params: {
           updated_by: updatedBy,
         }));
 
-        await withTimeout(
-          supabase
-            .from('store_rider_attendance')
-            .upsert(chunk, { onConflict: 'warehouse_id,attendance_date,normalized_name' }),
-          2500,
-          { error: null }
+        upsertPromises.push(
+          withTimeout(
+            supabase
+              .from('store_rider_attendance')
+              .upsert(chunk, { onConflict: 'warehouse_id,attendance_date,normalized_name' }),
+            8000,
+            { error: null }
+          )
         );
       }
+      await Promise.all(upsertPromises);
     } catch (err) {
       console.warn(`Supabase saveStoreRiderAttendance note for ${normWh}:`, err);
     }
