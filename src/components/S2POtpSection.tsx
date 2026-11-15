@@ -915,14 +915,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                                       slotHour: s.slotHour,
                                                     })
                                                   }
-                                                  className="text-red font-semibold"
-                                                  style={{
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    padding: 0,
-                                                    cursor: 'pointer',
-                                                    textDecoration: 'underline',
-                                                  }}
+                                                  className="otp-breach-trigger text-red"
                                                   title={`Click to view ${s.otpBreachedCount} breached order(s) for Slot ${s.slotHour}`}
                                                 >
                                                   {s.otpBreachedPct.toFixed(2)}%
@@ -976,14 +969,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                                   slotHour: null,
                                                 })
                                               }
-                                              className="font-bold text-red"
-                                              style={{
-                                                background: 'none',
-                                                border: 'none',
-                                                padding: 0,
-                                                cursor: 'pointer',
-                                                textDecoration: 'underline',
-                                              }}
+                                              className="otp-breach-trigger font-bold text-red"
                                               title={`Click to view all ${day.otpBreachedCount} breached order(s) on ${day.formattedDate}`}
                                             >
                                               {day.avgOtpBreachedPct.toFixed(2)}%
@@ -1075,14 +1061,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                                       slotHour: s.slotHour,
                                                     })
                                                   }
-                                                  className="text-red font-semibold"
-                                                  style={{
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    padding: 0,
-                                                    cursor: 'pointer',
-                                                    textDecoration: 'underline',
-                                                  }}
+                                                  className="otp-breach-trigger text-red"
                                                   title={`Click to view ${s.otpBreachedCount} breached order(s) for Slot ${s.slotHour}`}
                                                 >
                                                   {s.otpBreachedPct.toFixed(2)}%
@@ -1111,14 +1090,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                                     slotHour: null,
                                                   })
                                                 }
-                                                className="font-bold text-red"
-                                                style={{
-                                                  background: 'none',
-                                                  border: 'none',
-                                                  padding: 0,
-                                                  cursor: 'pointer',
-                                                  textDecoration: 'underline',
-                                                }}
+                                                className="otp-breach-trigger font-bold text-red"
                                                 title={`Click to view all ${day.otpBreachedCount} breached order(s) on ${day.formattedDate}`}
                                               >
                                                 {day.avgOtpBreachedPct.toFixed(2)}%
