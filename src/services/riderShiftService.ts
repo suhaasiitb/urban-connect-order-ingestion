@@ -14,6 +14,7 @@ export const ONBOARDED_BY_OPTIONS = [
   'Sunil',
   'Atharva',
   'Krushna',
+  'Pranav',
   'FM1',
   'FM2',
 ] as const;
