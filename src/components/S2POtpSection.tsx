@@ -64,14 +64,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   const todayStr = getTodayDateString(timeZone);
 
   const [includeToday, setIncludeToday] = useState<boolean>(false);
-  const [selectedPreset, setSelectedPreset] = useState<PresetValue | 'custom'>(7);
+  const [selectedPreset, setSelectedPreset] = useState<PresetValue | 'custom'>('today');
 
-  const initialRange = getDateRangeForDays(7, timeZone, false);
-  const [startDate, setStartDate] = useState(initialRange.startDate);
-  const [endDate, setEndDate] = useState(initialRange.endDate);
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
 
   const [showCustomRange, setShowCustomRange] = useState(false);
-  const [customStart, setCustomStart] = useState(initialRange.startDate);
+  const [customStart, setCustomStart] = useState(todayStr);
   const [customEnd, setCustomEnd] = useState(todayStr);
 
   const [summary, setSummary] = useState<S2POtpSummaryResult | null>(null);
@@ -101,7 +100,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   const [hasTodayOrders, setHasTodayOrders] = useState<boolean>(false);
 
   // Set of dates that are currently expanded to show slot breakdown
-  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(() => new Set([todayStr]));
 
   // Active slot sub-view per date (defaults to 'all', can switch to 's2p', 'otp', 'dph')
   const [slotViewModes, setSlotViewModes] = useState<Record<string, SlotViewType>>({});
