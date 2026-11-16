@@ -237,15 +237,16 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
   });
 
   describe('Onboarded By Field & Active Rider Missing Shift Warning Suite', () => {
-    it('defines the required Onboarded By dropdown options: Sunil, Atharva, Krushna, FM1, FM2', () => {
+    it('defines the required Onboarded By dropdown options: Sunil, Atharva, Krushna, Pranav, FM1, FM2', () => {
       expect(ONBOARDED_BY_OPTIONS).toEqual([
         'Sunil',
         'Atharva',
         'Krushna',
+        'Pranav',
         'FM1',
         'FM2',
       ]);
-      expect(ONBOARDED_BY_OPTIONS).toHaveLength(5);
+      expect(ONBOARDED_BY_OPTIONS).toHaveLength(6);
     });
 
     it('identifies active riders whose shift is empty using getActiveRidersWithoutShift', () => {
