@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   type RiderPerformancePivotResult,
   type RiderPivotRow,
@@ -97,8 +97,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const periodDays = data.periodDays || data.dateColumns.length || Math.max(1, selectedDays);
   const periodLabel = avgMode === 'period' ? `${periodDays}d Avg` : 'Active Avg';
   const isSingleDayPeriod = selectedDays === 0 || periodDays <= 1 || startDate === endDate;
-  const isOtpBreachDefaulter = (r: RiderPivotRow): boolean =>
-    (r.otpBreachedCount ?? 0) >= 1 && (isSingleDayPeriod || (r.otpBreachedDays ?? 0) > 1);
+  const isOtpBreachDefaulter = useCallback(
+    (r: RiderPivotRow): boolean =>
+      (r.otpBreachedCount ?? 0) >= 1 && (isSingleDayPeriod || (r.otpBreachedDays ?? 0) > 1),
+    [isSingleDayPeriod]
+  );
 
   const displayedDateColumns = useMemo(() => {
     if (dateOrder === 'desc') {
@@ -335,11 +338,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr, filterOtpBreach, isSingleDayPeriod]);
+  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr, filterOtpBreach, isOtpBreachDefaulter]);
 
   const frequentOtpBreachCount = useMemo(() => {
     return data.rows.filter(isOtpBreachDefaulter).length;
-  }, [data.rows, isSingleDayPeriod]);
+  }, [data.rows, isOtpBreachDefaulter]);
 
   const compliantShiftCount = useMemo(() => {
     return filteredRows.filter((r) => {
