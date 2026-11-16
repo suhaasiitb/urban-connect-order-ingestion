@@ -96,6 +96,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
 
   const periodDays = data.periodDays || data.dateColumns.length || Math.max(1, selectedDays);
   const periodLabel = avgMode === 'period' ? `${periodDays}d Avg` : 'Active Avg';
+  const isSingleDayPeriod = selectedDays === 0 || periodDays <= 1 || startDate === endDate;
+  const isOtpBreachDefaulter = (r: RiderPivotRow): boolean =>
+    (r.otpBreachedCount ?? 0) >= 1 && (isSingleDayPeriod || (r.otpBreachedDays ?? 0) > 1);
 
   const displayedDateColumns = useMemo(() => {
     if (dateOrder === 'desc') {
@@ -218,11 +221,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
       });
     }
 
-    // OTP Breach Highlight filter: >= 1 breach across > 1 distinct day in the selected period
+    // OTP Breach Highlight filter: >= 1 breach (and > 1 distinct day for multi-day periods; single-day/ongoing drops the > 1 day requirement)
     if (filterOtpBreach) {
-      result = result.filter(
-        (r) => (r.otpBreachedCount ?? 0) >= 1 && (r.otpBreachedDays ?? 0) > 1
-      );
+      result = result.filter(isOtpBreachDefaulter);
     }
 
     result.sort((a: RiderPivotRow, b: RiderPivotRow) => {
@@ -334,13 +335,11 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr, filterOtpBreach]);
+  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr, filterOtpBreach, isSingleDayPeriod]);
 
   const frequentOtpBreachCount = useMemo(() => {
-    return data.rows.filter(
-      (r) => (r.otpBreachedCount ?? 0) >= 1 && (r.otpBreachedDays ?? 0) > 1
-    ).length;
-  }, [data.rows]);
+    return data.rows.filter(isOtpBreachDefaulter).length;
+  }, [data.rows, isSingleDayPeriod]);
 
   const compliantShiftCount = useMemo(() => {
     return filteredRows.filter((r) => {
@@ -814,9 +813,15 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   onClick={() => setFilterOtpBreach(!filterOtpBreach)}
                   title={
                     filterOtpBreach
-                      ? 'Showing riders with >= 1 OTP breach across > 1 day in this period, sorted highest-to-lowest. Click to show all riders'
+                      ? isSingleDayPeriod
+                        ? 'Showing riders with >= 1 OTP breach in this period, sorted highest-to-lowest. Click to show all riders'
+                        : 'Showing riders with >= 1 OTP breach across > 1 day in this period, sorted highest-to-lowest. Click to show all riders'
                       : frequentOtpBreachCount > 0
-                      ? `Filter to ${frequentOtpBreachCount} rider(s) with >= 1 OTP breach across > 1 day in ${startDate} to ${endDate}`
+                      ? isSingleDayPeriod
+                        ? `Filter to ${frequentOtpBreachCount} rider(s) with >= 1 OTP breach in ${startDate}`
+                        : `Filter to ${frequentOtpBreachCount} rider(s) with >= 1 OTP breach across > 1 day in ${startDate} to ${endDate}`
+                      : isSingleDayPeriod
+                      ? 'No riders with OTP breaches in this period'
                       : 'No riders with OTP breaches across > 1 day in this period'
                   }
                 >
@@ -966,8 +971,13 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 Frequent OTP Breach Riders ({filteredRows.length} shown)
               </strong>
               <p className="alert-otp-breach-sub">
-                Riders with <strong>&ge; 1 OTP breach</strong> spread across <strong>&gt; 1 day</strong> in{' '}
-                <strong>{startDate} &rarr; {endDate}</strong>, sorted highest-to-lowest by breach count.
+                Riders with <strong>&ge; 1 OTP breach</strong>
+                {!isSingleDayPeriod && (
+                  <>
+                    {' '}spread across <strong>&gt; 1 day</strong>
+                  </>
+                )}{' '}
+                in <strong>{startDate} &rarr; {endDate}</strong>, sorted highest-to-lowest by breach count.
               </p>
             </div>
           </div>
@@ -1379,18 +1389,22 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             <strong className="rider-name-text" title={row.riderName}>
                               {row.riderName}
                             </strong>
-                            {filterOtpBreach &&
-                              (row.otpBreachedCount ?? 0) >= 1 &&
-                              (row.otpBreachedDays ?? 0) > 1 && (
+                            {filterOtpBreach && isOtpBreachDefaulter(row) && (
                                 <button
                                   type="button"
                                   className="badge-otp-breach-cue badge-otp-breach-cue-btn"
                                   onClick={() => setOtpBreachModalRider(row.riderName)}
-                                  title={`${row.otpBreachedCount} OTP ${row.otpBreachedCount === 1 ? 'breach' : 'breaches'} across ${row.otpBreachedDays} distinct days in ${startDate} to ${endDate}. Click to view order-level breach details.`}
+                                  title={`${row.otpBreachedCount} OTP ${row.otpBreachedCount === 1 ? 'breach' : 'breaches'} across ${row.otpBreachedDays} distinct ${row.otpBreachedDays === 1 ? 'day' : 'days'} in ${startDate} to ${endDate}. Click to view order-level breach details.`}
                                 >
                                   ⏱️ {row.otpBreachedCount}{' '}
-                                  {row.otpBreachedCount === 1 ? 'breach' : 'breaches'} &middot;{' '}
-                                  {row.otpBreachedDays} days
+                                  {row.otpBreachedCount === 1 ? 'breach' : 'breaches'}
+                                  {!isSingleDayPeriod && (
+                                    <>
+                                      {' '}
+                                      &middot; {row.otpBreachedDays}{' '}
+                                      {row.otpBreachedDays === 1 ? 'day' : 'days'}
+                                    </>
+                                  )}
                                 </button>
                               )}
                             {rawRiderShift?.onboardedBy && (
