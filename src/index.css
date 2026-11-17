@@ -4160,11 +4160,11 @@ html:not([data-theme="dark"]) .s2p-daily-table .text-red {
 }
 
 .excel-pivot-table th {
-  background: #708aab; /* Excel Pivot header classic slate-blue */
+  background: #1d4ed8; /* Urban Connect blue matching UC brand pill */
   color: #ffffff;
   font-weight: 700;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #5b7391;
+  border: 1px solid #1e40af;
   white-space: nowrap;
 }
 
