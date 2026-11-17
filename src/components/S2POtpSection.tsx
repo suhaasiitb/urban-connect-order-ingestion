@@ -499,6 +499,47 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       tableClone.style.width = '100%';
       // Remove bottom Period Grand Total footer in snapshot (summary is already shown in the top KPI cards)
       tableClone.querySelectorAll('.s2p-daily-table > tfoot').forEach((el) => el.remove());
+
+      const expandedRows = tableClone.querySelectorAll('.s2p-expanded-row');
+      if (expandedRows.length > 0) {
+        const dayRows = Array.from(
+          tableClone.querySelectorAll('.s2p-daily-table > tbody > tr.s2p-day-row')
+        );
+        for (const dayRow of dayRows) {
+          const nextRow = dayRow.nextElementSibling;
+          if (nextRow instanceof HTMLElement && nextRow.classList.contains('s2p-expanded-row')) {
+            const impactedText = dayRow.querySelector('.dph-impacted-slots')?.textContent?.trim() || '';
+            const slotHeader = nextRow.querySelector('.s2p-slot-header');
+            if (slotHeader) {
+              // Remove "9 Slots | 309 Orders | 27 Active Riders" pill
+              slotHeader.querySelector('.badge-info')?.remove();
+
+              // Place "DPH IMPACTED SLOTS - <slots>" between the title and pivot switcher
+              const impactedPill = document.createElement('span');
+              if (impactedText) {
+                impactedPill.className = 'dph-impacted-slots';
+                impactedPill.textContent = `DPH IMPACTED SLOTS - ${impactedText}`;
+              } else {
+                impactedPill.className = 'badge badge-success';
+                impactedPill.textContent = 'DPH IMPACTED SLOTS - None';
+              }
+              impactedPill.style.whiteSpace = 'nowrap';
+
+              const segmented = slotHeader.querySelector('.segmented-control');
+              if (segmented) {
+                slotHeader.insertBefore(impactedPill, segmented);
+              } else {
+                slotHeader.appendChild(impactedPill);
+              }
+            }
+          }
+          // Remove parent day row from snapshot when expanded breakdown is rendered
+          dayRow.remove();
+        }
+        // Remove outer daily summary table header (DATE | DAY | ... | ACTION)
+        tableClone.querySelectorAll('.s2p-daily-table > thead').forEach((el) => el.remove());
+      }
+
       const lastMainRow = tableClone.querySelector('.s2p-daily-table > tbody > tr:last-child');
       if (lastMainRow instanceof HTMLElement && lastMainRow.classList.contains('s2p-expanded-row')) {
         const card = lastMainRow.querySelector('.s2p-slot-breakdown-card') as HTMLElement | null;
@@ -507,7 +548,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       tableClone.querySelectorAll('.excel-pivot-table-container').forEach((el) => {
         (el as HTMLElement).style.overflowX = 'visible';
       });
-      tableClone.querySelectorAll('.badge, .segmented-btn, .kpi-target-badge').forEach((el) => {
+      tableClone.querySelectorAll('.badge, .segmented-btn, .kpi-target-badge, .dph-impacted-slots').forEach((el) => {
         (el as HTMLElement).style.whiteSpace = 'nowrap';
       });
       tableClone.querySelectorAll('.s2p-slot-header').forEach((el) => {
@@ -566,7 +607,11 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           if (cloned.classList.contains('kpi-header-row') || cloned.classList.contains('s2p-slot-header')) {
             cloned.style.width = '100%';
           }
-          if (cloned.classList.contains('badge') || cloned.classList.contains('segmented-btn')) {
+          if (
+            cloned.classList.contains('badge') ||
+            cloned.classList.contains('segmented-btn') ||
+            cloned.classList.contains('dph-impacted-slots')
+          ) {
             cloned.style.whiteSpace = 'nowrap';
           }
         }
