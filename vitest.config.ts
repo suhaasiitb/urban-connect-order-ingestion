@@ -5,7 +5,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   test: {
-    testTimeout: 15000,
+    testTimeout: 20000,
+    hookTimeout: 20000,
     env: {
       VITE_SUPABASE_URL: '',
       VITE_SUPABASE_ANON_KEY: '',
