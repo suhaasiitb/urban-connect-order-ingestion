@@ -11229,6 +11229,70 @@ html[data-theme="dark"] .snop-breach-toggle-btn.active .snop-breach-toggle-dot {
   box-shadow: 0 0 8px rgba(255, 92, 92, 0.8);
 }
 
+/* Take Screenshot Pill Button in Daily S2P, OTP, DPH & DSR Summary */
+.s2p-screenshot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.78rem;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  user-select: none;
+}
+
+.s2p-screenshot-btn:hover:not(:disabled) {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.s2p-screenshot-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.s2p-screenshot-btn.saved {
+  border-color: #16a34a;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.s2p-screenshot-btn.error {
+  border-color: #dc2626;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+html[data-theme="dark"] .s2p-screenshot-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--color-graphite);
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .s2p-screenshot-btn:hover:not(:disabled) {
+  border-color: rgba(96, 165, 250, 0.55);
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--color-ghost-white);
+}
+
+html[data-theme="dark"] .s2p-screenshot-btn.saved {
+  border-color: rgba(63, 203, 127, 0.55);
+  background: rgba(63, 203, 127, 0.14);
+  color: var(--color-mint-signal);
+}
+
+html[data-theme="dark"] .s2p-screenshot-btn.error {
+  border-color: rgba(255, 92, 92, 0.55);
+  background: rgba(255, 92, 92, 0.14);
+  color: var(--color-crimson-signal);
+}
+
 /* ==============================================================================
    Animated Light Bulb Theme Toggle & Side Panel Store Logins Button
    ============================================================================== */
@@ -11797,7 +11861,8 @@ html[data-theme="dark"] .side-panel-close-mobile-btn:hover {
     font-size: 0.78rem !important;
   }
 
-  .snop-breach-toggle-btn {
+  .snop-breach-toggle-btn,
+  .s2p-screenshot-btn {
     width: 100% !important;
     justify-content: center !important;
     min-height: 38px !important;

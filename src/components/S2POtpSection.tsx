@@ -78,6 +78,11 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   const [loadSource, setLoadSource] = useState<'cache' | 'rpc' | 'client' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const latestRequestIdRef = useRef<number>(0);
+  const analyticsContainerRef = useRef<HTMLDivElement | null>(null);
+  const kpiGridWrapperRef = useRef<HTMLDivElement | null>(null);
+  const dailyTableContainerRef = useRef<HTMLDivElement | null>(null);
+  const [takingScreenshot, setTakingScreenshot] = useState<boolean>(false);
+  const [screenshotStatus, setScreenshotStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
   // Strictly ensure the displayed summary matches the currently selected store and [startDate, endDate] window
   const activeSummary = useMemo<S2POtpSummaryResult | null>(() => {
@@ -392,6 +397,155 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     exportS2POtpToExcel(activeSummary, selectedStore.store_code);
   };
 
+  const handleTakeScreenshot = async () => {
+    const analyticsRoot = analyticsContainerRef.current;
+    const kpiEl = kpiGridWrapperRef.current?.querySelector('.kpi-grid') as HTMLElement | null;
+    const tableEl = dailyTableContainerRef.current;
+    if (!analyticsRoot || !kpiEl || !tableEl || !activeSummary || !selectedStore || takingScreenshot) {
+      return;
+    }
+
+    setTakingScreenshot(true);
+    setScreenshotStatus('idle');
+
+    const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
+    const bgColor = isDarkTheme ? '#0b0d12' : '#f8fafc';
+    const textColor = isDarkTheme ? '#f1f5f9' : '#0f172a';
+    const subTextColor = isDarkTheme ? '#94a3b8' : '#475569';
+    const borderColor = isDarkTheme ? '#1e293b' : '#e2e8f0';
+
+    const offscreenHost = document.createElement('div');
+    offscreenHost.style.position = 'fixed';
+    offscreenHost.style.left = '-99999px';
+    offscreenHost.style.top = '0';
+    offscreenHost.style.pointerEvents = 'none';
+    offscreenHost.style.zIndex = '-1';
+
+    try {
+      const captureWidth = Math.max(1360, tableEl.scrollWidth + 48);
+
+      const captureTarget = document.createElement('div');
+      captureTarget.className = 'analytics-container s2p-otp-container';
+      captureTarget.style.width = `${captureWidth}px`;
+      captureTarget.style.padding = '20px 24px 24px';
+      captureTarget.style.backgroundColor = bgColor;
+      captureTarget.style.display = 'flex';
+      captureTarget.style.flexDirection = 'column';
+      captureTarget.style.gap = '16px';
+      captureTarget.style.boxSizing = 'border-box';
+      captureTarget.style.margin = '0';
+
+      // Snapshot header strip with store & period context
+      const headerBar = document.createElement('div');
+      headerBar.style.display = 'flex';
+      headerBar.style.alignItems = 'center';
+      headerBar.style.justifyContent = 'space-between';
+      headerBar.style.gap = '12px';
+      headerBar.style.paddingBottom = '10px';
+      headerBar.style.borderBottom = `1px solid ${borderColor}`;
+
+      const leftMeta = document.createElement('div');
+      const titleEl = document.createElement('div');
+      titleEl.textContent = `${selectedStore.store_code} (${selectedStore.store_name}) — S2P, OTP+3, DPH & DSR Summary`;
+      titleEl.style.fontSize = '16px';
+      titleEl.style.fontWeight = '700';
+      titleEl.style.color = textColor;
+
+      const subEl = document.createElement('div');
+      const rangeText = startDate === endDate ? startDate : `${startDate} → ${endDate}`;
+      subEl.textContent = `Period: ${rangeText} · ${activeSummary.days.length} ${
+        activeSummary.days.length === 1 ? 'Day' : 'Days'
+      } · ${activeSummary.overallTotalOrders.toLocaleString()} Orders`;
+      subEl.style.fontSize = '12px';
+      subEl.style.color = subTextColor;
+      subEl.style.marginTop = '2px';
+      leftMeta.append(titleEl, subEl);
+
+      const rightMeta = document.createElement('div');
+      rightMeta.textContent = `Captured ${new Date().toLocaleString('en-IN', {
+        timeZone,
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`;
+      rightMeta.style.fontSize = '11px';
+      rightMeta.style.color = subTextColor;
+      rightMeta.style.whiteSpace = 'nowrap';
+
+      headerBar.append(leftMeta, rightMeta);
+      captureTarget.appendChild(headerBar);
+
+      // Section 1: Clone top 5 KPI cards in a single balanced 5-column row
+      const kpiClone = kpiEl.cloneNode(true) as HTMLElement;
+      kpiClone.classList.remove('mt-md');
+      kpiClone.style.marginTop = '0';
+      kpiClone.style.display = 'grid';
+      kpiClone.style.gridTemplateColumns = 'repeat(5, minmax(0, 1fr))';
+      captureTarget.appendChild(kpiClone);
+
+      // Section 2: Clone Daily Summary & Expanded Hourly Slot Breakdown without scroll clipping
+      const tableClone = tableEl.cloneNode(true) as HTMLElement;
+      tableClone.classList.remove('opacity-70');
+      tableClone.style.marginTop = '0';
+      tableClone.style.overflowX = 'visible';
+      tableClone.style.width = '100%';
+      tableClone.querySelectorAll('.excel-pivot-table-container').forEach((el) => {
+        (el as HTMLElement).style.overflowX = 'visible';
+      });
+      captureTarget.appendChild(tableClone);
+
+      offscreenHost.appendChild(captureTarget);
+      analyticsRoot.appendChild(offscreenHost);
+
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+
+      const finalWidth = Math.max(captureWidth, captureTarget.scrollWidth);
+      captureTarget.style.width = `${finalWidth}px`;
+      const finalHeight = captureTarget.scrollHeight;
+
+      const { domToPng } = await import('modern-screenshot');
+      let dataUrl: string;
+      try {
+        dataUrl = await domToPng(captureTarget, {
+          scale: 2,
+          backgroundColor: bgColor,
+          width: finalWidth,
+          height: finalHeight,
+        });
+      } catch {
+        dataUrl = await domToPng(captureTarget, {
+          scale: 2,
+          backgroundColor: bgColor,
+          width: finalWidth,
+          height: finalHeight,
+          font: false,
+        });
+      }
+
+      const dateSlug = startDate === endDate ? startDate : `${startDate}_to_${endDate}`;
+      const link = document.createElement('a');
+      link.download = `S2P-OTP-Summary-${selectedStore.store_code}-${dateSlug}.png`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setScreenshotStatus('saved');
+      window.setTimeout(() => setScreenshotStatus('idle'), 2200);
+    } catch (err) {
+      console.error('Failed to capture S2P & OTP screenshot:', err);
+      setScreenshotStatus('error');
+      window.setTimeout(() => setScreenshotStatus('idle'), 3000);
+    } finally {
+      offscreenHost.remove();
+      setTakingScreenshot(false);
+    }
+  };
+
   const isTodayInRange = startDate <= todayStr && todayStr <= endDate;
 
   // Helper to color-code DPH heatmap badge class
@@ -410,7 +564,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   };
 
   return (
-    <div className="analytics-container s2p-otp-container">
+    <div ref={analyticsContainerRef} className="analytics-container s2p-otp-container">
       {/* 1. Filter & Controls Bar */}
       <div className="section-card">
         <div className="perf-controls-bar" style={{ marginTop: 0 }}>
@@ -619,7 +773,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       )}
 
       {/* 2. Top Summary KPI Cards */}
-      <S2PKpiCardsGrid summary={activeSummary} loading={loading} dphTarget={dphTarget} />
+      <div ref={kpiGridWrapperRef}>
+        <S2PKpiCardsGrid summary={activeSummary} loading={loading} dphTarget={dphTarget} />
+      </div>
 
       {/* 3. Daily Summary Table with Expandable Slot Drill-Downs */}
       <div className="section-card perf-card mt-md">
@@ -632,6 +788,39 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               </p>
             </div>
             <div className="flex-row items-center gap-sm flex-wrap">
+              <button
+                type="button"
+                className={`s2p-screenshot-btn ${screenshotStatus === 'saved' ? 'saved' : ''} ${
+                  screenshotStatus === 'error' ? 'error' : ''
+                }`}
+                onClick={() => void handleTakeScreenshot()}
+                disabled={!activeSummary || activeSummary.days.length === 0 || loading || takingScreenshot}
+                title="Capture and download the top KPI cards and Daily/Hourly Slot Summary together in one PNG snapshot"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+                <span>
+                  {takingScreenshot
+                    ? 'Capturing...'
+                    : screenshotStatus === 'saved'
+                    ? 'Screenshot Saved'
+                    : screenshotStatus === 'error'
+                    ? 'Screenshot Failed'
+                    : 'Take Screenshot'}
+                </span>
+              </button>
               <button
                 type="button"
                 className={`snop-breach-toggle-btn ${showSnopBreach ? 'active' : ''}`}
@@ -674,7 +863,10 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         )}
 
         {activeSummary && activeSummary.days.length > 0 && (
-          <div className={`s2p-daily-table-container ${loading ? 'opacity-70' : ''}`}>
+          <div
+            ref={dailyTableContainerRef}
+            className={`s2p-daily-table-container ${loading ? 'opacity-70' : ''}`}
+          >
             <table className="s2p-daily-table">
               <thead>
                 <tr>
