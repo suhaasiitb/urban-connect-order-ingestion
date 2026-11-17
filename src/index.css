@@ -12680,7 +12680,8 @@ html[data-theme="dark"] .otp-breach-trigger:hover {
   width: 100%;
 }
 
-.otp-breach-cell-wrap .otp-breach-trigger {
+.otp-breach-cell-wrap .otp-breach-trigger,
+.otp-breach-cell-wrap .otp-breach-center-val {
   grid-column: 2;
   justify-self: center;
 }

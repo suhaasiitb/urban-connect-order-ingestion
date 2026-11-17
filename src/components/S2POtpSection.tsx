@@ -122,7 +122,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     formattedDate: string;
     slotHour: number | null;
   } | null>(null);
-  const [otpRcaModal, setOtpRcaModal] = useState<{
+  const [rcaModal, setRcaModal] = useState<{
+    mode: 'otp' | 'dsr';
     orderDate: string;
     formattedDate: string;
     slotHour: number;
@@ -1513,7 +1514,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                                   <button
                                                     type="button"
                                                     onClick={() =>
-                                                      setOtpRcaModal({
+                                                      setRcaModal({
+                                                        mode: 'otp',
                                                         orderDate: day.dateStr,
                                                         formattedDate: day.formattedDate,
                                                         slotHour: s.slotHour,
@@ -1530,12 +1532,38 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                               )}
                                             </td>
                                             <td className="text-center font-semibold">
-                                              <span
-                                                className={(s.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
-                                                title={`Completed: ${(s.completedOrdersCount ?? 0).toLocaleString()} / ${s.ordersCount.toLocaleString()}`}
-                                              >
-                                                {(s.dsrPct ?? 0).toFixed(1)}%
-                                              </span>
+                                              {s.ordersCount > 0 && (s.dsrPct ?? 100) < 100 ? (
+                                                <div className="otp-breach-cell-wrap">
+                                                  <span
+                                                    className={`otp-breach-center-val ${(s.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}`}
+                                                    title={`Completed: ${(s.completedOrdersCount ?? 0).toLocaleString()} / ${(s.dsrEligibleOrdersCount ?? s.ordersCount).toLocaleString()}`}
+                                                  >
+                                                    {(s.dsrPct ?? 0).toFixed(1)}%
+                                                  </span>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setRcaModal({
+                                                        mode: 'dsr',
+                                                        orderDate: day.dateStr,
+                                                        formattedDate: day.formattedDate,
+                                                        slotHour: s.slotHour,
+                                                      })
+                                                    }
+                                                    className="otp-rca-trigger"
+                                                    title={`Submit DSR RCA for Slot ${s.slotHour} RTO_DELIVERED order(s)`}
+                                                  >
+                                                    Submit RCA
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <span
+                                                  className={(s.dsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}
+                                                  title={`Completed: ${(s.completedOrdersCount ?? 0).toLocaleString()} / ${(s.dsrEligibleOrdersCount ?? s.ordersCount).toLocaleString()}`}
+                                                >
+                                                  {(s.dsrPct ?? 0).toFixed(1)}%
+                                                </span>
+                                              )}
                                             </td>
                                           </tr>
                                         );
@@ -1675,7 +1703,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                                   <button
                                                     type="button"
                                                     onClick={() =>
-                                                      setOtpRcaModal({
+                                                      setRcaModal({
+                                                        mode: 'otp',
                                                         orderDate: day.dateStr,
                                                         formattedDate: day.formattedDate,
                                                         slotHour: s.slotHour,
@@ -1858,15 +1887,16 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         />
       )}
 
-      {selectedStore && otpRcaModal && (
+      {selectedStore && rcaModal && (
         <OtpBreachRcaModal
-          isOpen={Boolean(otpRcaModal)}
-          onClose={() => setOtpRcaModal(null)}
+          isOpen={Boolean(rcaModal)}
+          onClose={() => setRcaModal(null)}
           storeId={selectedStore.id}
           storeCode={selectedStore.store_code}
-          orderDate={otpRcaModal.orderDate}
-          formattedDate={otpRcaModal.formattedDate}
-          slotHour={otpRcaModal.slotHour}
+          orderDate={rcaModal.orderDate}
+          formattedDate={rcaModal.formattedDate}
+          slotHour={rcaModal.slotHour}
+          mode={rcaModal.mode}
         />
       )}
     </div>

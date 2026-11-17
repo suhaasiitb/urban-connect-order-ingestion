@@ -67,6 +67,7 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
       '20261024000001_new_rider_onboarding.sql',
       '20261024000002_store_users_and_scoping.sql',
       '20261117000001_add_otp_breach_rca_to_orders.sql',
+      '20261117000002_add_dsr_rca_to_orders.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -433,6 +434,54 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
       db.query(
         `SELECT public.save_otp_breach_rcas('${tmk7StoreId}'::uuid, $1::jsonb)`,
         [JSON.stringify([{ order_id: 'ORD-RCA-1', rca: 'Bike Issue' }])]
+      )
+    ).rejects.toThrow(/Access denied/);
+
+    await db.exec(`RESET ROLE;`);
+  });
+
+  it('persists DSR RCA via save_dsr_rcas for RTO_DELIVERED orders with store scoping and check constraint', async () => {
+    const hash64 = 'b'.repeat(64);
+    await db.exec(`
+      INSERT INTO public.orders (
+        store_id, source_store_name, order_created_at, status, rider_name, order_id,
+        external_store_id, order_type, store_code, slot_hour, order_date,
+        staging_to_pickup_minutes, s2p_minutes, distance_meters,
+        actual_arrival_minutes, arrival_eta_minutes, otp_performance, otp_plus_3_performance,
+        source_row_hash, raw_source_snapshot
+      ) VALUES (
+        '${tmk7StoreId}', 'TMK7', now(), 'RTO_DELIVERED', 'Rohan Shinde', 'ORD-DSR-1',
+        '4247', 'Actual', 'TMK7', 10, '2026-11-17',
+        0.5, 0.5, 900, 9.0, 10.0, 'OTP Achieved', 'OTP Achieved',
+        '${hash64}', '{}'::jsonb
+      );
+    `);
+
+    await db.exec(`SET ROLE authenticated; SET request.jwt.claim.sub = '${TMK7_USER_ID}';`);
+    const saveRes = await db.query<{ save_dsr_rcas: number }>(
+      `SELECT public.save_dsr_rcas('${tmk7StoreId}'::uuid, $1::jsonb)`,
+      [JSON.stringify([{ order_id: 'ORD-DSR-1', rca: 'Customer Unavailable' }])]
+    );
+    expect(saveRes.rows[0].save_dsr_rcas).toBe(1);
+
+    const rowRes = await db.query<{ dsr_rca: string | null; dsr_rca_updated_by: string | null }>(
+      `SELECT dsr_rca, dsr_rca_updated_by FROM public.orders WHERE store_id = '${tmk7StoreId}' AND order_id = 'ORD-DSR-1'`
+    );
+    expect(rowRes.rows[0].dsr_rca).toBe('Customer Unavailable');
+    expect(rowRes.rows[0].dsr_rca_updated_by).toBe(TMK7_USER_ID);
+
+    await expect(
+      db.query(
+        `SELECT public.save_dsr_rcas('${tmk7StoreId}'::uuid, $1::jsonb)`,
+        [JSON.stringify([{ order_id: 'ORD-DSR-1', rca: 'Invalid DSR Reason' }])]
+      )
+    ).rejects.toThrow(/chk_orders_dsr_rca_valid/);
+
+    await db.exec(`RESET ROLE; SET ROLE authenticated; SET request.jwt.claim.sub = '${TMB1_USER_ID}';`);
+    await expect(
+      db.query(
+        `SELECT public.save_dsr_rcas('${tmk7StoreId}'::uuid, $1::jsonb)`,
+        [JSON.stringify([{ order_id: 'ORD-DSR-1', rca: 'Wrong Location' }])]
       )
     ).rejects.toThrow(/Access denied/);
 

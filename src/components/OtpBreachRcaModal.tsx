@@ -1,11 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  DSR_RCA_OPTIONS,
   OTP_BREACH_RCA_OPTIONS,
-  type OtpBreachedOrderRecord,
+  fetchDsrRtoOrders,
   fetchOtpBreachedOrders,
   formatSlotHourLabel,
+  saveDsrRcas,
   saveOtpBreachRcas,
 } from '../services/s2pOtpService';
+
+interface RcaOrderRow {
+  orderId: string;
+  riderName: string;
+  timeDiffMinutes?: number;
+  status?: string;
+}
 
 interface OtpBreachRcaModalProps {
   isOpen: boolean;
@@ -15,6 +24,7 @@ interface OtpBreachRcaModalProps {
   orderDate: string;
   formattedDate: string;
   slotHour: number;
+  mode?: 'otp' | 'dsr';
 }
 
 export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
@@ -25,14 +35,18 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
   orderDate,
   formattedDate,
   slotHour,
+  mode = 'otp',
 }) => {
-  const [orders, setOrders] = useState<OtpBreachedOrderRecord[]>([]);
+  const [orders, setOrders] = useState<RcaOrderRow[]>([]);
   const [draftRcas, setDraftRcas] = useState<Record<string, string>>({});
   const [initialRcas, setInitialRcas] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  const isDsrMode = mode === 'dsr';
+  const rcaOptions = isDsrMode ? DSR_RCA_OPTIONS : OTP_BREACH_RCA_OPTIONS;
 
   useEffect(() => {
     if (!isOpen || !storeId || !orderDate) return;
@@ -41,29 +55,61 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
     setError(null);
     setSaveMessage(null);
 
-    void fetchOtpBreachedOrders({ storeId, orderDate, slotHour }).then((res) => {
-      if (!active) return;
-      if (res.error) {
-        setError(res.error);
-        setOrders([]);
-        setDraftRcas({});
-        setInitialRcas({});
-      } else {
-        setOrders(res.orders);
-        const rcaMap: Record<string, string> = {};
-        for (const ord of res.orders) {
-          rcaMap[ord.orderId] = ord.otpBreachRca ?? '';
+    const loadOrders = async () => {
+      if (isDsrMode) {
+        const res = await fetchDsrRtoOrders({ storeId, orderDate, slotHour });
+        if (!active) return;
+        if (res.error) {
+          setError(res.error);
+          setOrders([]);
+          setDraftRcas({});
+          setInitialRcas({});
+        } else {
+          const rows: RcaOrderRow[] = res.orders.map((ord) => ({
+            orderId: ord.orderId,
+            riderName: ord.riderName,
+            status: ord.status,
+          }));
+          setOrders(rows);
+          const rcaMap: Record<string, string> = {};
+          for (const ord of res.orders) {
+            rcaMap[ord.orderId] = ord.dsrRca ?? '';
+          }
+          setDraftRcas(rcaMap);
+          setInitialRcas(rcaMap);
         }
-        setDraftRcas(rcaMap);
-        setInitialRcas(rcaMap);
+      } else {
+        const res = await fetchOtpBreachedOrders({ storeId, orderDate, slotHour });
+        if (!active) return;
+        if (res.error) {
+          setError(res.error);
+          setOrders([]);
+          setDraftRcas({});
+          setInitialRcas({});
+        } else {
+          const rows: RcaOrderRow[] = res.orders.map((ord) => ({
+            orderId: ord.orderId,
+            riderName: ord.riderName,
+            timeDiffMinutes: ord.timeDiffMinutes,
+          }));
+          setOrders(rows);
+          const rcaMap: Record<string, string> = {};
+          for (const ord of res.orders) {
+            rcaMap[ord.orderId] = ord.otpBreachRca ?? '';
+          }
+          setDraftRcas(rcaMap);
+          setInitialRcas(rcaMap);
+        }
       }
       setLoading(false);
-    });
+    };
+
+    void loadOrders();
 
     return () => {
       active = false;
     };
-  }, [isOpen, storeId, orderDate, slotHour]);
+  }, [isOpen, storeId, orderDate, slotHour, isDsrMode]);
 
   const dirtyUpdates = useMemo(() => {
     const changes: Array<{ orderId: string; rca: string | null }> = [];
@@ -101,10 +147,9 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
     setError(null);
     setSaveMessage(null);
 
-    const res = await saveOtpBreachRcas({
-      storeId,
-      updates: dirtyUpdates,
-    });
+    const res = isDsrMode
+      ? await saveDsrRcas({ storeId, updates: dirtyUpdates })
+      : await saveOtpBreachRcas({ storeId, updates: dirtyUpdates });
 
     if (!res.ok) {
       setError(res.error || 'Failed to save RCA entries.');
@@ -127,7 +172,7 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
         <div className="modal-header flex-row items-center justify-between gap-sm">
           <div>
             <h3 className="modal-title" style={{ margin: 0 }}>
-              Submit OTP Breach RCA
+              {isDsrMode ? 'Submit DSR RCA (RTO_DELIVERED)' : 'Submit OTP Breach RCA'}
             </h3>
             <p className="text-xs text-muted" style={{ margin: '0.2rem 0 0' }}>
               {storeCode} · {formattedDate} ({orderDate}) · Slot {slotHour} ({formatSlotHourLabel(slotHour)})
@@ -146,7 +191,11 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
         <div className="flex-row items-center justify-between gap-sm flex-wrap mt-sm mb-sm">
           <div className="flex-row items-center gap-sm flex-wrap">
             <span className="badge badge-danger">
-              {loading ? '...' : `${orders.length} Breached ${orders.length === 1 ? 'Order' : 'Orders'}`}
+              {loading
+                ? '...'
+                : isDsrMode
+                ? `${orders.length} RTO ${orders.length === 1 ? 'Order' : 'Orders'}`
+                : `${orders.length} Breached ${orders.length === 1 ? 'Order' : 'Orders'}`}
             </span>
             <span className="badge badge-neutral">
               {loading ? '...' : `${filledCount} / ${orders.length} RCA Tagged`}
@@ -176,7 +225,9 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
                 <th className="text-center" style={{ width: '40px' }}>#</th>
                 <th>Rider Name</th>
                 <th>Order ID</th>
-                <th className="text-right">Time Diff</th>
+                <th className={isDsrMode ? 'text-center' : 'text-right'}>
+                  {isDsrMode ? 'Order Status' : 'Time Diff'}
+                </th>
                 <th style={{ minWidth: '240px' }}>RCA</th>
               </tr>
             </thead>
@@ -184,13 +235,15 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
               {loading ? (
                 <tr>
                   <td colSpan={5} className="text-center py-md text-muted">
-                    Loading breached orders...
+                    {isDsrMode ? 'Loading RTO_DELIVERED orders...' : 'Loading breached orders...'}
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-md text-muted">
-                    No OTP+3 breached orders found for this slot.
+                    {isDsrMode
+                      ? 'No RTO_DELIVERED orders found for this slot.'
+                      : 'No OTP+3 breached orders found for this slot.'}
                   </td>
                 </tr>
               ) : (
@@ -201,9 +254,15 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
                       <td className="text-center text-muted font-mono text-xs">{idx + 1}</td>
                       <td className="font-semibold">{ord.riderName}</td>
                       <td className="font-mono text-xs">{ord.orderId}</td>
-                      <td className="text-right font-mono font-bold text-red" style={{ whiteSpace: 'nowrap' }}>
-                        {ord.timeDiffMinutes.toFixed(2)} min
-                      </td>
+                      {isDsrMode ? (
+                        <td className="text-center" style={{ whiteSpace: 'nowrap' }}>
+                          <span className="badge badge-warning">{ord.status || 'RTO_DELIVERED'}</span>
+                        </td>
+                      ) : (
+                        <td className="text-right font-mono font-bold text-red" style={{ whiteSpace: 'nowrap' }}>
+                          {(ord.timeDiffMinutes ?? 0).toFixed(2)} min
+                        </td>
+                      )}
                       <td>
                         <select
                           aria-label={`RCA for order ${ord.orderId}`}
@@ -213,7 +272,7 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
                           disabled={saving}
                         >
                           <option value="">-- Select RCA --</option>
-                          {OTP_BREACH_RCA_OPTIONS.map((opt) => (
+                          {rcaOptions.map((opt) => (
                             <option key={opt} value={opt}>
                               {opt}
                             </option>

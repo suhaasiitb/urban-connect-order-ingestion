@@ -1010,6 +1010,17 @@ export const OTP_BREACH_RCA_OPTIONS = [
 
 export type OtpBreachRca = (typeof OTP_BREACH_RCA_OPTIONS)[number];
 
+export const DSR_RCA_OPTIONS = [
+  'Wrong Location',
+  'Customer Unavailable',
+  'Customer Rejected',
+  'Vehicle Issue',
+  'Product Missing',
+  'Customer Unreachable/Not Responding',
+] as const;
+
+export type DsrRca = (typeof DSR_RCA_OPTIONS)[number];
+
 export interface OtpBreachedOrderRecord {
   orderId: string;
   orderDate?: string;
@@ -1021,6 +1032,17 @@ export interface OtpBreachedOrderRecord {
   timeDiffMinutes: number; // Arrival Time ETA - Actual Arrival Time (negative for breached orders)
   otpBreachRca?: string | null;
   otpBreachRcaUpdatedAt?: string | null;
+}
+
+export interface DsrRtoOrderRecord {
+  orderId: string;
+  orderDate?: string;
+  riderName: string;
+  riderNumber: string;
+  slotHour: number;
+  status: string;
+  dsrRca?: string | null;
+  dsrRcaUpdatedAt?: string | null;
 }
 
 function normalizeBreachRiderName(name: string): string {
@@ -1136,14 +1158,11 @@ export async function fetchOtpBreachedOrders(params: {
   }
 }
 
-/**
- * Persists OTP+3 Breach RCA selections directly onto public.orders via SECURITY DEFINER RPC.
- */
-export async function saveOtpBreachRcas(params: {
-  storeId: string;
-  updates: Array<{ orderId: string; rca: string | null }>;
-}): Promise<{ ok: boolean; updatedCount?: number; error?: string }> {
-  const { storeId, updates } = params;
+async function saveOrderRcaViaRpc(
+  rpcName: 'save_otp_breach_rcas' | 'save_dsr_rcas',
+  storeId: string,
+  updates: Array<{ orderId: string; rca: string | null }>
+): Promise<{ ok: boolean; updatedCount?: number; error?: string }> {
   if (!storeId || !updates.length) {
     return { ok: true, updatedCount: 0 };
   }
@@ -1154,7 +1173,7 @@ export async function saveOtpBreachRcas(params: {
       rca: u.rca ? u.rca.trim() : null,
     }));
 
-    const { data, error } = await supabase.rpc('save_otp_breach_rcas', {
+    const { data, error } = await supabase.rpc(rpcName, {
       p_store_id: storeId,
       p_updates: payload,
     });
@@ -1170,6 +1189,110 @@ export async function saveOtpBreachRcas(params: {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/**
+ * Fetches RTO_DELIVERED orders for a store/date (and optional slotHour) for DSR RCA submission.
+ */
+export async function fetchDsrRtoOrders(params: {
+  storeId: string;
+  orderDate: string;
+  slotHour?: number | null;
+}): Promise<{ orders: DsrRtoOrderRecord[]; error?: string }> {
+  const { storeId, orderDate, slotHour } = params;
+  if (!storeId || !orderDate) {
+    return { orders: [] };
+  }
+
+  try {
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let hasMore = true;
+    const rawRows: Array<{
+      order_id: string | null;
+      order_date: string | null;
+      rider_name: string | null;
+      rider_number: string | null;
+      slot_hour: number | null;
+      status: string | null;
+      dsr_rca?: string | null;
+      dsr_rca_updated_at?: string | null;
+    }> = [];
+
+    while (hasMore) {
+      let query = supabase
+        .from('orders')
+        .select('order_id, order_date, rider_name, rider_number, slot_hour, status, dsr_rca, dsr_rca_updated_at')
+        .eq('store_id', storeId)
+        .eq('order_date', orderDate)
+        .ilike('status', '%RTO_DELIVERED%')
+        .range(from, from + PAGE_SIZE - 1);
+
+      if (slotHour !== undefined && slotHour !== null) {
+        query = query.eq('slot_hour', slotHour);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        return { orders: [], error: error.message };
+      }
+
+      if (data && data.length > 0) {
+        rawRows.push(...data);
+        if (data.length < PAGE_SIZE) {
+          hasMore = false;
+        } else {
+          from += PAGE_SIZE;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    const orders: DsrRtoOrderRecord[] = rawRows
+      .filter((r) => String(r.status ?? '').trim().toUpperCase() === 'RTO_DELIVERED')
+      .map((r) => ({
+        orderId: String(r.order_id ?? ''),
+        orderDate: r.order_date ? String(r.order_date) : undefined,
+        riderName: String(r.rider_name || r.rider_number || 'Unknown Rider').replace(/\*+/g, '').trim(),
+        riderNumber: String(r.rider_number ?? ''),
+        slotHour: Number(r.slot_hour ?? 0),
+        status: String(r.status ?? 'RTO_DELIVERED').trim().toUpperCase(),
+        dsrRca: r.dsr_rca ? String(r.dsr_rca) : null,
+        dsrRcaUpdatedAt: r.dsr_rca_updated_at ? String(r.dsr_rca_updated_at) : null,
+      }));
+
+    orders.sort((a, b) => {
+      const nameCmp = a.riderName.localeCompare(b.riderName);
+      return nameCmp !== 0 ? nameCmp : a.orderId.localeCompare(b.orderId);
+    });
+    return { orders };
+  } catch (err) {
+    return {
+      orders: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Persists OTP+3 Breach RCA selections directly onto public.orders via SECURITY DEFINER RPC.
+ */
+export async function saveOtpBreachRcas(params: {
+  storeId: string;
+  updates: Array<{ orderId: string; rca: string | null }>;
+}): Promise<{ ok: boolean; updatedCount?: number; error?: string }> {
+  return saveOrderRcaViaRpc('save_otp_breach_rcas', params.storeId, params.updates);
+}
+
+/**
+ * Persists DSR RTO_DELIVERED RCA selections directly onto public.orders via SECURITY DEFINER RPC.
+ */
+export async function saveDsrRcas(params: {
+  storeId: string;
+  updates: Array<{ orderId: string; rca: string | null }>;
+}): Promise<{ ok: boolean; updatedCount?: number; error?: string }> {
+  return saveOrderRcaViaRpc('save_dsr_rcas', params.storeId, params.updates);
 }
 
 export interface OtpBreachRcaPivots {

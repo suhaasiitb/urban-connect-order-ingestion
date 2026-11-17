@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getTodayDateString } from '../../src/services/analyticsService';
 import {
+  DSR_RCA_OPTIONS,
   OTP_BREACH_RCA_OPTIONS,
   buildOtpBreachRcaPivots,
   buildSummaryFromRawOrders,
@@ -711,6 +712,17 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
       { slotHour: 7, slotLabel: '07:00 – 08:00', breachCount: 1, pct: 25 },
       { slotHour: 9, slotLabel: '09:00 – 10:00', breachCount: 2, pct: 50 },
       { slotHour: 11, slotLabel: '11:00 – 12:00', breachCount: 1, pct: 25 },
+    ]);
+  });
+
+  it('exposes the exact 6 DSR RCA dropdown categories', () => {
+    expect(DSR_RCA_OPTIONS).toEqual([
+      'Wrong Location',
+      'Customer Unavailable',
+      'Customer Rejected',
+      'Vehicle Issue',
+      'Product Missing',
+      'Customer Unreachable/Not Responding',
     ]);
   });
 });
