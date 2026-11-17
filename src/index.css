@@ -4207,29 +4207,48 @@ html:not([data-theme="dark"]) .s2p-daily-table .dph-heat-normal,
 html:not([data-theme="dark"]) .excel-pivot-table .dph-heat-normal {
   background-color: #e2e8f0;
   color: #020617;
-  border: 1px solid #cbd5e1;
   font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table .dph-pill.dph-heat-normal,
+html:not([data-theme="dark"]) .excel-pivot-table .dph-pill.dph-heat-normal {
+  border: 1px solid #cbd5e1;
 }
 
 html:not([data-theme="dark"]) .s2p-daily-table .dph-heat-elevated,
 html:not([data-theme="dark"]) .excel-pivot-table .dph-heat-elevated {
-  background-color: #ffe4e6;
+  background-color: rgba(239, 68, 68, 0.05);
   color: #b91c1c;
   font-weight: 700;
 }
 
+html:not([data-theme="dark"]) .s2p-daily-table .dph-pill.dph-heat-elevated,
+html:not([data-theme="dark"]) .excel-pivot-table .dph-pill.dph-heat-elevated {
+  border: 1px solid rgba(239, 68, 68, 0.14);
+}
+
 html:not([data-theme="dark"]) .s2p-daily-table .dph-heat-high,
 html:not([data-theme="dark"]) .excel-pivot-table .dph-heat-high {
-  background-color: #fecdd3;
-  color: #9f1239;
+  background-color: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
   font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table .dph-pill.dph-heat-high,
+html:not([data-theme="dark"]) .excel-pivot-table .dph-pill.dph-heat-high {
+  border: 1px solid rgba(239, 68, 68, 0.20);
 }
 
 html:not([data-theme="dark"]) .s2p-daily-table .dph-heat-critical,
 html:not([data-theme="dark"]) .excel-pivot-table .dph-heat-critical {
-  background-color: #fda4af;
-  color: #881337;
-  font-weight: 800;
+  background-color: rgba(239, 68, 68, 0.11);
+  color: #991b1b;
+  font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table .dph-pill.dph-heat-critical,
+html:not([data-theme="dark"]) .excel-pivot-table .dph-pill.dph-heat-critical {
+  border: 1px solid rgba(239, 68, 68, 0.26);
 }
 
 .excel-pivot-table tbody tr:nth-child(odd) {
@@ -9715,20 +9734,21 @@ html[data-theme="dark"] .btn-edit-joining:hover {
 }
 
 .dph-heat-critical {
-  background-color: #fecdd3;
-  color: #9f1239;
+  background-color: rgba(239, 68, 68, 0.11);
+  color: #991b1b;
   font-weight: 700;
 }
 
 .dph-heat-high {
-  background-color: #ffe4e6;
-  color: #be123c;
-  font-weight: 600;
+  background-color: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+  font-weight: 700;
 }
 
 .dph-heat-elevated {
-  background-color: #fff1f2;
-  color: #e11d48;
+  background-color: rgba(239, 68, 68, 0.05);
+  color: #b91c1c;
+  font-weight: 700;
 }
 
 .dph-heat-normal {
@@ -10260,15 +10280,15 @@ html[data-theme="dark"] .s2p-overall-grand-total td {
 }
 
 html[data-theme="dark"] .dph-heat-critical {
-  background-color: rgba(255, 92, 92, 0.22) !important;
+  background-color: rgba(255, 92, 92, 0.14) !important;
   color: var(--color-crimson-signal) !important;
-  border: 1px solid rgba(255, 92, 92, 0.5);
+  border: 1px solid rgba(255, 92, 92, 0.36);
 }
 
 html[data-theme="dark"] .dph-heat-high {
-  background-color: rgba(255, 92, 92, 0.14) !important;
+  background-color: rgba(255, 92, 92, 0.09) !important;
   color: #ff8080 !important;
-  border: 1px solid rgba(255, 92, 92, 0.35);
+  border: 1px solid rgba(255, 92, 92, 0.24);
 }
 
 html[data-theme="dark"] .dph-heat-elevated {
