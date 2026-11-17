@@ -1147,14 +1147,14 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       {/* 3. Daily Summary Table with Expandable Slot Drill-Downs */}
       <div className="section-card perf-card mt-md">
         <div className="perf-section-header">
-          <div className="flex-row items-center justify-between flex-wrap gap-sm">
-            <div>
+          <div className="flex-row items-center justify-between gap-sm s2p-summary-header-row">
+            <div className="s2p-summary-header-title">
               <h3 className="section-title editorial-serif-heading">Daily S2P, OTP, DPH &amp; DSR Summary</h3>
               <p className="section-subtitle">
                 Click on any calendar day row to expand its hourly/slot breakdown matching Excel pivots.
               </p>
             </div>
-            <div className="flex-row items-center gap-sm flex-wrap">
+            <div className="flex-row items-center gap-sm flex-wrap s2p-summary-header-actions">
               <button
                 type="button"
                 className={`s2p-screenshot-btn ${screenshotStatus === 'saved' ? 'saved' : ''} ${

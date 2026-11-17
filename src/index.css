@@ -1564,6 +1564,28 @@ html[data-theme="dark"] .alert-success {
   flex-wrap: wrap;
 }
 
+.s2p-summary-header-row {
+  flex-wrap: nowrap;
+  gap: 1rem;
+}
+
+.s2p-summary-header-title {
+  flex: 1 1 auto;
+  min-width: 260px;
+}
+
+.s2p-summary-header-actions {
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  gap: 0.45rem;
+}
+
+.s2p-summary-header-actions .s2p-screenshot-btn,
+.s2p-summary-header-actions .snop-breach-toggle-btn {
+  padding: 0.32rem 0.68rem;
+  white-space: nowrap;
+}
+
 .perf-controls-bar {
   display: flex;
   align-items: center;
