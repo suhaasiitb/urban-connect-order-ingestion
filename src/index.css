@@ -4021,7 +4021,7 @@ input[type='text'].perf-search-input:focus {
 
 .s2p-daily-table-container {
   overflow-x: auto;
-  border: 1px solid #94a3b8;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #ffffff;
   margin-top: 0.75rem;
@@ -4036,26 +4036,21 @@ input[type='text'].perf-search-input:focus {
 
 .s2p-daily-table th {
   background: #f8fafc;
-  color: #334155;
+  color: #475569;
   font-weight: 700;
   font-size: 0.76rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 0.75rem 0.85rem;
-  border-right: 1px solid #94a3b8;
-  border-bottom: 2px solid #94a3b8;
+  border-bottom: 2px solid #e2e8f0;
   white-space: nowrap;
-}
-
-.s2p-daily-table th:last-child {
-  border-right: none;
 }
 
 .s2p-daily-table > tbody > tr.s2p-day-row {
   cursor: pointer;
   transition: background 0.15s ease;
   background: #ffffff;
-  border-bottom: 1px solid #94a3b8;
+  border-bottom: 1px solid #cbd5e1;
 }
 
 .s2p-daily-table > tbody > tr.s2p-day-row:nth-of-type(even) {
@@ -4068,7 +4063,7 @@ input[type='text'].perf-search-input:focus {
 
 .s2p-day-row-expanded {
   background: #e2e8f0 !important;
-  border-bottom: 2px solid #64748b !important;
+  border-bottom: 2px solid #94a3b8 !important;
 }
 
 .s2p-day-row td,
@@ -4076,11 +4071,6 @@ input[type='text'].perf-search-input:focus {
   padding: 0.75rem 0.85rem;
   color: #020617;
   font-weight: 700;
-  border-right: 1px solid #94a3b8;
-}
-
-.s2p-day-row td:last-child {
-  border-right: none;
 }
 
 html:not([data-theme="dark"]) .s2p-daily-table td.text-slate {
@@ -10170,17 +10160,12 @@ html[data-theme="dark"] .s2p-daily-table-container {
 html[data-theme="dark"] .s2p-daily-table th {
   background: var(--surface-table-header);
   color: var(--color-ash-gray);
-  border-right: 1px solid #334155;
-  border-bottom: 1px solid #475569;
-}
-
-html[data-theme="dark"] .s2p-daily-table th:last-child {
-  border-right: none;
+  border-bottom: 1px solid var(--color-graphite);
 }
 
 html[data-theme="dark"] .s2p-daily-table > tbody > tr.s2p-day-row {
   background: var(--color-carbon-card);
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid #191c22;
 }
 
 html[data-theme="dark"] .s2p-daily-table > tbody > tr.s2p-day-row:nth-of-type(even) {
@@ -10195,11 +10180,6 @@ html[data-theme="dark"] .s2p-day-row td,
 html[data-theme="dark"] .s2p-day-row td.font-semibold {
   color: #f1f5f9;
   font-weight: 700;
-  border-right: 1px solid #334155;
-}
-
-html[data-theme="dark"] .s2p-day-row td:last-child {
-  border-right: none;
 }
 
 html[data-theme="dark"] .s2p-day-row:hover {
