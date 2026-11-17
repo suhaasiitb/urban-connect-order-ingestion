@@ -1724,6 +1724,7 @@ html[data-theme="dark"] .perf-date-picker-input {
   cursor: pointer;
   transition: all 0.15s ease;
   outline: none;
+  white-space: nowrap;
 }
 
 .segmented-btn:hover:not(.segmented-btn-active) {

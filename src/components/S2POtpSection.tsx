@@ -422,9 +422,14 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     offscreenHost.style.zIndex = '-1';
 
     try {
-      const captureWidth = Math.max(1360, tableEl.scrollWidth + 48);
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+
+      const captureWidth = Math.max(1480, tableEl.scrollWidth + 48);
 
       const captureTarget = document.createElement('div');
+      captureTarget.dataset.screenshotRoot = 'true';
       captureTarget.className = 'analytics-container s2p-otp-container';
       captureTarget.style.width = `${captureWidth}px`;
       captureTarget.style.padding = '20px 24px 24px';
@@ -481,6 +486,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       const kpiClone = kpiEl.cloneNode(true) as HTMLElement;
       kpiClone.classList.remove('mt-md');
       kpiClone.style.marginTop = '0';
+      kpiClone.style.width = '100%';
       kpiClone.style.display = 'grid';
       kpiClone.style.gridTemplateColumns = 'repeat(5, minmax(0, 1fr))';
       captureTarget.appendChild(kpiClone);
@@ -493,6 +499,20 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       tableClone.style.width = '100%';
       tableClone.querySelectorAll('.excel-pivot-table-container').forEach((el) => {
         (el as HTMLElement).style.overflowX = 'visible';
+      });
+      tableClone.querySelectorAll('.badge, .segmented-btn, .kpi-target-badge').forEach((el) => {
+        (el as HTMLElement).style.whiteSpace = 'nowrap';
+      });
+      tableClone.querySelectorAll('.s2p-slot-header').forEach((el) => {
+        const hdr = el as HTMLElement;
+        hdr.style.alignItems = 'center';
+        hdr.style.flexWrap = 'nowrap';
+        hdr.style.gap = '12px';
+      });
+      tableClone.querySelectorAll('.segmented-control').forEach((el) => {
+        const seg = el as HTMLElement;
+        seg.style.flexShrink = '0';
+        seg.style.whiteSpace = 'nowrap';
       });
       captureTarget.appendChild(tableClone);
 
@@ -507,6 +527,44 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       captureTarget.style.width = `${finalWidth}px`;
       const finalHeight = captureTarget.scrollHeight;
 
+      const onCloneEachNode = (cloned: Node) => {
+        if (!(cloned instanceof HTMLElement)) return;
+        if (cloned.dataset.screenshotRoot === 'true') return;
+
+        const isFixedIcon =
+          cloned.classList.contains('s2p-expand-toggle-btn') ||
+          cloned.classList.contains('snop-breach-toggle-dot');
+
+        if (!isFixedIcon) {
+          // Clear frozen pixel height / logical box sizes computed in source font
+          // so text & flex containers flow naturally inside SVG <foreignObject> without overlapping.
+          cloned.style.removeProperty('height');
+          cloned.style.removeProperty('block-size');
+          cloned.style.removeProperty('inline-size');
+
+          const tag = cloned.tagName;
+          const isFlexOrText =
+            tag === 'SPAN' ||
+            tag === 'STRONG' ||
+            tag === 'H3' ||
+            tag === 'H4' ||
+            tag === 'P' ||
+            tag === 'BUTTON' ||
+            cloned.classList.contains('segmented-control') ||
+            cloned.classList.contains('flex-row');
+
+          if (isFlexOrText) {
+            cloned.style.removeProperty('width');
+          }
+          if (cloned.classList.contains('kpi-header-row') || cloned.classList.contains('s2p-slot-header')) {
+            cloned.style.width = '100%';
+          }
+          if (cloned.classList.contains('badge') || cloned.classList.contains('segmented-btn')) {
+            cloned.style.whiteSpace = 'nowrap';
+          }
+        }
+      };
+
       const { domToPng } = await import('modern-screenshot');
       let dataUrl: string;
       try {
@@ -515,6 +573,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           backgroundColor: bgColor,
           width: finalWidth,
           height: finalHeight,
+          onCloneEachNode,
         });
       } catch {
         dataUrl = await domToPng(captureTarget, {
@@ -523,6 +582,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           width: finalWidth,
           height: finalHeight,
           font: false,
+          onCloneEachNode,
         });
       }
 
