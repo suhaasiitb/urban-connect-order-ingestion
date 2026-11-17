@@ -4021,7 +4021,7 @@ input[type='text'].perf-search-input:focus {
 
 .s2p-daily-table-container {
   overflow-x: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #94a3b8;
   border-radius: 10px;
   background: #ffffff;
   margin-top: 0.75rem;
@@ -4036,21 +4036,26 @@ input[type='text'].perf-search-input:focus {
 
 .s2p-daily-table th {
   background: #f8fafc;
-  color: #475569;
+  color: #334155;
   font-weight: 700;
   font-size: 0.76rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 0.75rem 0.85rem;
-  border-bottom: 2px solid #e2e8f0;
+  border-right: 1px solid #94a3b8;
+  border-bottom: 2px solid #94a3b8;
   white-space: nowrap;
+}
+
+.s2p-daily-table th:last-child {
+  border-right: none;
 }
 
 .s2p-daily-table > tbody > tr.s2p-day-row {
   cursor: pointer;
   transition: background 0.15s ease;
   background: #ffffff;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid #94a3b8;
 }
 
 .s2p-daily-table > tbody > tr.s2p-day-row:nth-of-type(even) {
@@ -4063,7 +4068,7 @@ input[type='text'].perf-search-input:focus {
 
 .s2p-day-row-expanded {
   background: #e2e8f0 !important;
-  border-bottom: 2px solid #94a3b8 !important;
+  border-bottom: 2px solid #64748b !important;
 }
 
 .s2p-day-row td,
@@ -4071,6 +4076,11 @@ input[type='text'].perf-search-input:focus {
   padding: 0.75rem 0.85rem;
   color: #020617;
   font-weight: 700;
+  border-right: 1px solid #94a3b8;
+}
+
+.s2p-day-row td:last-child {
+  border-right: none;
 }
 
 html:not([data-theme="dark"]) .s2p-daily-table td.text-slate {
@@ -4146,7 +4156,7 @@ html:not([data-theme="dark"]) .s2p-daily-table .text-red {
 
 .excel-pivot-table-container {
   overflow-x: auto;
-  border: 1px solid #94a3b8;
+  border: 1px solid #64748b;
   border-radius: 4px;
   background: #ffffff;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
@@ -4164,7 +4174,7 @@ html:not([data-theme="dark"]) .s2p-daily-table .text-red {
   color: #ffffff;
   font-weight: 700;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #1e40af;
+  border: 1px solid #1e3a8a;
   white-space: nowrap;
 }
 
@@ -4176,7 +4186,7 @@ html:not([data-theme="dark"]) .s2p-daily-table .text-red {
 
 .excel-pivot-table td {
   padding: 0.45rem 0.75rem;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #94a3b8;
   color: #020617;
 }
 
@@ -10160,12 +10170,17 @@ html[data-theme="dark"] .s2p-daily-table-container {
 html[data-theme="dark"] .s2p-daily-table th {
   background: var(--surface-table-header);
   color: var(--color-ash-gray);
-  border-bottom: 1px solid var(--color-graphite);
+  border-right: 1px solid #334155;
+  border-bottom: 1px solid #475569;
+}
+
+html[data-theme="dark"] .s2p-daily-table th:last-child {
+  border-right: none;
 }
 
 html[data-theme="dark"] .s2p-daily-table > tbody > tr.s2p-day-row {
   background: var(--color-carbon-card);
-  border-bottom: 1px solid #191c22;
+  border-bottom: 1px solid #334155;
 }
 
 html[data-theme="dark"] .s2p-daily-table > tbody > tr.s2p-day-row:nth-of-type(even) {
@@ -10180,6 +10195,11 @@ html[data-theme="dark"] .s2p-day-row td,
 html[data-theme="dark"] .s2p-day-row td.font-semibold {
   color: #f1f5f9;
   font-weight: 700;
+  border-right: 1px solid #334155;
+}
+
+html[data-theme="dark"] .s2p-day-row td:last-child {
+  border-right: none;
 }
 
 html[data-theme="dark"] .s2p-day-row:hover {
@@ -10215,7 +10235,7 @@ html[data-theme="dark"] .s2p-slot-title {
 
 html[data-theme="dark"] .excel-pivot-table-container {
   background: var(--color-carbon-card);
-  border: 1px solid var(--color-graphite);
+  border: 1px solid #475569;
   border-radius: 10px;
   box-shadow: none;
 }
@@ -10223,7 +10243,7 @@ html[data-theme="dark"] .excel-pivot-table-container {
 html[data-theme="dark"] .excel-pivot-table th {
   background: var(--surface-table-header);
   color: var(--color-ash-gray);
-  border: 1px solid var(--color-graphite);
+  border: 1px solid #475569;
 }
 
 html[data-theme="dark"] .excel-pivot-table td,
@@ -10235,7 +10255,7 @@ html[data-theme="dark"] .excel-pivot-table .font-semibold {
 html[data-theme="dark"] .excel-pivot-table td {
   background: #0b0e14;
   color: #f1f5f9;
-  border: 1px solid #1e293b;
+  border: 1px solid #334155;
 }
 
 html[data-theme="dark"] .s2p-daily-table td.text-slate,
