@@ -4046,24 +4046,45 @@ input[type='text'].perf-search-input:focus {
   white-space: nowrap;
 }
 
-.s2p-day-row {
+.s2p-daily-table > tbody > tr.s2p-day-row {
   cursor: pointer;
   transition: background 0.15s ease;
-  border-bottom: 1px solid #f1f5f9;
+  background: #ffffff;
+  border-bottom: 1px solid #cbd5e1;
 }
 
-.s2p-day-row:hover {
-  background: #f8fafc;
+.s2p-daily-table > tbody > tr.s2p-day-row:nth-of-type(even) {
+  background: #ebeff5;
+}
+
+.s2p-daily-table > tbody > tr.s2p-day-row:hover {
+  background: #e2e8f0;
 }
 
 .s2p-day-row-expanded {
-  background: #f1f5f9 !important;
-  border-bottom: 2px solid #cbd5e1 !important;
+  background: #e2e8f0 !important;
+  border-bottom: 2px solid #94a3b8 !important;
 }
 
-.s2p-day-row td {
+.s2p-day-row td,
+.s2p-day-row td.font-semibold {
   padding: 0.75rem 0.85rem;
-  color: #1e293b;
+  color: #020617;
+  font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table td.text-slate {
+  color: #020617;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table .text-green {
+  color: #166534 !important;
+  font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table .text-red {
+  color: #b91c1c !important;
+  font-weight: 700;
 }
 
 .s2p-expand-toggle-btn {
@@ -4147,24 +4168,77 @@ input[type='text'].perf-search-input:focus {
   white-space: nowrap;
 }
 
+.excel-pivot-table td,
+.excel-pivot-table td.font-semibold,
+.excel-pivot-table .font-semibold {
+  font-weight: 700;
+}
+
 .excel-pivot-table td {
   padding: 0.45rem 0.75rem;
-  border: 1px solid #e2e8f0;
-  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  color: #020617;
+}
+
+html:not([data-theme="dark"]) .excel-pivot-table td.text-slate {
+  color: #020617;
+}
+
+html:not([data-theme="dark"]) .excel-pivot-table .text-green {
+  color: #166534 !important;
+  font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .excel-pivot-table .text-red {
+  color: #b91c1c !important;
+  font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table .dph-heat-normal,
+html:not([data-theme="dark"]) .excel-pivot-table .dph-heat-normal {
+  background-color: #e2e8f0;
+  color: #020617;
+  border: 1px solid #cbd5e1;
+  font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table .dph-heat-elevated,
+html:not([data-theme="dark"]) .excel-pivot-table .dph-heat-elevated {
+  background-color: #ffe4e6;
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table .dph-heat-high,
+html:not([data-theme="dark"]) .excel-pivot-table .dph-heat-high {
+  background-color: #fecdd3;
+  color: #9f1239;
+  font-weight: 700;
+}
+
+html:not([data-theme="dark"]) .s2p-daily-table .dph-heat-critical,
+html:not([data-theme="dark"]) .excel-pivot-table .dph-heat-critical {
+  background-color: #fda4af;
+  color: #881337;
+  font-weight: 800;
+}
+
+.excel-pivot-table tbody tr:nth-child(odd) {
+  background: #ffffff;
 }
 
 .excel-pivot-table tbody tr:nth-child(even) {
-  background: #fbfcfe;
+  background: #ebeff5;
 }
 
 .excel-pivot-table tbody tr:hover {
-  background: #f1f5f9;
+  background: #e2e8f0;
 }
 
 .excel-pivot-grand-total {
-  background: #e2e8f0 !important;
+  background: #dfe6f0 !important;
   font-weight: 800;
-  color: #0f172a;
+  color: #020617;
   border-top: 3px double #64748b !important;
   border-bottom: 2px solid #475569 !important;
 }
@@ -4172,6 +4246,8 @@ input[type='text'].perf-search-input:focus {
 .excel-pivot-grand-total td {
   padding: 0.6rem 0.75rem;
   border-top: 3px double #64748b !important;
+  color: #020617;
+  font-weight: 800;
 }
 
 .excel-pivot-legend-note {
@@ -4200,14 +4276,16 @@ input[type='text'].perf-search-input:focus {
 }
 
 .s2p-overall-grand-total {
-  background: #f1f5f9;
-  border-top: 3px double #94a3b8;
-  border-bottom: 2px solid #64748b;
+  background: #dfe6f0;
+  border-top: 3px double #64748b;
+  border-bottom: 2px solid #475569;
   font-size: 0.88rem;
 }
 
 .s2p-overall-grand-total td {
   padding: 0.85rem;
+  color: #020617;
+  font-weight: 800;
 }
 
 .max-w-sm {
@@ -10056,12 +10134,23 @@ html[data-theme="dark"] .s2p-daily-table th {
   border-bottom: 1px solid var(--color-graphite);
 }
 
-html[data-theme="dark"] .s2p-day-row {
+html[data-theme="dark"] .s2p-daily-table > tbody > tr.s2p-day-row {
+  background: var(--color-carbon-card);
   border-bottom: 1px solid #191c22;
 }
 
-html[data-theme="dark"] .s2p-day-row td {
-  color: var(--color-ash-gray);
+html[data-theme="dark"] .s2p-daily-table > tbody > tr.s2p-day-row:nth-of-type(even) {
+  background: #131924;
+}
+
+html[data-theme="dark"] .s2p-daily-table > tbody > tr.s2p-day-row:hover {
+  background: var(--surface-row-hover);
+}
+
+html[data-theme="dark"] .s2p-day-row td,
+html[data-theme="dark"] .s2p-day-row td.font-semibold {
+  color: #f1f5f9;
+  font-weight: 700;
 }
 
 html[data-theme="dark"] .s2p-day-row:hover {
@@ -10108,14 +10197,37 @@ html[data-theme="dark"] .excel-pivot-table th {
   border: 1px solid var(--color-graphite);
 }
 
+html[data-theme="dark"] .excel-pivot-table td,
+html[data-theme="dark"] .excel-pivot-table td.font-semibold,
+html[data-theme="dark"] .excel-pivot-table .font-semibold {
+  font-weight: 700;
+}
+
 html[data-theme="dark"] .excel-pivot-table td {
-  background: var(--color-carbon-card);
-  color: var(--color-ash-gray);
-  border: 1px solid #191c22;
+  background: #0b0e14;
+  color: #f1f5f9;
+  border: 1px solid #1e293b;
+}
+
+html[data-theme="dark"] .s2p-daily-table td.text-slate,
+html[data-theme="dark"] .excel-pivot-table td.text-slate {
+  color: #f1f5f9;
+}
+
+html[data-theme="dark"] .s2p-daily-table .text-green,
+html[data-theme="dark"] .excel-pivot-table .text-green {
+  color: #4ade80 !important;
+  font-weight: 700;
+}
+
+html[data-theme="dark"] .s2p-daily-table .text-red,
+html[data-theme="dark"] .excel-pivot-table .text-red {
+  color: #f87171 !important;
+  font-weight: 700;
 }
 
 html[data-theme="dark"] .excel-pivot-table tbody tr:nth-child(even) td {
-  background: #07090c;
+  background: #131924;
 }
 
 html[data-theme="dark"] .excel-pivot-table tbody tr:hover td {
@@ -10128,6 +10240,7 @@ html[data-theme="dark"] .s2p-overall-grand-total,
 html[data-theme="dark"] .s2p-overall-grand-total td {
   background: var(--surface-table-header) !important;
   color: var(--color-ghost-white) !important;
+  font-weight: 800;
   border-top: 2px solid var(--color-graphite) !important;
   border-bottom: 1px solid var(--color-graphite) !important;
 }
@@ -10148,12 +10261,14 @@ html[data-theme="dark"] .dph-heat-elevated {
   background-color: rgba(245, 166, 35, 0.14) !important;
   color: var(--color-amber-signal) !important;
   border: 1px solid rgba(245, 166, 35, 0.4);
+  font-weight: 700;
 }
 
 html[data-theme="dark"] .dph-heat-normal {
-  background-color: #0d1015 !important;
-  color: var(--color-ash-gray) !important;
-  border: 1px solid var(--color-graphite);
+  background-color: #161b26 !important;
+  color: #f1f5f9 !important;
+  border: 1px solid #334155;
+  font-weight: 700;
 }
 
 html[data-theme="dark"] .dph-impacted-slots {
