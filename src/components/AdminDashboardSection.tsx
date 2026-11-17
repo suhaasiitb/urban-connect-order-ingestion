@@ -19,24 +19,21 @@ interface StoreTodayState {
   error: string | null;
 }
 
-const PREFERRED_STORE_ORDER = ['TMK7', 'TPH1', 'TPE2'];
-const EXCLUDED_DASHBOARD_STORES = new Set(['TPI4']);
+const PREFERRED_STORE_ORDER = ['TMK7', 'TPH1', 'TPE2', 'TPI4'];
 
 export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
   stores,
   onOpenStoreS2POtp,
 }) => {
   const orderedStores = useMemo(() => {
-    return [...stores]
-      .filter((s) => !EXCLUDED_DASHBOARD_STORES.has(s.store_code.toUpperCase()))
-      .sort((a, b) => {
-        const idxA = PREFERRED_STORE_ORDER.indexOf(a.store_code);
-        const idxB = PREFERRED_STORE_ORDER.indexOf(b.store_code);
-        const rankA = idxA === -1 ? Number.MAX_SAFE_INTEGER : idxA;
-        const rankB = idxB === -1 ? Number.MAX_SAFE_INTEGER : idxB;
-        if (rankA !== rankB) return rankA - rankB;
-        return a.store_code.localeCompare(b.store_code);
-      });
+    return [...stores].sort((a, b) => {
+      const idxA = PREFERRED_STORE_ORDER.indexOf(a.store_code);
+      const idxB = PREFERRED_STORE_ORDER.indexOf(b.store_code);
+      const rankA = idxA === -1 ? Number.MAX_SAFE_INTEGER : idxA;
+      const rankB = idxB === -1 ? Number.MAX_SAFE_INTEGER : idxB;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.store_code.localeCompare(b.store_code);
+    });
   }, [stores]);
 
   const [storeStates, setStoreStates] = useState<Record<string, StoreTodayState>>({});
@@ -149,9 +146,12 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
       <div className="section-card admin-dashboard-header-card">
         <div className="flex-row items-center justify-between flex-wrap gap-sm">
           <div>
-            <h2 className="section-title editorial-serif-heading">
-              Executive Dashboard — All Stores (Today)
-            </h2>
+            <div className="flex-row items-center gap-xs flex-wrap">
+              <span className="admin-summary-pill">All-Store Summary</span>
+              <h2 className="section-title editorial-serif-heading" style={{ margin: 0 }}>
+                Executive Dashboard — All Stores (Today)
+              </h2>
+            </div>
             <p className="section-subtitle">
               Average metrics &amp; combined volume across {orderedStores.map((s) => s.store_code).join(', ')} ·{' '}
               {formatDateToHeader(primaryTodayStr)} ({primaryTodayStr})
@@ -175,6 +175,12 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
           compact
         />
       </div>
+
+      {orderedStores.length > 0 && (
+        <div className="admin-stores-divider">
+          <span>Individual Store Breakdown ({orderedStores.length} Stores)</span>
+        </div>
+      )}
 
       {orderedStores.length === 0 && (
         <div className="section-card mt-sm">

@@ -12488,7 +12488,74 @@ html[data-theme="dark"] .theme-desc {
 }
 
 .admin-dashboard-header-card {
-  padding: 0.65rem 1rem !important;
+  padding: 0.7rem 1rem !important;
+  background: linear-gradient(135deg, #eef2ff 0%, #eff6ff 55%, #f8fafc 100%) !important;
+  border: 1px solid #c7d2fe !important;
+  border-left: 4px solid #4f46e5 !important;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.08) !important;
+}
+
+.admin-dashboard-header-card .admin-compact-kpi-grid .kpi-card {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-color: #c7d2fe !important;
+}
+
+.admin-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.14rem 0.52rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #4f46e5;
+  color: #ffffff;
+}
+
+.admin-stores-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.1rem 0 -0.15rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.admin-stores-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+html[data-theme="dark"] .admin-dashboard-header-card {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.18) 0%, rgba(30, 58, 138, 0.14) 58%, var(--color-carbon-card) 100%) !important;
+  border-color: rgba(129, 140, 248, 0.4) !important;
+  border-left: 4px solid #818cf8 !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.35) !important;
+}
+
+html[data-theme="dark"] .analytics-container .admin-dashboard-header-card .admin-compact-kpi-grid .kpi-card {
+  background: rgba(15, 23, 42, 0.58) !important;
+  border-color: rgba(129, 140, 248, 0.3) !important;
+}
+
+html[data-theme="dark"] .admin-summary-pill {
+  background: rgba(129, 140, 248, 0.24);
+  color: #c7d2fe;
+  border: 1px solid rgba(129, 140, 248, 0.45);
+}
+
+html[data-theme="dark"] .admin-stores-divider {
+  color: var(--color-ash-gray);
+}
+
+html[data-theme="dark"] .admin-stores-divider::after {
+  background: var(--color-graphite);
 }
 
 .admin-dashboard-header-card .section-title {
@@ -12504,6 +12571,11 @@ html[data-theme="dark"] .theme-desc {
 .admin-dashboard-store-card {
   padding: 0.65rem 1rem !important;
   gap: 0.5rem !important;
+  border-left: 3px solid #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .admin-dashboard-store-card {
+  border-left: 3px solid var(--color-graphite) !important;
 }
 
 .admin-compact-kpi-grid {
