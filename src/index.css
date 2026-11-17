@@ -12553,23 +12553,33 @@ html[data-theme="dark"] .otp-breach-trigger:hover {
 }
 
 .otp-breach-cell-wrap {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+  column-gap: 0.35rem;
+  width: 100%;
+}
+
+.otp-breach-cell-wrap .otp-breach-trigger {
+  grid-column: 2;
+  justify-self: center;
+}
+
+.otp-breach-cell-wrap .otp-rca-trigger {
+  grid-column: 3;
+  justify-self: start;
 }
 
 .otp-rca-trigger {
   font-family: inherit;
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.15;
   color: #1d4ed8;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
-  border-radius: 6px;
-  padding: 0.18rem 0.48rem;
+  border-radius: 5px;
+  padding: 0.1rem 0.36rem;
   cursor: pointer;
   white-space: nowrap;
   transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
