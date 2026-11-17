@@ -999,6 +999,17 @@ export function exportS2POtpToExcel(
   XLSX.writeFile(wb, filename);
 }
 
+export const OTP_BREACH_RCA_OPTIONS = [
+  'New Rider- Under Training',
+  'Traffic Issue',
+  'Bike Issue',
+  'FC Delay',
+  'Mobile/App Issue',
+  'Behavioural Issue - Warned the Rider',
+] as const;
+
+export type OtpBreachRca = (typeof OTP_BREACH_RCA_OPTIONS)[number];
+
 export interface OtpBreachedOrderRecord {
   orderId: string;
   orderDate?: string;
@@ -1008,6 +1019,8 @@ export interface OtpBreachedOrderRecord {
   arrivalEtaMinutes: number;
   actualArrivalMinutes: number;
   timeDiffMinutes: number; // Arrival Time ETA - Actual Arrival Time (negative for breached orders)
+  otpBreachRca?: string | null;
+  otpBreachRcaUpdatedAt?: string | null;
 }
 
 function normalizeBreachRiderName(name: string): string {
@@ -1045,12 +1058,14 @@ export async function fetchOtpBreachedOrders(params: {
       slot_hour: number | null;
       arrival_eta_minutes: number | null;
       actual_arrival_minutes: number | null;
+      otp_breach_rca?: string | null;
+      otp_breach_rca_updated_at?: string | null;
     }> = [];
 
     while (hasMore) {
       let query = supabase
         .from('orders')
-        .select('order_id, order_date, rider_name, rider_number, slot_hour, arrival_eta_minutes, actual_arrival_minutes')
+        .select('order_id, order_date, rider_name, rider_number, slot_hour, arrival_eta_minutes, actual_arrival_minutes, otp_breach_rca, otp_breach_rca_updated_at')
         .eq('store_id', storeId)
         .eq('otp_plus_3_performance', 'OTP Breached')
         .gte('order_date', rangeStart)
@@ -1096,6 +1111,8 @@ export async function fetchOtpBreachedOrders(params: {
         arrivalEtaMinutes: Math.round(arrivalEta * 100) / 100,
         actualArrivalMinutes: Math.round(actualArrival * 100) / 100,
         timeDiffMinutes: diff,
+        otpBreachRca: r.otp_breach_rca ? String(r.otp_breach_rca) : null,
+        otpBreachRcaUpdatedAt: r.otp_breach_rca_updated_at ? String(r.otp_breach_rca_updated_at) : null,
       };
     });
 
@@ -1114,6 +1131,42 @@ export async function fetchOtpBreachedOrders(params: {
   } catch (err) {
     return {
       orders: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Persists OTP+3 Breach RCA selections directly onto public.orders via SECURITY DEFINER RPC.
+ */
+export async function saveOtpBreachRcas(params: {
+  storeId: string;
+  updates: Array<{ orderId: string; rca: string | null }>;
+}): Promise<{ ok: boolean; updatedCount?: number; error?: string }> {
+  const { storeId, updates } = params;
+  if (!storeId || !updates.length) {
+    return { ok: true, updatedCount: 0 };
+  }
+
+  try {
+    const payload = updates.map((u) => ({
+      order_id: u.orderId,
+      rca: u.rca ? u.rca.trim() : null,
+    }));
+
+    const { data, error } = await supabase.rpc('save_otp_breach_rcas', {
+      p_store_id: storeId,
+      p_updates: payload,
+    });
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    return { ok: true, updatedCount: Number(data ?? updates.length) };
+  } catch (err) {
+    return {
+      ok: false,
       error: err instanceof Error ? err.message : String(err),
     };
   }

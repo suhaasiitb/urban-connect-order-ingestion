@@ -66,6 +66,7 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
       '20261023000001_rider_shifts_schema.sql',
       '20261024000001_new_rider_onboarding.sql',
       '20261024000002_store_users_and_scoping.sql',
+      '20261117000001_add_otp_breach_rca_to_orders.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -383,6 +384,57 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
       `SELECT rider_name FROM public.store_active_riders WHERE store_id = '${tmk7StoreId}'`
     );
     expect(remaining.rows.length).toBe(0);
+
+    await db.exec(`RESET ROLE;`);
+  });
+
+  it('persists OTP breach RCA via save_otp_breach_rcas with store scoping and valid category check', async () => {
+    const hash64 = 'a'.repeat(64);
+    await db.exec(`
+      INSERT INTO public.orders (
+        store_id, source_store_name, order_created_at, status, rider_name, order_id,
+        external_store_id, order_type, store_code, slot_hour, order_date,
+        staging_to_pickup_minutes, s2p_minutes, distance_meters,
+        actual_arrival_minutes, arrival_eta_minutes, otp_performance, otp_plus_3_performance,
+        source_row_hash, raw_source_snapshot
+      ) VALUES (
+        '${tmk7StoreId}', 'TMK7', now(), 'COMPLETED', 'Ajit Kumar', 'ORD-RCA-1',
+        '4247', 'Actual', 'TMK7', 9, '2026-11-17',
+        0.5, 0.5, 1200, 15.5, 10.0, 'OTP Breached', 'OTP Breached',
+        '${hash64}', '{}'::jsonb
+      );
+    `);
+
+    // 1. TMK7 operator saves valid RCA via RPC
+    await db.exec(`SET ROLE authenticated; SET request.jwt.claim.sub = '${TMK7_USER_ID}';`);
+    const saveRes = await db.query<{ save_otp_breach_rcas: number }>(
+      `SELECT public.save_otp_breach_rcas('${tmk7StoreId}'::uuid, $1::jsonb)`,
+      [JSON.stringify([{ order_id: 'ORD-RCA-1', rca: 'Traffic Issue' }])]
+    );
+    expect(saveRes.rows[0].save_otp_breach_rcas).toBe(1);
+
+    const rowRes = await db.query<{ otp_breach_rca: string | null; otp_breach_rca_updated_by: string | null }>(
+      `SELECT otp_breach_rca, otp_breach_rca_updated_by FROM public.orders WHERE store_id = '${tmk7StoreId}' AND order_id = 'ORD-RCA-1'`
+    );
+    expect(rowRes.rows[0].otp_breach_rca).toBe('Traffic Issue');
+    expect(rowRes.rows[0].otp_breach_rca_updated_by).toBe(TMK7_USER_ID);
+
+    // 2. Invalid RCA value rejected by check constraint
+    await expect(
+      db.query(
+        `SELECT public.save_otp_breach_rcas('${tmk7StoreId}'::uuid, $1::jsonb)`,
+        [JSON.stringify([{ order_id: 'ORD-RCA-1', rca: 'Invalid Reason' }])]
+      )
+    ).rejects.toThrow(/chk_orders_otp_breach_rca_valid/);
+
+    // 3. Cross-store operator (TMB1) is denied
+    await db.exec(`RESET ROLE; SET ROLE authenticated; SET request.jwt.claim.sub = '${TMB1_USER_ID}';`);
+    await expect(
+      db.query(
+        `SELECT public.save_otp_breach_rcas('${tmk7StoreId}'::uuid, $1::jsonb)`,
+        [JSON.stringify([{ order_id: 'ORD-RCA-1', rca: 'Bike Issue' }])]
+      )
+    ).rejects.toThrow(/Access denied/);
 
     await db.exec(`RESET ROLE;`);
   });

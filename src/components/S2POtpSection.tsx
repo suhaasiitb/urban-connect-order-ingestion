@@ -23,6 +23,7 @@ import {
 } from '../services/s2pOtpService';
 import { S2PKpiCardsGrid } from './S2PKpiCardsGrid';
 import { OtpBreachedRidersModal } from './OtpBreachedRidersModal';
+import { OtpBreachRcaModal } from './OtpBreachRcaModal';
 
 interface S2POtpSectionProps {
   stores: StoreMaster[];
@@ -116,6 +117,11 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     orderDate: string;
     formattedDate: string;
     slotHour: number | null;
+  } | null>(null);
+  const [otpRcaModal, setOtpRcaModal] = useState<{
+    orderDate: string;
+    formattedDate: string;
+    slotHour: number;
   } | null>(null);
   const [snopRecords, setSnopRecords] = useState<SnopForecastRecord[]>(() =>
     getStoredSnopRecords(selectedStore?.store_code || 'TMK7')
@@ -497,8 +503,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       tableClone.style.marginTop = '0';
       tableClone.style.overflowX = 'visible';
       tableClone.style.width = '100%';
-      // Remove bottom Period Grand Total footer in snapshot (summary is already shown in the top KPI cards)
-      tableClone.querySelectorAll('.s2p-daily-table > tfoot').forEach((el) => el.remove());
+      // Remove bottom Period Grand Total footer and interactive RCA buttons from screenshot
+      tableClone.querySelectorAll('.s2p-daily-table > tfoot, .otp-rca-trigger').forEach((el) => el.remove());
 
       const expandedRows = tableClone.querySelectorAll('.s2p-expanded-row');
       if (expandedRows.length > 0) {
@@ -1209,20 +1215,36 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                             </td>
                                             <td className={`text-center ${s.otpBreachedPct > 0 ? 'text-red' : 'text-green'}`}>
                                               {s.otpBreachedPct > 0 ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    setOtpBreachedModal({
-                                                      orderDate: day.dateStr,
-                                                      formattedDate: day.formattedDate,
-                                                      slotHour: s.slotHour,
-                                                    })
-                                                  }
-                                                  className="otp-breach-trigger text-red"
-                                                  title={`Click to view ${s.otpBreachedCount} breached order(s) for Slot ${s.slotHour}`}
-                                                >
-                                                  {s.otpBreachedPct.toFixed(2)}%
-                                                </button>
+                                                <div className="otp-breach-cell-wrap">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setOtpBreachedModal({
+                                                        orderDate: day.dateStr,
+                                                        formattedDate: day.formattedDate,
+                                                        slotHour: s.slotHour,
+                                                      })
+                                                    }
+                                                    className="otp-breach-trigger text-red"
+                                                    title={`Click to view ${s.otpBreachedCount} breached order(s) for Slot ${s.slotHour}`}
+                                                  >
+                                                    {s.otpBreachedPct.toFixed(2)}%
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setOtpRcaModal({
+                                                        orderDate: day.dateStr,
+                                                        formattedDate: day.formattedDate,
+                                                        slotHour: s.slotHour,
+                                                      })
+                                                    }
+                                                    className="otp-rca-trigger"
+                                                    title={`Submit RCA for Slot ${s.slotHour} breached order(s)`}
+                                                  >
+                                                    Submit RCA
+                                                  </button>
+                                                </div>
                                               ) : (
                                                 '0.00%'
                                               )}
@@ -1355,20 +1377,36 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                             </td>
                                             <td className={`text-center ${s.otpBreachedPct > 0 ? 'text-red' : 'text-green'}`}>
                                               {s.otpBreachedPct > 0 ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    setOtpBreachedModal({
-                                                      orderDate: day.dateStr,
-                                                      formattedDate: day.formattedDate,
-                                                      slotHour: s.slotHour,
-                                                    })
-                                                  }
-                                                  className="otp-breach-trigger text-red"
-                                                  title={`Click to view ${s.otpBreachedCount} breached order(s) for Slot ${s.slotHour}`}
-                                                >
-                                                  {s.otpBreachedPct.toFixed(2)}%
-                                                </button>
+                                                <div className="otp-breach-cell-wrap">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setOtpBreachedModal({
+                                                        orderDate: day.dateStr,
+                                                        formattedDate: day.formattedDate,
+                                                        slotHour: s.slotHour,
+                                                      })
+                                                    }
+                                                    className="otp-breach-trigger text-red"
+                                                    title={`Click to view ${s.otpBreachedCount} breached order(s) for Slot ${s.slotHour}`}
+                                                  >
+                                                    {s.otpBreachedPct.toFixed(2)}%
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setOtpRcaModal({
+                                                        orderDate: day.dateStr,
+                                                        formattedDate: day.formattedDate,
+                                                        slotHour: s.slotHour,
+                                                      })
+                                                    }
+                                                    className="otp-rca-trigger"
+                                                    title={`Submit RCA for Slot ${s.slotHour} breached order(s)`}
+                                                  >
+                                                    Submit RCA
+                                                  </button>
+                                                </div>
                                               ) : (
                                                 ''
                                               )}
@@ -1537,6 +1575,18 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           orderDate={otpBreachedModal.orderDate}
           formattedDate={otpBreachedModal.formattedDate}
           slotHour={otpBreachedModal.slotHour}
+        />
+      )}
+
+      {selectedStore && otpRcaModal && (
+        <OtpBreachRcaModal
+          isOpen={Boolean(otpRcaModal)}
+          onClose={() => setOtpRcaModal(null)}
+          storeId={selectedStore.id}
+          storeCode={selectedStore.store_code}
+          orderDate={otpRcaModal.orderDate}
+          formattedDate={otpRcaModal.formattedDate}
+          slotHour={otpRcaModal.slotHour}
         />
       )}
     </div>

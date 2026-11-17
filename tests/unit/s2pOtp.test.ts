@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getTodayDateString } from '../../src/services/analyticsService';
 import {
+  OTP_BREACH_RCA_OPTIONS,
   buildSummaryFromRawOrders,
   buildSummaryFromRpcRows,
   formatDateToHeader,
@@ -633,5 +634,16 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
     expect(rawSummary.days[0].dateStr).toBe('2026-11-08');
     expect(rawSummary.overallTotalOrders).toBe(1);
     expect(rawSummary.overallDistinctRiders).toBe(1);
+  });
+
+  it('exposes the exact 6 OTP Breach RCA dropdown categories', () => {
+    expect(OTP_BREACH_RCA_OPTIONS).toEqual([
+      'New Rider- Under Training',
+      'Traffic Issue',
+      'Bike Issue',
+      'FC Delay',
+      'Mobile/App Issue',
+      'Behavioural Issue - Warned the Rider',
+    ]);
   });
 });
