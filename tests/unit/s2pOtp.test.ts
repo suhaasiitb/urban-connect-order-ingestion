@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getTodayDateString } from '../../src/services/analyticsService';
 import {
   OTP_BREACH_RCA_OPTIONS,
+  buildOtpBreachRcaPivots,
   buildSummaryFromRawOrders,
   buildSummaryFromRpcRows,
   formatDateToHeader,
@@ -644,6 +645,72 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
       'FC Delay',
       'Mobile/App Issue',
       'Behavioural Issue - Warned the Rider',
+    ]);
+  });
+
+  it('aggregates breached orders into Rider, RCA, and Slot pivot tables', () => {
+    const pivots = buildOtpBreachRcaPivots([
+      {
+        orderId: 'ORD-1',
+        riderName: 'Ajit Kumar',
+        riderNumber: '1111',
+        slotHour: 9,
+        arrivalEtaMinutes: 10,
+        actualArrivalMinutes: 15,
+        timeDiffMinutes: -5,
+        otpBreachRca: 'Traffic Issue',
+      },
+      {
+        orderId: 'ORD-2',
+        riderName: 'ajit kumar*',
+        riderNumber: '1111',
+        slotHour: 11,
+        arrivalEtaMinutes: 9,
+        actualArrivalMinutes: 14,
+        timeDiffMinutes: -5,
+        otpBreachRca: 'Traffic Issue',
+      },
+      {
+        orderId: 'ORD-3',
+        riderName: 'Ajit Kumar',
+        riderNumber: '1111',
+        slotHour: 9,
+        arrivalEtaMinutes: 8,
+        actualArrivalMinutes: 12,
+        timeDiffMinutes: -4,
+        otpBreachRca: 'FC Delay',
+      },
+      {
+        orderId: 'ORD-4',
+        riderName: 'Avinash Bansode',
+        riderNumber: '2222',
+        slotHour: 7,
+        arrivalEtaMinutes: 10,
+        actualArrivalMinutes: 16,
+        timeDiffMinutes: -6,
+        otpBreachRca: null,
+      },
+    ]);
+
+    expect(pivots.totalBreaches).toBe(4);
+    expect(pivots.rcaTaggedCount).toBe(3);
+    expect(pivots.distinctRiders).toBe(2);
+
+    expect(pivots.byRider).toEqual([
+      { riderName: 'Ajit Kumar', breachCount: 3, pct: 75 },
+      { riderName: 'Avinash Bansode', breachCount: 1, pct: 25 },
+    ]);
+
+    expect(pivots.byRca).toEqual([
+      { rca: 'Traffic Issue', breachCount: 2, pct: 50, isPending: false },
+      { rca: 'FC Delay', breachCount: 1, pct: 25, isPending: false },
+      { rca: 'Pending / Unassigned RCA', breachCount: 1, pct: 25, isPending: true },
+    ]);
+
+    expect(pivots.bySlot).toEqual([
+      { slotHour: 7, slotLabel: '07:00 – 08:00', breachCount: 1, pct: 25 },
+      { slotHour: 9, slotLabel: '09:00 – 10:00', breachCount: 2, pct: 50 },
+      { slotHour: 11, slotLabel: '11:00 – 12:00', breachCount: 1, pct: 25 },
     ]);
   });
 });

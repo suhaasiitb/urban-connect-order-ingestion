@@ -1171,3 +1171,102 @@ export async function saveOtpBreachRcas(params: {
     };
   }
 }
+
+export interface OtpBreachRcaPivots {
+  totalBreaches: number;
+  rcaTaggedCount: number;
+  distinctRiders: number;
+  byRider: Array<{ riderName: string; breachCount: number; pct: number }>;
+  byRca: Array<{ rca: string; breachCount: number; pct: number; isPending: boolean }>;
+  bySlot: Array<{ slotHour: number; slotLabel: string; breachCount: number; pct: number }>;
+}
+
+/**
+ * Builds 3 summary pivots (by Rider, by RCA, by Slot) from a list of OTP+3 breached orders.
+ */
+export function buildOtpBreachRcaPivots(orders: OtpBreachedOrderRecord[]): OtpBreachRcaPivots {
+  const totalBreaches = orders.length;
+  const riderCounts = new Map<string, { displayName: string; count: number }>();
+  const rcaCounts = new Map<string, number>();
+  const slotCounts = new Map<number, number>();
+  let pendingCount = 0;
+  let rcaTaggedCount = 0;
+
+  for (const ord of orders) {
+    // 1. Rider aggregation (case-insensitive, stripped of asterisks)
+    const displayRider = (ord.riderName || 'Unknown Rider').replace(/\*+/g, '').trim() || 'Unknown Rider';
+    const normRider = normalizeBreachRiderName(displayRider) || 'unknown rider';
+    const existingRider = riderCounts.get(normRider);
+    if (existingRider) {
+      existingRider.count += 1;
+    } else {
+      riderCounts.set(normRider, { displayName: displayRider, count: 1 });
+    }
+
+    // 2. RCA aggregation
+    const rcaVal = ord.otpBreachRca ? ord.otpBreachRca.trim() : '';
+    if (rcaVal) {
+      rcaTaggedCount += 1;
+      rcaCounts.set(rcaVal, (rcaCounts.get(rcaVal) ?? 0) + 1);
+    } else {
+      pendingCount += 1;
+    }
+
+    // 3. Slot aggregation
+    const slot = Number(ord.slotHour ?? 0);
+    slotCounts.set(slot, (slotCounts.get(slot) ?? 0) + 1);
+  }
+
+  const calcPct = (count: number): number =>
+    totalBreaches > 0 ? Math.round((count / totalBreaches) * 1000) / 10 : 0;
+
+  const byRider = Array.from(riderCounts.values())
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.displayName.localeCompare(b.displayName);
+    })
+    .map((item) => ({
+      riderName: item.displayName,
+      breachCount: item.count,
+      pct: calcPct(item.count),
+    }));
+
+  const byRca = Array.from(rcaCounts.entries())
+    .sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([rca, count]) => ({
+      rca,
+      breachCount: count,
+      pct: calcPct(count),
+      isPending: false,
+    }));
+
+  if (pendingCount > 0) {
+    byRca.push({
+      rca: 'Pending / Unassigned RCA',
+      breachCount: pendingCount,
+      pct: calcPct(pendingCount),
+      isPending: true,
+    });
+  }
+
+  const bySlot = Array.from(slotCounts.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([slotHour, count]) => ({
+      slotHour,
+      slotLabel: formatSlotHourLabel(slotHour),
+      breachCount: count,
+      pct: calcPct(count),
+    }));
+
+  return {
+    totalBreaches,
+    rcaTaggedCount,
+    distinctRiders: byRider.length,
+    byRider,
+    byRca,
+    bySlot,
+  };
+}

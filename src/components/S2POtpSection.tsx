@@ -16,7 +16,9 @@ import {
 import {
   type DailyPerformanceSummary,
   type S2POtpSummaryResult,
+  buildOtpBreachRcaPivots,
   exportS2POtpToExcel,
+  fetchOtpBreachedOrders,
   fetchS2POtpAnalytics,
   getDayOfWeekName,
   getDphImpactedSlots,
@@ -84,6 +86,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   const dailyTableContainerRef = useRef<HTMLDivElement | null>(null);
   const [takingScreenshot, setTakingScreenshot] = useState<boolean>(false);
   const [screenshotStatus, setScreenshotStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [takingRcaSnapshot, setTakingRcaSnapshot] = useState<boolean>(false);
+  const [rcaSnapshotStatus, setRcaSnapshotStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
   // Strictly ensure the displayed summary matches the currently selected store and [startDate, endDate] window
   const activeSummary = useMemo<S2POtpSummaryResult | null>(() => {
@@ -403,17 +407,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     exportS2POtpToExcel(activeSummary, selectedStore.store_code);
   };
 
-  const handleTakeScreenshot = async () => {
-    const analyticsRoot = analyticsContainerRef.current;
-    const kpiEl = kpiGridWrapperRef.current?.querySelector('.kpi-grid') as HTMLElement | null;
-    const tableEl = dailyTableContainerRef.current;
-    if (!analyticsRoot || !kpiEl || !tableEl || !activeSummary || !selectedStore || takingScreenshot) {
-      return;
-    }
-
-    setTakingScreenshot(true);
-    setScreenshotStatus('idle');
-
+  const createSnapshotEnvironment = (minWidth: number) => {
     const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
     const bgColor = isDarkTheme ? '#0b0d12' : '#f8fafc';
     const textColor = isDarkTheme ? '#f1f5f9' : '#0f172a';
@@ -427,66 +421,186 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     offscreenHost.style.pointerEvents = 'none';
     offscreenHost.style.zIndex = '-1';
 
+    const captureTarget = document.createElement('div');
+    captureTarget.dataset.screenshotRoot = 'true';
+    captureTarget.className = 'analytics-container s2p-otp-container';
+    captureTarget.style.width = `${minWidth}px`;
+    captureTarget.style.padding = '20px 24px 24px';
+    captureTarget.style.backgroundColor = bgColor;
+    captureTarget.style.display = 'flex';
+    captureTarget.style.flexDirection = 'column';
+    captureTarget.style.gap = '16px';
+    captureTarget.style.boxSizing = 'border-box';
+    captureTarget.style.margin = '0';
+
+    return { offscreenHost, captureTarget, bgColor, textColor, subTextColor, borderColor };
+  };
+
+  const buildSnapshotHeader = (
+    titleText: string,
+    subtitleText: string,
+    colors: { textColor: string; subTextColor: string; borderColor: string }
+  ) => {
+    const headerBar = document.createElement('div');
+    headerBar.style.display = 'flex';
+    headerBar.style.alignItems = 'center';
+    headerBar.style.justifyContent = 'space-between';
+    headerBar.style.gap = '12px';
+    headerBar.style.paddingBottom = '10px';
+    headerBar.style.borderBottom = `1px solid ${colors.borderColor}`;
+
+    const leftMeta = document.createElement('div');
+    const titleEl = document.createElement('div');
+    titleEl.textContent = titleText;
+    titleEl.style.fontSize = '16px';
+    titleEl.style.fontWeight = '700';
+    titleEl.style.color = colors.textColor;
+
+    const subEl = document.createElement('div');
+    subEl.textContent = subtitleText;
+    subEl.style.fontSize = '12px';
+    subEl.style.color = colors.subTextColor;
+    subEl.style.marginTop = '2px';
+    leftMeta.append(titleEl, subEl);
+
+    const rightMeta = document.createElement('div');
+    rightMeta.textContent = `Captured ${new Date().toLocaleString('en-IN', {
+      timeZone,
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+    rightMeta.style.fontSize = '11px';
+    rightMeta.style.color = colors.subTextColor;
+    rightMeta.style.whiteSpace = 'nowrap';
+
+    headerBar.append(leftMeta, rightMeta);
+    return headerBar;
+  };
+
+  const renderAndDownloadSnapshot = async (params: {
+    analyticsRoot: HTMLElement;
+    offscreenHost: HTMLElement;
+    captureTarget: HTMLElement;
+    bgColor: string;
+    minWidth: number;
+    fileName: string;
+  }) => {
+    const { analyticsRoot, offscreenHost, captureTarget, bgColor, minWidth, fileName } = params;
+    offscreenHost.appendChild(captureTarget);
+    analyticsRoot.appendChild(offscreenHost);
+
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    );
+
+    const finalWidth = Math.max(minWidth, captureTarget.scrollWidth);
+    captureTarget.style.width = `${finalWidth}px`;
+    const finalHeight = captureTarget.scrollHeight;
+
+    const onCloneEachNode = (cloned: Node) => {
+      if (!(cloned instanceof HTMLElement)) return;
+      if (cloned.dataset.screenshotRoot === 'true') return;
+
+      const isFixedIcon =
+        cloned.classList.contains('s2p-expand-toggle-btn') ||
+        cloned.classList.contains('snop-breach-toggle-dot');
+
+      if (!isFixedIcon) {
+        // Clear frozen pixel height / logical box sizes computed in source font
+        // so text & flex containers flow naturally inside SVG <foreignObject> without overlapping.
+        cloned.style.removeProperty('height');
+        cloned.style.removeProperty('block-size');
+        cloned.style.removeProperty('inline-size');
+
+        const tag = cloned.tagName;
+        const isFlexOrText =
+          tag === 'SPAN' ||
+          tag === 'STRONG' ||
+          tag === 'H3' ||
+          tag === 'H4' ||
+          tag === 'P' ||
+          tag === 'BUTTON' ||
+          cloned.classList.contains('segmented-control') ||
+          cloned.classList.contains('flex-row');
+
+        if (isFlexOrText) {
+          cloned.style.removeProperty('width');
+        }
+        if (cloned.classList.contains('kpi-header-row') || cloned.classList.contains('s2p-slot-header')) {
+          cloned.style.width = '100%';
+        }
+        if (
+          cloned.classList.contains('badge') ||
+          cloned.classList.contains('segmented-btn') ||
+          cloned.classList.contains('dph-impacted-slots')
+        ) {
+          cloned.style.whiteSpace = 'nowrap';
+        }
+      }
+    };
+
+    const { domToPng } = await import('modern-screenshot');
+    let dataUrl: string;
+    try {
+      dataUrl = await domToPng(captureTarget, {
+        scale: 2,
+        backgroundColor: bgColor,
+        width: finalWidth,
+        height: finalHeight,
+        onCloneEachNode,
+      });
+    } catch {
+      dataUrl = await domToPng(captureTarget, {
+        scale: 2,
+        backgroundColor: bgColor,
+        width: finalWidth,
+        height: finalHeight,
+        font: false,
+        onCloneEachNode,
+      });
+    }
+
+    const link = document.createElement('a');
+    link.download = fileName;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleTakeScreenshot = async () => {
+    const analyticsRoot = analyticsContainerRef.current;
+    const kpiEl = kpiGridWrapperRef.current?.querySelector('.kpi-grid') as HTMLElement | null;
+    const tableEl = dailyTableContainerRef.current;
+    if (!analyticsRoot || !kpiEl || !tableEl || !activeSummary || !selectedStore || takingScreenshot) {
+      return;
+    }
+
+    setTakingScreenshot(true);
+    setScreenshotStatus('idle');
+
+    const minWidth = Math.max(1480, tableEl.scrollWidth + 48);
+    const { offscreenHost, captureTarget, bgColor, textColor, subTextColor, borderColor } =
+      createSnapshotEnvironment(minWidth);
+
     try {
       if (document.fonts?.ready) {
         await document.fonts.ready;
       }
 
-      const captureWidth = Math.max(1480, tableEl.scrollWidth + 48);
-
-      const captureTarget = document.createElement('div');
-      captureTarget.dataset.screenshotRoot = 'true';
-      captureTarget.className = 'analytics-container s2p-otp-container';
-      captureTarget.style.width = `${captureWidth}px`;
-      captureTarget.style.padding = '20px 24px 24px';
-      captureTarget.style.backgroundColor = bgColor;
-      captureTarget.style.display = 'flex';
-      captureTarget.style.flexDirection = 'column';
-      captureTarget.style.gap = '16px';
-      captureTarget.style.boxSizing = 'border-box';
-      captureTarget.style.margin = '0';
-
-      // Snapshot header strip with store & period context
-      const headerBar = document.createElement('div');
-      headerBar.style.display = 'flex';
-      headerBar.style.alignItems = 'center';
-      headerBar.style.justifyContent = 'space-between';
-      headerBar.style.gap = '12px';
-      headerBar.style.paddingBottom = '10px';
-      headerBar.style.borderBottom = `1px solid ${borderColor}`;
-
-      const leftMeta = document.createElement('div');
-      const titleEl = document.createElement('div');
-      titleEl.textContent = `${selectedStore.store_code} (${selectedStore.store_name}) — S2P, OTP+3, DPH & DSR Summary`;
-      titleEl.style.fontSize = '16px';
-      titleEl.style.fontWeight = '700';
-      titleEl.style.color = textColor;
-
-      const subEl = document.createElement('div');
       const rangeText = startDate === endDate ? startDate : `${startDate} → ${endDate}`;
-      subEl.textContent = `Period: ${rangeText} · ${activeSummary.days.length} ${
-        activeSummary.days.length === 1 ? 'Day' : 'Days'
-      } · ${activeSummary.overallTotalOrders.toLocaleString()} Orders`;
-      subEl.style.fontSize = '12px';
-      subEl.style.color = subTextColor;
-      subEl.style.marginTop = '2px';
-      leftMeta.append(titleEl, subEl);
-
-      const rightMeta = document.createElement('div');
-      rightMeta.textContent = `Captured ${new Date().toLocaleString('en-IN', {
-        timeZone,
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })}`;
-      rightMeta.style.fontSize = '11px';
-      rightMeta.style.color = subTextColor;
-      rightMeta.style.whiteSpace = 'nowrap';
-
-      headerBar.append(leftMeta, rightMeta);
-      captureTarget.appendChild(headerBar);
+      captureTarget.appendChild(
+        buildSnapshotHeader(
+          `${selectedStore.store_code} (${selectedStore.store_name}) — S2P, OTP+3, DPH & DSR Summary`,
+          `Period: ${rangeText} · ${activeSummary.days.length} ${
+            activeSummary.days.length === 1 ? 'Day' : 'Days'
+          } · ${activeSummary.overallTotalOrders.toLocaleString()} Orders`,
+          { textColor, subTextColor, borderColor }
+        )
+      );
 
       // Section 1: Clone top 5 KPI cards in a single balanced 5-column row
       const kpiClone = kpiEl.cloneNode(true) as HTMLElement;
@@ -570,87 +684,15 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       });
       captureTarget.appendChild(tableClone);
 
-      offscreenHost.appendChild(captureTarget);
-      analyticsRoot.appendChild(offscreenHost);
-
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      );
-
-      const finalWidth = Math.max(captureWidth, captureTarget.scrollWidth);
-      captureTarget.style.width = `${finalWidth}px`;
-      const finalHeight = captureTarget.scrollHeight;
-
-      const onCloneEachNode = (cloned: Node) => {
-        if (!(cloned instanceof HTMLElement)) return;
-        if (cloned.dataset.screenshotRoot === 'true') return;
-
-        const isFixedIcon =
-          cloned.classList.contains('s2p-expand-toggle-btn') ||
-          cloned.classList.contains('snop-breach-toggle-dot');
-
-        if (!isFixedIcon) {
-          // Clear frozen pixel height / logical box sizes computed in source font
-          // so text & flex containers flow naturally inside SVG <foreignObject> without overlapping.
-          cloned.style.removeProperty('height');
-          cloned.style.removeProperty('block-size');
-          cloned.style.removeProperty('inline-size');
-
-          const tag = cloned.tagName;
-          const isFlexOrText =
-            tag === 'SPAN' ||
-            tag === 'STRONG' ||
-            tag === 'H3' ||
-            tag === 'H4' ||
-            tag === 'P' ||
-            tag === 'BUTTON' ||
-            cloned.classList.contains('segmented-control') ||
-            cloned.classList.contains('flex-row');
-
-          if (isFlexOrText) {
-            cloned.style.removeProperty('width');
-          }
-          if (cloned.classList.contains('kpi-header-row') || cloned.classList.contains('s2p-slot-header')) {
-            cloned.style.width = '100%';
-          }
-          if (
-            cloned.classList.contains('badge') ||
-            cloned.classList.contains('segmented-btn') ||
-            cloned.classList.contains('dph-impacted-slots')
-          ) {
-            cloned.style.whiteSpace = 'nowrap';
-          }
-        }
-      };
-
-      const { domToPng } = await import('modern-screenshot');
-      let dataUrl: string;
-      try {
-        dataUrl = await domToPng(captureTarget, {
-          scale: 2,
-          backgroundColor: bgColor,
-          width: finalWidth,
-          height: finalHeight,
-          onCloneEachNode,
-        });
-      } catch {
-        dataUrl = await domToPng(captureTarget, {
-          scale: 2,
-          backgroundColor: bgColor,
-          width: finalWidth,
-          height: finalHeight,
-          font: false,
-          onCloneEachNode,
-        });
-      }
-
       const dateSlug = startDate === endDate ? startDate : `${startDate}_to_${endDate}`;
-      const link = document.createElement('a');
-      link.download = `S2P-OTP-Summary-${selectedStore.store_code}-${dateSlug}.png`;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      await renderAndDownloadSnapshot({
+        analyticsRoot,
+        offscreenHost,
+        captureTarget,
+        bgColor,
+        minWidth,
+        fileName: `S2P-OTP-Summary-${selectedStore.store_code}-${dateSlug}.png`,
+      });
 
       setScreenshotStatus('saved');
       window.setTimeout(() => setScreenshotStatus('idle'), 2200);
@@ -661,6 +703,213 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     } finally {
       offscreenHost.remove();
       setTakingScreenshot(false);
+    }
+  };
+
+  const handleDownloadRcaSnapshot = async () => {
+    const analyticsRoot = analyticsContainerRef.current;
+    if (!analyticsRoot || !activeSummary || !selectedStore || takingRcaSnapshot) {
+      return;
+    }
+
+    setTakingRcaSnapshot(true);
+    setRcaSnapshotStatus('idle');
+
+    const minWidth = 1480;
+    const { offscreenHost, captureTarget, bgColor, textColor, subTextColor, borderColor } =
+      createSnapshotEnvironment(minWidth);
+
+    try {
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+
+      const res = await fetchOtpBreachedOrders({
+        storeId: selectedStore.id,
+        startDate,
+        endDate,
+      });
+
+      if (res.error) {
+        throw new Error(res.error);
+      }
+
+      const pivots = buildOtpBreachRcaPivots(res.orders);
+      const rangeText = startDate === endDate ? startDate : `${startDate} → ${endDate}`;
+      const coveragePct =
+        pivots.totalBreaches > 0
+          ? Math.round((pivots.rcaTaggedCount / pivots.totalBreaches) * 100)
+          : 100;
+
+      captureTarget.appendChild(
+        buildSnapshotHeader(
+          `${selectedStore.store_code} (${selectedStore.store_name}) — OTP+3 Breach RCA Summary`,
+          `Period: ${rangeText} · ${pivots.totalBreaches} Breached ${
+            pivots.totalBreaches === 1 ? 'Order' : 'Orders'
+          } · ${pivots.distinctRiders} ${pivots.distinctRiders === 1 ? 'Rider' : 'Riders'} · ${
+            pivots.rcaTaggedCount
+          }/${pivots.totalBreaches} RCA Tagged (${coveragePct}%)`,
+          { textColor, subTextColor, borderColor }
+        )
+      );
+
+      const grid = document.createElement('div');
+      grid.style.display = 'grid';
+      grid.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+      grid.style.gap = '16px';
+      grid.style.alignItems = 'start';
+      grid.style.width = '100%';
+
+      const buildPivotCard = (
+        cardTitle: string,
+        labelHeader: string,
+        rows: Array<{ label: string; count: number; pct: number; isMuted?: boolean }>,
+        emptyText: string
+      ) => {
+        const card = document.createElement('div');
+        card.className = 's2p-slot-breakdown-card';
+        card.style.border = `1px solid ${borderColor}`;
+        card.style.borderRadius = '10px';
+        card.style.padding = '14px';
+
+        const heading = document.createElement('h4');
+        heading.className = 's2p-slot-title';
+        heading.textContent = cardTitle;
+        heading.style.marginBottom = '10px';
+        card.appendChild(heading);
+
+        const tableWrap = document.createElement('div');
+        tableWrap.className = 'excel-pivot-table-container';
+        tableWrap.style.overflowX = 'visible';
+
+        const table = document.createElement('table');
+        table.className = 'excel-pivot-table';
+
+        const thead = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        const thLabel = document.createElement('th');
+        thLabel.textContent = labelHeader;
+        const thCount = document.createElement('th');
+        thCount.className = 'text-center';
+        thCount.style.width = '105px';
+        thCount.textContent = 'Breaches';
+        const thPct = document.createElement('th');
+        thPct.className = 'text-center';
+        thPct.style.width = '72px';
+        thPct.textContent = 'Share %';
+        headRow.append(thLabel, thCount, thPct);
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        if (rows.length === 0) {
+          const emptyRow = document.createElement('tr');
+          const emptyCell = document.createElement('td');
+          emptyCell.colSpan = 3;
+          emptyCell.className = 'text-center text-green font-semibold';
+          emptyCell.textContent = emptyText;
+          emptyRow.appendChild(emptyCell);
+          tbody.appendChild(emptyRow);
+        } else {
+          for (const r of rows) {
+            const tr = document.createElement('tr');
+            const tdLabel = document.createElement('td');
+            tdLabel.className = r.isMuted ? 'text-muted' : 'font-semibold';
+            tdLabel.textContent = r.label;
+            const tdCount = document.createElement('td');
+            tdCount.className = 'text-center font-bold text-red';
+            tdCount.textContent = String(r.count);
+            const tdPct = document.createElement('td');
+            tdPct.className = 'text-center font-mono text-xs';
+            tdPct.textContent = `${r.pct.toFixed(1)}%`;
+            tr.append(tdLabel, tdCount, tdPct);
+            tbody.appendChild(tr);
+          }
+        }
+        table.appendChild(tbody);
+
+        const tfoot = document.createElement('tfoot');
+        const footRow = document.createElement('tr');
+        footRow.className = 'excel-pivot-grand-total';
+        const tdTotalLabel = document.createElement('td');
+        tdTotalLabel.className = 'font-bold';
+        tdTotalLabel.textContent = 'Grand Total';
+        const tdTotalCount = document.createElement('td');
+        tdTotalCount.className = `text-center font-bold ${pivots.totalBreaches > 0 ? 'text-red' : 'text-green'}`;
+        tdTotalCount.textContent = String(pivots.totalBreaches);
+        const tdTotalPct = document.createElement('td');
+        tdTotalPct.className = 'text-center font-bold font-mono text-xs';
+        tdTotalPct.textContent = pivots.totalBreaches > 0 ? '100.0%' : '0.0%';
+        footRow.append(tdTotalLabel, tdTotalCount, tdTotalPct);
+        tfoot.appendChild(footRow);
+        table.appendChild(tfoot);
+
+        tableWrap.appendChild(table);
+        card.appendChild(tableWrap);
+        return card;
+      };
+
+      grid.appendChild(
+        buildPivotCard(
+          '1. Rider vs Breaches',
+          'Rider Name',
+          pivots.byRider.map((r) => ({
+            label: r.riderName,
+            count: r.breachCount,
+            pct: r.pct,
+          })),
+          'No OTP breaches in period'
+        )
+      );
+
+      grid.appendChild(
+        buildPivotCard(
+          '2. RCA vs Breach Count',
+          'RCA Category',
+          pivots.byRca.map((r) => ({
+            label: r.rca,
+            count: r.breachCount,
+            pct: r.pct,
+            isMuted: r.isPending,
+          })),
+          'No OTP breaches in period'
+        )
+      );
+
+      grid.appendChild(
+        buildPivotCard(
+          '3. Slot vs Breaches',
+          'Slot',
+          pivots.bySlot.map((s) => ({
+            label: `Slot ${s.slotHour} (${s.slotLabel})`,
+            count: s.breachCount,
+            pct: s.pct,
+          })),
+          'No OTP breaches in period'
+        )
+      );
+
+      captureTarget.appendChild(grid);
+
+      const dateSlug = startDate === endDate ? startDate : `${startDate}_to_${endDate}`;
+      await renderAndDownloadSnapshot({
+        analyticsRoot,
+        offscreenHost,
+        captureTarget,
+        bgColor,
+        minWidth,
+        fileName: `OTP-Breach-RCA-${selectedStore.store_code}-${dateSlug}.png`,
+      });
+
+      setRcaSnapshotStatus('saved');
+      window.setTimeout(() => setRcaSnapshotStatus('idle'), 2200);
+    } catch (err) {
+      console.error('Failed to capture OTP Breach RCA snapshot:', err);
+      setRcaSnapshotStatus('error');
+      window.setTimeout(() => setRcaSnapshotStatus('idle'), 3000);
+    } finally {
+      offscreenHost.remove();
+      setTakingRcaSnapshot(false);
     }
   };
 
@@ -937,6 +1186,40 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                     : screenshotStatus === 'error'
                     ? 'Screenshot Failed'
                     : 'Take Screenshot'}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`s2p-screenshot-btn ${rcaSnapshotStatus === 'saved' ? 'saved' : ''} ${
+                  rcaSnapshotStatus === 'error' ? 'error' : ''
+                }`}
+                onClick={() => void handleDownloadRcaSnapshot()}
+                disabled={!activeSummary || activeSummary.days.length === 0 || loading || takingRcaSnapshot}
+                title="Download OTP Breach RCA summary snapshot with Rider, RCA, and Slot pivot tables"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                  <rect x="9" y="3" width="6" height="4" rx="1" />
+                  <path d="M9 12h6M9 16h4" />
+                </svg>
+                <span>
+                  {takingRcaSnapshot
+                    ? 'Capturing RCA...'
+                    : rcaSnapshotStatus === 'saved'
+                    ? 'RCA Saved'
+                    : rcaSnapshotStatus === 'error'
+                    ? 'RCA Failed'
+                    : 'OTP Breach RCA'}
                 </span>
               </button>
               <button
