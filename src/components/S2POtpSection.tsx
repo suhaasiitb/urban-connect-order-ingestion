@@ -497,6 +497,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       tableClone.style.marginTop = '0';
       tableClone.style.overflowX = 'visible';
       tableClone.style.width = '100%';
+      // Remove bottom Period Grand Total footer in snapshot (summary is already shown in the top KPI cards)
+      tableClone.querySelectorAll('.s2p-daily-table > tfoot').forEach((el) => el.remove());
+      const lastMainRow = tableClone.querySelector('.s2p-daily-table > tbody > tr:last-child');
+      if (lastMainRow instanceof HTMLElement && lastMainRow.classList.contains('s2p-expanded-row')) {
+        const card = lastMainRow.querySelector('.s2p-slot-breakdown-card') as HTMLElement | null;
+        if (card) card.style.borderBottom = 'none';
+      }
       tableClone.querySelectorAll('.excel-pivot-table-container').forEach((el) => {
         (el as HTMLElement).style.overflowX = 'visible';
       });
