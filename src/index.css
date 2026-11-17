@@ -12571,11 +12571,37 @@ html[data-theme="dark"] .admin-stores-divider::after {
 .admin-dashboard-store-card {
   padding: 0.65rem 1rem !important;
   gap: 0.5rem !important;
-  border-left: 3px solid #cbd5e1 !important;
+  border: 1.5px solid #94a3b8 !important;
+  border-left: 4px solid #334155 !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06) !important;
+}
+
+.analytics-container .admin-dashboard-store-card .section-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 1.08rem !important;
+  letter-spacing: -0.01em !important;
+  color: #020617 !important;
+}
+
+.admin-dashboard-store-card .admin-compact-kpi-grid .kpi-card {
+  border-color: #cbd5e1 !important;
 }
 
 html[data-theme="dark"] .admin-dashboard-store-card {
-  border-left: 3px solid var(--color-graphite) !important;
+  border: 1.5px solid #475569 !important;
+  border-left: 4px solid #64748b !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+}
+
+html[data-theme="dark"] .analytics-container .admin-dashboard-store-card .section-title {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 1.08rem !important;
+}
+
+html[data-theme="dark"] .analytics-container .admin-dashboard-store-card .admin-compact-kpi-grid .kpi-card {
+  border-color: #334155 !important;
 }
 
 .admin-compact-kpi-grid {
