@@ -1665,7 +1665,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                         {showSnopBreach && <th className="text-center">SNOP Plan</th>}
                                         <th className="text-center">Orders</th>
                                         {showSnopBreach && <th className="text-center">Breach</th>}
-                                        <th className="text-center">Actual Riders Turn-up</th>
+                                        <th className="text-center">Riders Turn-up</th>
                                         <th className="text-center">DPH</th>
                                         <th className="text-center">AVERAGE of S2P (min)</th>
                                         <th className="text-center">OTP Achieved %</th>
@@ -1977,7 +1977,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                           {showSnopBreach && <th className="text-center">SNOP Plan</th>}
                                           <th className="text-center">Orders</th>
                                           {showSnopBreach && <th className="text-center">Breach</th>}
-                                          <th className="text-center">Actual Riders Turn-up</th>
+                                          <th className="text-center">Riders Turn-up</th>
                                           <th className="text-center">DPH</th>
                                         </tr>
                                       </thead>
