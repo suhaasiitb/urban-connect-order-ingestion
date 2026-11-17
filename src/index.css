@@ -4184,6 +4184,15 @@ html:not([data-theme="dark"]) .excel-pivot-table td.text-slate {
   color: #020617;
 }
 
+.excel-pivot-table td.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+html:not([data-theme="dark"]) .excel-pivot-table td.text-muted {
+  color: #64748b;
+  font-weight: 600;
+}
+
 html:not([data-theme="dark"]) .excel-pivot-table .text-green {
   color: #166534 !important;
   font-weight: 700;
@@ -10212,6 +10221,11 @@ html[data-theme="dark"] .excel-pivot-table td {
 html[data-theme="dark"] .s2p-daily-table td.text-slate,
 html[data-theme="dark"] .excel-pivot-table td.text-slate {
   color: #f1f5f9;
+}
+
+html[data-theme="dark"] .excel-pivot-table td.text-muted {
+  color: #94a3b8;
+  font-weight: 600;
 }
 
 html[data-theme="dark"] .s2p-daily-table .text-green,

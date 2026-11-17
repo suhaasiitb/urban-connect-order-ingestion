@@ -16,8 +16,10 @@ import {
 import {
   type DailyPerformanceSummary,
   type S2POtpSummaryResult,
+  buildBtoRcaSummary,
   buildOtpBreachRcaPivots,
   exportS2POtpToExcel,
+  fetchDsrRtoOrders,
   fetchOtpBreachedOrders,
   fetchS2POtpAnalytics,
   getDayOfWeekName,
@@ -55,6 +57,24 @@ const PRESET_ITEMS: PresetItem[] = [
   { id: 30, label: '30 Days', tooltip: 'Last 30 days' },
 ];
 
+const ClipboardDocIcon: React.FC = () => (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+    <rect x="9" y="3" width="6" height="4" rx="1" />
+    <path d="M9 12h6M9 16h4" />
+  </svg>
+);
+
 export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   stores,
   selectedStoreId,
@@ -88,6 +108,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   const [screenshotStatus, setScreenshotStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const [takingRcaSnapshot, setTakingRcaSnapshot] = useState<boolean>(false);
   const [rcaSnapshotStatus, setRcaSnapshotStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [takingBtoSnapshot, setTakingBtoSnapshot] = useState<boolean>(false);
+  const [btoSnapshotStatus, setBtoSnapshotStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
   // Strictly ensure the displayed summary matches the currently selected store and [startDate, endDate] window
   const activeSummary = useMemo<S2POtpSummaryResult | null>(() => {
@@ -707,6 +729,89 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     }
   };
 
+  const buildSnapshotTableCard = (params: {
+    cardTitle: string;
+    borderColor: string;
+    headers: Array<{ label: string; className?: string; width?: string }>;
+    rows: Array<Array<{ text: string; className?: string }>>;
+    emptyText: string;
+    footerCells?: Array<{ text: string; className?: string; colSpan?: number }>;
+  }) => {
+    const { cardTitle, borderColor, headers, rows, emptyText, footerCells } = params;
+    const card = document.createElement('div');
+    card.className = 's2p-slot-breakdown-card';
+    card.style.border = `1px solid ${borderColor}`;
+    card.style.borderRadius = '10px';
+    card.style.padding = '14px';
+
+    const heading = document.createElement('h4');
+    heading.className = 's2p-slot-title';
+    heading.textContent = cardTitle;
+    heading.style.marginBottom = '10px';
+    card.appendChild(heading);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'excel-pivot-table-container';
+    tableWrap.style.overflowX = 'visible';
+
+    const table = document.createElement('table');
+    table.className = 'excel-pivot-table';
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const h of headers) {
+      const th = document.createElement('th');
+      if (h.className) th.className = h.className;
+      if (h.width) th.style.width = h.width;
+      th.textContent = h.label;
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    if (rows.length === 0) {
+      const emptyRow = document.createElement('tr');
+      const emptyCell = document.createElement('td');
+      emptyCell.colSpan = headers.length;
+      emptyCell.className = 'text-center text-green font-semibold';
+      emptyCell.textContent = emptyText;
+      emptyRow.appendChild(emptyCell);
+      tbody.appendChild(emptyRow);
+    } else {
+      for (const cells of rows) {
+        const tr = document.createElement('tr');
+        for (const cell of cells) {
+          const td = document.createElement('td');
+          if (cell.className) td.className = cell.className;
+          td.textContent = cell.text;
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+    }
+    table.appendChild(tbody);
+
+    if (footerCells && footerCells.length > 0) {
+      const tfoot = document.createElement('tfoot');
+      const footRow = document.createElement('tr');
+      footRow.className = 'excel-pivot-grand-total';
+      for (const fc of footerCells) {
+        const td = document.createElement('td');
+        if (fc.colSpan && fc.colSpan > 1) td.colSpan = fc.colSpan;
+        if (fc.className) td.className = fc.className;
+        td.textContent = fc.text;
+        footRow.appendChild(td);
+      }
+      tfoot.appendChild(footRow);
+      table.appendChild(tfoot);
+    }
+
+    tableWrap.appendChild(table);
+    card.appendChild(tableWrap);
+    return card;
+  };
+
   const handleDownloadRcaSnapshot = async () => {
     const analyticsRoot = analyticsContainerRef.current;
     if (!analyticsRoot || !activeSummary || !selectedStore || takingRcaSnapshot) {
@@ -766,89 +871,33 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         labelHeader: string,
         rows: Array<{ label: string; count: number; pct: number; isMuted?: boolean }>,
         emptyText: string
-      ) => {
-        const card = document.createElement('div');
-        card.className = 's2p-slot-breakdown-card';
-        card.style.border = `1px solid ${borderColor}`;
-        card.style.borderRadius = '10px';
-        card.style.padding = '14px';
-
-        const heading = document.createElement('h4');
-        heading.className = 's2p-slot-title';
-        heading.textContent = cardTitle;
-        heading.style.marginBottom = '10px';
-        card.appendChild(heading);
-
-        const tableWrap = document.createElement('div');
-        tableWrap.className = 'excel-pivot-table-container';
-        tableWrap.style.overflowX = 'visible';
-
-        const table = document.createElement('table');
-        table.className = 'excel-pivot-table';
-
-        const thead = document.createElement('thead');
-        const headRow = document.createElement('tr');
-        const thLabel = document.createElement('th');
-        thLabel.textContent = labelHeader;
-        const thCount = document.createElement('th');
-        thCount.className = 'text-center';
-        thCount.style.width = '105px';
-        thCount.textContent = 'Breaches';
-        const thPct = document.createElement('th');
-        thPct.className = 'text-center';
-        thPct.style.width = '72px';
-        thPct.textContent = 'Share %';
-        headRow.append(thLabel, thCount, thPct);
-        thead.appendChild(headRow);
-        table.appendChild(thead);
-
-        const tbody = document.createElement('tbody');
-        if (rows.length === 0) {
-          const emptyRow = document.createElement('tr');
-          const emptyCell = document.createElement('td');
-          emptyCell.colSpan = 3;
-          emptyCell.className = 'text-center text-green font-semibold';
-          emptyCell.textContent = emptyText;
-          emptyRow.appendChild(emptyCell);
-          tbody.appendChild(emptyRow);
-        } else {
-          for (const r of rows) {
-            const tr = document.createElement('tr');
-            const tdLabel = document.createElement('td');
-            tdLabel.className = r.isMuted ? 'text-muted' : 'font-semibold';
-            tdLabel.textContent = r.label;
-            const tdCount = document.createElement('td');
-            tdCount.className = 'text-center font-bold text-red';
-            tdCount.textContent = String(r.count);
-            const tdPct = document.createElement('td');
-            tdPct.className = 'text-center font-mono text-xs';
-            tdPct.textContent = `${r.pct.toFixed(1)}%`;
-            tr.append(tdLabel, tdCount, tdPct);
-            tbody.appendChild(tr);
-          }
-        }
-        table.appendChild(tbody);
-
-        const tfoot = document.createElement('tfoot');
-        const footRow = document.createElement('tr');
-        footRow.className = 'excel-pivot-grand-total';
-        const tdTotalLabel = document.createElement('td');
-        tdTotalLabel.className = 'font-bold';
-        tdTotalLabel.textContent = 'Grand Total';
-        const tdTotalCount = document.createElement('td');
-        tdTotalCount.className = `text-center font-bold ${pivots.totalBreaches > 0 ? 'text-red' : 'text-green'}`;
-        tdTotalCount.textContent = String(pivots.totalBreaches);
-        const tdTotalPct = document.createElement('td');
-        tdTotalPct.className = 'text-center font-bold font-mono text-xs';
-        tdTotalPct.textContent = pivots.totalBreaches > 0 ? '100.0%' : '0.0%';
-        footRow.append(tdTotalLabel, tdTotalCount, tdTotalPct);
-        tfoot.appendChild(footRow);
-        table.appendChild(tfoot);
-
-        tableWrap.appendChild(table);
-        card.appendChild(tableWrap);
-        return card;
-      };
+      ) =>
+        buildSnapshotTableCard({
+          cardTitle,
+          borderColor,
+          headers: [
+            { label: labelHeader },
+            { label: 'Breaches', className: 'text-center', width: '105px' },
+            { label: 'Share %', className: 'text-center', width: '72px' },
+          ],
+          rows: rows.map((r) => [
+            { text: r.label, className: r.isMuted ? 'text-muted' : 'font-semibold' },
+            { text: String(r.count), className: 'text-center font-bold text-red' },
+            { text: `${r.pct.toFixed(1)}%`, className: 'text-center font-mono text-xs' },
+          ]),
+          emptyText,
+          footerCells: [
+            { text: 'Grand Total', className: 'font-bold' },
+            {
+              text: String(pivots.totalBreaches),
+              className: `text-center font-bold ${pivots.totalBreaches > 0 ? 'text-red' : 'text-green'}`,
+            },
+            {
+              text: pivots.totalBreaches > 0 ? '100.0%' : '0.0%',
+              className: 'text-center font-bold font-mono text-xs',
+            },
+          ],
+        });
 
       grid.appendChild(
         buildPivotCard(
@@ -911,6 +960,156 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     } finally {
       offscreenHost.remove();
       setTakingRcaSnapshot(false);
+    }
+  };
+
+  const handleDownloadBtoRcaSnapshot = async () => {
+    const analyticsRoot = analyticsContainerRef.current;
+    if (!analyticsRoot || !activeSummary || !selectedStore || takingBtoSnapshot) {
+      return;
+    }
+
+    setTakingBtoSnapshot(true);
+    setBtoSnapshotStatus('idle');
+
+    const minWidth = 1480;
+    const { offscreenHost, captureTarget, bgColor, textColor, subTextColor, borderColor } =
+      createSnapshotEnvironment(minWidth);
+
+    try {
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+
+      const res = await fetchDsrRtoOrders({
+        storeId: selectedStore.id,
+        startDate,
+        endDate,
+      });
+
+      if (res.error) {
+        throw new Error(res.error);
+      }
+
+      const btoSummary = buildBtoRcaSummary(res.orders);
+      const isMultiDay = startDate !== endDate;
+      const rangeText = isMultiDay ? `${startDate} → ${endDate}` : startDate;
+      const coveragePct =
+        btoSummary.totalBtoOrders > 0
+          ? Math.round((btoSummary.rcaTaggedCount / btoSummary.totalBtoOrders) * 100)
+          : 100;
+
+      captureTarget.appendChild(
+        buildSnapshotHeader(
+          `${selectedStore.store_code} (${selectedStore.store_name}) — BTO RCA Summary`,
+          `Period: ${rangeText} · ${btoSummary.totalBtoOrders} BTO ${
+            btoSummary.totalBtoOrders === 1 ? 'Order' : 'Orders'
+          } (RTO_DELIVERED) · ${btoSummary.distinctRiders} ${
+            btoSummary.distinctRiders === 1 ? 'Rider' : 'Riders'
+          } · ${btoSummary.rcaTaggedCount}/${btoSummary.totalBtoOrders} RCA Tagged (${coveragePct}%)`,
+          { textColor, subTextColor, borderColor }
+        )
+      );
+
+      const grid = document.createElement('div');
+      grid.style.display = 'grid';
+      grid.style.gridTemplateColumns = 'minmax(360px, 0.85fr) minmax(680px, 1.45fr)';
+      grid.style.gap = '16px';
+      grid.style.alignItems = 'start';
+      grid.style.width = '100%';
+
+      grid.appendChild(
+        buildSnapshotTableCard({
+          cardTitle: '1. Rider Name vs Count of BTO',
+          borderColor,
+          headers: [
+            { label: 'Rider Name' },
+            { label: 'Count of BTO', className: 'text-center', width: '115px' },
+            { label: 'Share %', className: 'text-center', width: '78px' },
+          ],
+          rows: btoSummary.byRider.map((r) => [
+            { text: r.riderName, className: 'font-semibold' },
+            { text: String(r.btoCount), className: 'text-center font-bold text-red' },
+            { text: `${r.pct.toFixed(1)}%`, className: 'text-center font-mono text-xs' },
+          ]),
+          emptyText: 'No BTO (RTO_DELIVERED) orders in period',
+          footerCells: [
+            { text: 'Grand Total', className: 'font-bold' },
+            {
+              text: String(btoSummary.totalBtoOrders),
+              className: `text-center font-bold ${btoSummary.totalBtoOrders > 0 ? 'text-red' : 'text-green'}`,
+            },
+            {
+              text: btoSummary.totalBtoOrders > 0 ? '100.0%' : '0.0%',
+              className: 'text-center font-bold font-mono text-xs',
+            },
+          ],
+        })
+      );
+
+      const pendingCount = btoSummary.totalBtoOrders - btoSummary.rcaTaggedCount;
+      grid.appendChild(
+        buildSnapshotTableCard({
+          cardTitle: '2. Riders with Order ID & BTO RCA',
+          borderColor,
+          headers: [
+            { label: 'Rider Name' },
+            { label: 'Order ID', width: '215px' },
+            { label: 'Slot', className: 'text-center', width: isMultiDay ? '175px' : '150px' },
+            { label: 'BTO RCA' },
+          ],
+          rows: btoSummary.orders.map((ord) => [
+            { text: ord.riderName, className: 'font-semibold' },
+            { text: ord.orderId, className: 'font-mono' },
+            {
+              text:
+                isMultiDay && ord.orderDate
+                  ? `${ord.orderDate} · Slot ${ord.slotHour}`
+                  : `Slot ${ord.slotHour} (${ord.slotLabel})`,
+              className: 'text-center',
+            },
+            {
+              text: ord.dsrRca || 'Pending / Unassigned RCA',
+              className: ord.dsrRca ? 'font-semibold' : 'text-muted',
+            },
+          ]),
+          emptyText: 'No BTO (RTO_DELIVERED) orders in period',
+          footerCells: [
+            { text: 'Total BTO Orders', className: 'font-bold' },
+            {
+              text: `${btoSummary.totalBtoOrders} ${btoSummary.totalBtoOrders === 1 ? 'Order' : 'Orders'}`,
+              className: 'text-center font-bold',
+              colSpan: 2,
+            },
+            {
+              text: `${btoSummary.rcaTaggedCount} Tagged / ${pendingCount} Pending`,
+              className: `font-bold ${pendingCount === 0 && btoSummary.totalBtoOrders > 0 ? 'text-green' : 'text-red'}`,
+            },
+          ],
+        })
+      );
+
+      captureTarget.appendChild(grid);
+
+      const dateSlug = isMultiDay ? `${startDate}_to_${endDate}` : startDate;
+      await renderAndDownloadSnapshot({
+        analyticsRoot,
+        offscreenHost,
+        captureTarget,
+        bgColor,
+        minWidth,
+        fileName: `BTO-RCA-${selectedStore.store_code}-${dateSlug}.png`,
+      });
+
+      setBtoSnapshotStatus('saved');
+      window.setTimeout(() => setBtoSnapshotStatus('idle'), 2200);
+    } catch (err) {
+      console.error('Failed to capture BTO RCA snapshot:', err);
+      setBtoSnapshotStatus('error');
+      window.setTimeout(() => setBtoSnapshotStatus('idle'), 3000);
+    } finally {
+      offscreenHost.remove();
+      setTakingBtoSnapshot(false);
     }
   };
 
@@ -1195,21 +1394,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                 disabled={!activeSummary || activeSummary.days.length === 0 || loading || takingRcaSnapshot}
                 title="Download OTP Breach RCA summary snapshot with Rider, RCA, and Slot pivot tables"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-                  <rect x="9" y="3" width="6" height="4" rx="1" />
-                  <path d="M9 12h6M9 16h4" />
-                </svg>
+                <ClipboardDocIcon />
                 <span>
                   {takingRcaSnapshot
                     ? 'Capturing RCA...'
@@ -1218,6 +1403,26 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                     : rcaSnapshotStatus === 'error'
                     ? 'RCA Failed'
                     : 'OTP Breach RCA'}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`s2p-screenshot-btn ${btoSnapshotStatus === 'saved' ? 'saved' : ''} ${
+                  btoSnapshotStatus === 'error' ? 'error' : ''
+                }`}
+                onClick={() => void handleDownloadBtoRcaSnapshot()}
+                disabled={!activeSummary || activeSummary.days.length === 0 || loading || takingBtoSnapshot}
+                title="Download BTO RCA summary snapshot with Rider vs BTO Count pivot table and Rider / Order ID / RCA list"
+              >
+                <ClipboardDocIcon />
+                <span>
+                  {takingBtoSnapshot
+                    ? 'Capturing BTO...'
+                    : btoSnapshotStatus === 'saved'
+                    ? 'BTO Saved'
+                    : btoSnapshotStatus === 'error'
+                    ? 'BTO Failed'
+                    : 'BTO RCA'}
                 </span>
               </button>
               <button

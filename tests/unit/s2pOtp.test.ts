@@ -3,6 +3,7 @@ import { getTodayDateString } from '../../src/services/analyticsService';
 import {
   DSR_RCA_OPTIONS,
   OTP_BREACH_RCA_OPTIONS,
+  buildBtoRcaSummary,
   buildOtpBreachRcaPivots,
   buildSummaryFromRawOrders,
   buildSummaryFromRpcRows,
@@ -724,5 +725,106 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
       'Product Missing',
       'Customer Unreachable/Not Responding',
     ]);
+  });
+
+  it('builds BTO RCA summary with Rider vs Count of BTO pivot and sorted Rider/Order/RCA list', () => {
+    const summary = buildBtoRcaSummary([
+      {
+        orderId: 'ORD-BTO-2',
+        orderDate: '2026-11-17',
+        riderName: 'Rohan Shinde*',
+        riderNumber: 'R1',
+        slotHour: 11,
+        status: 'RTO_DELIVERED',
+        dsrRca: 'Customer Unavailable',
+      },
+      {
+        orderId: 'ORD-BTO-3',
+        orderDate: '2026-11-17',
+        riderName: 'Ajit Kumar',
+        riderNumber: 'R2',
+        slotHour: 8,
+        status: 'RTO_DELIVERED',
+        dsrRca: null,
+      },
+      {
+        orderId: 'ORD-BTO-1',
+        orderDate: '2026-11-16',
+        riderName: 'rohan shinde',
+        riderNumber: 'R1',
+        slotHour: 9,
+        status: 'RTO_DELIVERED',
+        dsrRca: 'Wrong Location',
+      },
+      {
+        orderId: 'ORD-BTO-4',
+        orderDate: '2026-11-17',
+        riderName: 'Rohan Shinde',
+        riderNumber: 'R1',
+        slotHour: 11,
+        status: 'RTO_DELIVERED',
+        dsrRca: 'Customer Unavailable',
+      },
+    ]);
+
+    expect(summary.totalBtoOrders).toBe(4);
+    expect(summary.rcaTaggedCount).toBe(3);
+    expect(summary.distinctRiders).toBe(2);
+
+    expect(summary.byRider).toEqual([
+      { riderName: 'Rohan Shinde', btoCount: 3, pct: 75 },
+      { riderName: 'Ajit Kumar', btoCount: 1, pct: 25 },
+    ]);
+
+    expect(summary.byRca).toEqual([
+      { rca: 'Customer Unavailable', btoCount: 2, pct: 50, isPending: false },
+      { rca: 'Wrong Location', btoCount: 1, pct: 25, isPending: false },
+      { rca: 'Pending / Unassigned RCA', btoCount: 1, pct: 25, isPending: true },
+    ]);
+
+    expect(summary.orders).toEqual([
+      {
+        riderName: 'Ajit Kumar',
+        orderId: 'ORD-BTO-3',
+        orderDate: '2026-11-17',
+        slotHour: 8,
+        slotLabel: '08:00 – 09:00',
+        dsrRca: null,
+      },
+      {
+        riderName: 'Rohan Shinde',
+        orderId: 'ORD-BTO-1',
+        orderDate: '2026-11-16',
+        slotHour: 9,
+        slotLabel: '09:00 – 10:00',
+        dsrRca: 'Wrong Location',
+      },
+      {
+        riderName: 'Rohan Shinde',
+        orderId: 'ORD-BTO-2',
+        orderDate: '2026-11-17',
+        slotHour: 11,
+        slotLabel: '11:00 – 12:00',
+        dsrRca: 'Customer Unavailable',
+      },
+      {
+        riderName: 'Rohan Shinde',
+        orderId: 'ORD-BTO-4',
+        orderDate: '2026-11-17',
+        slotHour: 11,
+        slotLabel: '11:00 – 12:00',
+        dsrRca: 'Customer Unavailable',
+      },
+    ]);
+
+    const empty = buildBtoRcaSummary([]);
+    expect(empty).toEqual({
+      totalBtoOrders: 0,
+      rcaTaggedCount: 0,
+      distinctRiders: 0,
+      byRider: [],
+      byRca: [],
+      orders: [],
+    });
   });
 });

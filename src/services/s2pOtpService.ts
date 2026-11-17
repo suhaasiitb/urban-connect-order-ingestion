@@ -1045,8 +1045,46 @@ export interface DsrRtoOrderRecord {
   dsrRcaUpdatedAt?: string | null;
 }
 
+function sanitizeRiderName(riderName: unknown, riderNumber?: unknown): string {
+  const cleaned = String(riderName || riderNumber || 'Unknown Rider')
+    .replace(/\*+/g, '')
+    .trim();
+  return cleaned || 'Unknown Rider';
+}
+
 function normalizeBreachRiderName(name: string): string {
   return name.replace(/\*+/g, '').trim().toLowerCase();
+}
+
+async function fetchPaginatedOrderRows<T>(
+  fetchPage: (
+    from: number,
+    to: number
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<{ rows: T[]; error?: string }> {
+  const PAGE_SIZE = 1000;
+  let from = 0;
+  let hasMore = true;
+  const rows: T[] = [];
+
+  while (hasMore) {
+    const { data, error } = await fetchPage(from, from + PAGE_SIZE - 1);
+    if (error) {
+      return { rows: [], error: error.message };
+    }
+    if (data && data.length > 0) {
+      rows.push(...data);
+      if (data.length < PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        from += PAGE_SIZE;
+      }
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return { rows };
 }
 
 /**
@@ -1069,10 +1107,7 @@ export async function fetchOtpBreachedOrders(params: {
   }
 
   try {
-    const PAGE_SIZE = 1000;
-    let from = 0;
-    let hasMore = true;
-    const rawRows: Array<{
+    type RawOtpRow = {
       order_id: string | null;
       order_date: string | null;
       rider_name: string | null;
@@ -1082,9 +1117,9 @@ export async function fetchOtpBreachedOrders(params: {
       actual_arrival_minutes: number | null;
       otp_breach_rca?: string | null;
       otp_breach_rca_updated_at?: string | null;
-    }> = [];
+    };
 
-    while (hasMore) {
+    const { rows: rawRows, error } = await fetchPaginatedOrderRows<RawOtpRow>((from, to) => {
       let query = supabase
         .from('orders')
         .select('order_id, order_date, rider_name, rider_number, slot_hour, arrival_eta_minutes, actual_arrival_minutes, otp_breach_rca, otp_breach_rca_updated_at')
@@ -1092,27 +1127,17 @@ export async function fetchOtpBreachedOrders(params: {
         .eq('otp_plus_3_performance', 'OTP Breached')
         .gte('order_date', rangeStart)
         .lte('order_date', rangeEnd)
-        .range(from, from + PAGE_SIZE - 1);
+        .range(from, to);
 
       if (slotHour !== undefined && slotHour !== null) {
         query = query.eq('slot_hour', slotHour);
       }
 
-      const { data, error } = await query;
-      if (error) {
-        return { orders: [], error: error.message };
-      }
+      return query;
+    });
 
-      if (data && data.length > 0) {
-        rawRows.push(...data);
-        if (data.length < PAGE_SIZE) {
-          hasMore = false;
-        } else {
-          from += PAGE_SIZE;
-        }
-      } else {
-        hasMore = false;
-      }
+    if (error) {
+      return { orders: [], error };
     }
 
     const targetRiderNorm = riderName ? normalizeBreachRiderName(riderName) : null;
@@ -1127,7 +1152,7 @@ export async function fetchOtpBreachedOrders(params: {
       return {
         orderId: String(r.order_id ?? ''),
         orderDate: r.order_date ? String(r.order_date) : undefined,
-        riderName: String(r.rider_name || r.rider_number || 'Unknown Rider').replace(/\*+/g, '').trim(),
+        riderName: sanitizeRiderName(r.rider_name, r.rider_number),
         riderNumber: String(r.rider_number ?? ''),
         slotHour: Number(r.slot_hour ?? 0),
         arrivalEtaMinutes: Math.round(arrivalEta * 100) / 100,
@@ -1192,23 +1217,24 @@ async function saveOrderRcaViaRpc(
 }
 
 /**
- * Fetches RTO_DELIVERED orders for a store/date (and optional slotHour) for DSR RCA submission.
+ * Fetches RTO_DELIVERED (BTO) orders for a store/date (or date range and optional slotHour) for DSR / BTO RCA submission & reporting.
  */
 export async function fetchDsrRtoOrders(params: {
   storeId: string;
-  orderDate: string;
+  orderDate?: string;
+  startDate?: string;
+  endDate?: string;
   slotHour?: number | null;
 }): Promise<{ orders: DsrRtoOrderRecord[]; error?: string }> {
-  const { storeId, orderDate, slotHour } = params;
-  if (!storeId || !orderDate) {
+  const { storeId, orderDate, startDate, endDate, slotHour } = params;
+  const rangeStart = startDate || orderDate;
+  const rangeEnd = endDate || orderDate;
+  if (!storeId || !rangeStart || !rangeEnd) {
     return { orders: [] };
   }
 
   try {
-    const PAGE_SIZE = 1000;
-    let from = 0;
-    let hasMore = true;
-    const rawRows: Array<{
+    type RawRtoRow = {
       order_id: string | null;
       order_date: string | null;
       rider_name: string | null;
@@ -1217,36 +1243,27 @@ export async function fetchDsrRtoOrders(params: {
       status: string | null;
       dsr_rca?: string | null;
       dsr_rca_updated_at?: string | null;
-    }> = [];
+    };
 
-    while (hasMore) {
+    const { rows: rawRows, error } = await fetchPaginatedOrderRows<RawRtoRow>((from, to) => {
       let query = supabase
         .from('orders')
         .select('order_id, order_date, rider_name, rider_number, slot_hour, status, dsr_rca, dsr_rca_updated_at')
         .eq('store_id', storeId)
-        .eq('order_date', orderDate)
+        .gte('order_date', rangeStart)
+        .lte('order_date', rangeEnd)
         .ilike('status', '%RTO_DELIVERED%')
-        .range(from, from + PAGE_SIZE - 1);
+        .range(from, to);
 
       if (slotHour !== undefined && slotHour !== null) {
         query = query.eq('slot_hour', slotHour);
       }
 
-      const { data, error } = await query;
-      if (error) {
-        return { orders: [], error: error.message };
-      }
+      return query;
+    });
 
-      if (data && data.length > 0) {
-        rawRows.push(...data);
-        if (data.length < PAGE_SIZE) {
-          hasMore = false;
-        } else {
-          from += PAGE_SIZE;
-        }
-      } else {
-        hasMore = false;
-      }
+    if (error) {
+      return { orders: [], error };
     }
 
     const orders: DsrRtoOrderRecord[] = rawRows
@@ -1254,7 +1271,7 @@ export async function fetchDsrRtoOrders(params: {
       .map((r) => ({
         orderId: String(r.order_id ?? ''),
         orderDate: r.order_date ? String(r.order_date) : undefined,
-        riderName: String(r.rider_name || r.rider_number || 'Unknown Rider').replace(/\*+/g, '').trim(),
+        riderName: sanitizeRiderName(r.rider_name, r.rider_number),
         riderNumber: String(r.rider_number ?? ''),
         slotHour: Number(r.slot_hour ?? 0),
         status: String(r.status ?? 'RTO_DELIVERED').trim().toUpperCase(),
@@ -1263,8 +1280,13 @@ export async function fetchDsrRtoOrders(params: {
       }));
 
     orders.sort((a, b) => {
-      const nameCmp = a.riderName.localeCompare(b.riderName);
-      return nameCmp !== 0 ? nameCmp : a.orderId.localeCompare(b.orderId);
+      const nameCmp = a.riderName.toLowerCase().localeCompare(b.riderName.toLowerCase()) ||
+        a.riderName.localeCompare(b.riderName);
+      if (nameCmp !== 0) return nameCmp;
+      const dateCmp = (a.orderDate ?? '').localeCompare(b.orderDate ?? '');
+      if (dateCmp !== 0) return dateCmp;
+      if (a.slotHour !== b.slotHour) return a.slotHour - b.slotHour;
+      return a.orderId.localeCompare(b.orderId);
     });
     return { orders };
   } catch (err) {
@@ -1304,11 +1326,33 @@ export interface OtpBreachRcaPivots {
   bySlot: Array<{ slotHour: number; slotLabel: string; breachCount: number; pct: number }>;
 }
 
-/**
- * Builds 3 summary pivots (by Rider, by RCA, by Slot) from a list of OTP+3 breached orders.
- */
-export function buildOtpBreachRcaPivots(orders: OtpBreachedOrderRecord[]): OtpBreachRcaPivots {
-  const totalBreaches = orders.length;
+export interface BtoRcaSummary {
+  totalBtoOrders: number;
+  rcaTaggedCount: number;
+  distinctRiders: number;
+  byRider: Array<{ riderName: string; btoCount: number; pct: number }>;
+  byRca: Array<{ rca: string; btoCount: number; pct: number; isPending: boolean }>;
+  orders: Array<{
+    riderName: string;
+    orderId: string;
+    orderDate?: string;
+    slotHour: number;
+    slotLabel: string;
+    dsrRca: string | null;
+  }>;
+}
+
+function calcSharePct(count: number, total: number): number {
+  return total > 0 ? Math.round((count / total) * 1000) / 10 : 0;
+}
+
+function aggregateRiderAndRcaCounts<
+  T extends { riderName?: string | null; riderNumber?: string | null; slotHour?: number }
+>(
+  orders: T[],
+  getRca: (ord: T) => string | null | undefined
+) {
+  const totalCount = orders.length;
   const riderCounts = new Map<string, { displayName: string; count: number }>();
   const rcaCounts = new Map<string, number>();
   const slotCounts = new Map<number, number>();
@@ -1316,8 +1360,7 @@ export function buildOtpBreachRcaPivots(orders: OtpBreachedOrderRecord[]): OtpBr
   let rcaTaggedCount = 0;
 
   for (const ord of orders) {
-    // 1. Rider aggregation (case-insensitive, stripped of asterisks)
-    const displayRider = (ord.riderName || 'Unknown Rider').replace(/\*+/g, '').trim() || 'Unknown Rider';
+    const displayRider = sanitizeRiderName(ord.riderName, ord.riderNumber);
     const normRider = normalizeBreachRiderName(displayRider) || 'unknown rider';
     const existingRider = riderCounts.get(normRider);
     if (existingRider) {
@@ -1326,8 +1369,8 @@ export function buildOtpBreachRcaPivots(orders: OtpBreachedOrderRecord[]): OtpBr
       riderCounts.set(normRider, { displayName: displayRider, count: 1 });
     }
 
-    // 2. RCA aggregation
-    const rcaVal = ord.otpBreachRca ? ord.otpBreachRca.trim() : '';
+    const rcaRaw = getRca(ord);
+    const rcaVal = rcaRaw ? rcaRaw.trim() : '';
     if (rcaVal) {
       rcaTaggedCount += 1;
       rcaCounts.set(rcaVal, (rcaCounts.get(rcaVal) ?? 0) + 1);
@@ -1335,13 +1378,9 @@ export function buildOtpBreachRcaPivots(orders: OtpBreachedOrderRecord[]): OtpBr
       pendingCount += 1;
     }
 
-    // 3. Slot aggregation
     const slot = Number(ord.slotHour ?? 0);
     slotCounts.set(slot, (slotCounts.get(slot) ?? 0) + 1);
   }
-
-  const calcPct = (count: number): number =>
-    totalBreaches > 0 ? Math.round((count / totalBreaches) * 1000) / 10 : 0;
 
   const byRider = Array.from(riderCounts.values())
     .sort((a, b) => {
@@ -1350,8 +1389,8 @@ export function buildOtpBreachRcaPivots(orders: OtpBreachedOrderRecord[]): OtpBr
     })
     .map((item) => ({
       riderName: item.displayName,
-      breachCount: item.count,
-      pct: calcPct(item.count),
+      count: item.count,
+      pct: calcSharePct(item.count, totalCount),
     }));
 
   const byRca = Array.from(rcaCounts.entries())
@@ -1361,16 +1400,16 @@ export function buildOtpBreachRcaPivots(orders: OtpBreachedOrderRecord[]): OtpBr
     })
     .map(([rca, count]) => ({
       rca,
-      breachCount: count,
-      pct: calcPct(count),
+      count,
+      pct: calcSharePct(count, totalCount),
       isPending: false,
     }));
 
   if (pendingCount > 0) {
     byRca.push({
       rca: 'Pending / Unassigned RCA',
-      breachCount: pendingCount,
-      pct: calcPct(pendingCount),
+      count: pendingCount,
+      pct: calcSharePct(pendingCount, totalCount),
       isPending: true,
     });
   }
@@ -1380,16 +1419,99 @@ export function buildOtpBreachRcaPivots(orders: OtpBreachedOrderRecord[]): OtpBr
     .map(([slotHour, count]) => ({
       slotHour,
       slotLabel: formatSlotHourLabel(slotHour),
-      breachCount: count,
-      pct: calcPct(count),
+      count,
+      pct: calcSharePct(count, totalCount),
     }));
 
   return {
-    totalBreaches,
+    totalCount,
     rcaTaggedCount,
     distinctRiders: byRider.length,
+    riderDisplayMap: new Map(
+      Array.from(riderCounts.entries()).map(([norm, item]) => [norm, item.displayName])
+    ),
     byRider,
     byRca,
     bySlot,
+  };
+}
+
+/**
+ * Builds 3 summary pivots (by Rider, by RCA, by Slot) from a list of OTP+3 breached orders.
+ */
+export function buildOtpBreachRcaPivots(orders: OtpBreachedOrderRecord[]): OtpBreachRcaPivots {
+  const agg = aggregateRiderAndRcaCounts(orders, (ord) => ord.otpBreachRca);
+  return {
+    totalBreaches: agg.totalCount,
+    rcaTaggedCount: agg.rcaTaggedCount,
+    distinctRiders: agg.distinctRiders,
+    byRider: agg.byRider.map(({ riderName, count, pct }) => ({
+      riderName,
+      breachCount: count,
+      pct,
+    })),
+    byRca: agg.byRca.map(({ rca, count, pct, isPending }) => ({
+      rca,
+      breachCount: count,
+      pct,
+      isPending,
+    })),
+    bySlot: agg.bySlot.map(({ slotHour, slotLabel, count, pct }) => ({
+      slotHour,
+      slotLabel,
+      breachCount: count,
+      pct,
+    })),
+  };
+}
+
+/**
+ * Builds BTO (RTO_DELIVERED) RCA summary: Rider vs BTO count pivot, RCA breakdown, and sorted order list.
+ */
+export function buildBtoRcaSummary(orders: DsrRtoOrderRecord[]): BtoRcaSummary {
+  const agg = aggregateRiderAndRcaCounts(orders, (ord) => ord.dsrRca);
+
+  const normalizedOrders = orders
+    .map((ord) => {
+      const slotHour = Number(ord.slotHour ?? 0);
+      const rawDisplay = sanitizeRiderName(ord.riderName, ord.riderNumber);
+      const normRider = normalizeBreachRiderName(rawDisplay) || 'unknown rider';
+      const canonicalRider = agg.riderDisplayMap.get(normRider) ?? rawDisplay;
+      return {
+        riderName: canonicalRider,
+        orderId: String(ord.orderId ?? ''),
+        orderDate: ord.orderDate,
+        slotHour,
+        slotLabel: formatSlotHourLabel(slotHour),
+        dsrRca: ord.dsrRca && ord.dsrRca.trim() ? ord.dsrRca.trim() : null,
+      };
+    })
+    .sort((a, b) => {
+      const riderCmp =
+        a.riderName.toLowerCase().localeCompare(b.riderName.toLowerCase()) ||
+        a.riderName.localeCompare(b.riderName);
+      if (riderCmp !== 0) return riderCmp;
+      const dateCmp = (a.orderDate ?? '').localeCompare(b.orderDate ?? '');
+      if (dateCmp !== 0) return dateCmp;
+      if (a.slotHour !== b.slotHour) return a.slotHour - b.slotHour;
+      return a.orderId.localeCompare(b.orderId);
+    });
+
+  return {
+    totalBtoOrders: agg.totalCount,
+    rcaTaggedCount: agg.rcaTaggedCount,
+    distinctRiders: agg.distinctRiders,
+    byRider: agg.byRider.map(({ riderName, count, pct }) => ({
+      riderName,
+      btoCount: count,
+      pct,
+    })),
+    byRca: agg.byRca.map(({ rca, count, pct, isPending }) => ({
+      rca,
+      btoCount: count,
+      pct,
+      isPending,
+    })),
+    orders: normalizedOrders,
   };
 }
