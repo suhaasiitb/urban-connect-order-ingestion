@@ -1207,7 +1207,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                             <td className="text-center font-semibold text-green">
                                               {s.otpAchievedPct.toFixed(2)}%
                                             </td>
-                                            <td className="text-center text-red">
+                                            <td className={`text-center ${s.otpBreachedPct > 0 ? 'text-red' : 'text-green'}`}>
                                               {s.otpBreachedPct > 0 ? (
                                                 <button
                                                   type="button"
@@ -1261,7 +1261,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                         <td className="text-center font-bold text-green">
                                           {day.avgOtpAchievedPct.toFixed(2)}%
                                         </td>
-                                        <td className="text-center font-bold text-red">
+                                        <td className={`text-center font-bold ${day.avgOtpBreachedPct > 0 ? 'text-red' : 'text-green'}`}>
                                           {day.avgOtpBreachedPct > 0 ? (
                                             <button
                                               type="button"
@@ -1353,7 +1353,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                             <td className="text-center font-semibold text-green">
                                               {s.otpAchievedPct.toFixed(2)}%
                                             </td>
-                                            <td className="text-center text-red">
+                                            <td className={`text-center ${s.otpBreachedPct > 0 ? 'text-red' : 'text-green'}`}>
                                               {s.otpBreachedPct > 0 ? (
                                                 <button
                                                   type="button"
@@ -1382,7 +1382,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                           <td className="text-center font-bold text-green">
                                             {day.avgOtpAchievedPct.toFixed(2)}%
                                           </td>
-                                          <td className="text-center font-bold text-red">
+                                          <td className={`text-center font-bold ${day.avgOtpBreachedPct > 0 ? 'text-red' : 'text-green'}`}>
                                             {day.avgOtpBreachedPct > 0 ? (
                                               <button
                                                 type="button"
