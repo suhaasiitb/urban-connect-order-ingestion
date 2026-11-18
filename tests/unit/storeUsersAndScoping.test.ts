@@ -69,6 +69,7 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
       '20261117000001_add_otp_breach_rca_to_orders.sql',
       '20261117000002_add_dsr_rca_to_orders.sql',
       '20261118000001_optimize_storage_and_retention.sql',
+      '20261118000002_add_incorrect_address_dsr_rca.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -470,6 +471,12 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
     );
     expect(rowRes.rows[0].dsr_rca).toBe('Customer Unavailable');
     expect(rowRes.rows[0].dsr_rca_updated_by).toBe(TMK7_USER_ID);
+
+    const saveAddrRes = await db.query<{ save_dsr_rcas: number }>(
+      `SELECT public.save_dsr_rcas('${tmk7StoreId}'::uuid, $1::jsonb)`,
+      [JSON.stringify([{ order_id: 'ORD-DSR-1', rca: 'Incorrect/Incomplete Address' }])]
+    );
+    expect(saveAddrRes.rows[0].save_dsr_rcas).toBe(1);
 
     await expect(
       db.query(

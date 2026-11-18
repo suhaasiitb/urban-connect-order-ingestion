@@ -716,7 +716,7 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
     ]);
   });
 
-  it('exposes the exact 6 DSR RCA dropdown categories', () => {
+  it('exposes the exact 7 DSR RCA dropdown categories', () => {
     expect(DSR_RCA_OPTIONS).toEqual([
       'Wrong Location',
       'Customer Unavailable',
@@ -724,6 +724,7 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
       'Vehicle Issue',
       'Product Missing',
       'Customer Unreachable/Not Responding',
+      'Incorrect/Incomplete Address',
     ]);
   });
 
