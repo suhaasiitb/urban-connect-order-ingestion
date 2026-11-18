@@ -553,4 +553,132 @@ describe('Phase 3 — Secure Ingestion Backend & Atomic Persistence Suite', () =
     expect(retryRes.body.status).toBe('Succeeded');
     expect(retryRes.body.inserted_count).toBe(1);
   });
+
+  it('applies storage optimization migration, omits redundant JSONB/unchanged rows, and enforces tighter retention pruning', async () => {
+    const scopingSql = fs.readFileSync(
+      path.join(MIGRATIONS_DIR, '20261024000002_store_users_and_scoping.sql'),
+      'utf8'
+    );
+    const optSql = fs.readFileSync(
+      path.join(MIGRATIONS_DIR, '20261118000001_optimize_storage_and_retention.sql'),
+      'utf8'
+    );
+    await db.exec(scopingSql);
+    await db.exec(optSql);
+
+    // Unused index dropped & changed_at revision index created
+    const idxCheck = await db.query<{ cnt: number }>(
+      `SELECT count(*)::int AS cnt FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_batch_rows_store_order'`
+    );
+    expect(idxCheck.rows[0].cnt).toBe(0);
+
+    // Insert 2 recent (today's) orders via handleIngestOrderBatch
+    const fileBuffer = fs.readFileSync(FIXTURE_PATH);
+    const submittedRows = extractRawRowsFromWorkbook(new Uint8Array(fileBuffer));
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const shiftToToday = (raw: RawOrderRow, orderId: string): RawOrderRow => ({
+      ...raw,
+      'Order ID': orderId,
+      'Created At': `${todayIso} 10:00:00`,
+      'Staged At': `${todayIso} 10:01:00`,
+      'Pickup At': `${todayIso} 10:01:30`,
+      'Arrived Pickup At': `${todayIso} 10:01:10`,
+      'Arrive at Delivery ETA': `${todayIso} 10:15:00`,
+      'Arrived Delivery At': `${todayIso} 10:12:00`,
+    });
+
+    const rowA = { source_row_number: 2, raw_row: shiftToToday(submittedRows[0].raw_row, 'OPT_ORD_1') };
+    const rowB = { source_row_number: 3, raw_row: shiftToToday(submittedRows[0].raw_row, 'OPT_ORD_2') };
+
+    const insertRes = await handleIngestOrderBatch({
+      authHeader: 'Bearer valid-admin-token',
+      payload: {
+        store_id: tmk7StoreId,
+        original_filename: 'Opt Batch 1.xlsx',
+        file_size_bytes: 2048,
+        file_checksum_sha256: '1'.repeat(64),
+        rows: [rowA, rowB],
+      },
+      adapter,
+    });
+    expect(insertRes.status).toBe(200);
+    expect(insertRes.body.inserted_count).toBe(2);
+
+    // Re-upload with OPT_ORD_1 unchanged and OPT_ORD_2 modified -> unchanged skipped in ingestion_batch_rows
+    const rowBModified = {
+      source_row_number: 3,
+      raw_row: { ...rowB.raw_row, 'LM Distance': 1888 },
+    };
+    const updateRes = await handleIngestOrderBatch({
+      authHeader: 'Bearer valid-admin-token',
+      payload: {
+        store_id: tmk7StoreId,
+        original_filename: 'Opt Batch 2.xlsx',
+        file_size_bytes: 2048,
+        file_checksum_sha256: '2'.repeat(64),
+        rows: [rowA, rowBModified],
+      },
+      adapter,
+    });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.updated_count).toBe(1);
+    expect(updateRes.body.unchanged_count).toBe(1);
+
+    const updateBatchId = updateRes.body.batch_id as string;
+
+    // Only the 1 updated row is logged in ingestion_batch_rows (no unchanged filler row), with empty source_snapshot
+    const batchRows = await db.query<{ action: string; source_snapshot: Record<string, unknown> }>(
+      `SELECT action, source_snapshot FROM public.ingestion_batch_rows WHERE batch_id = $1`,
+      [updateBatchId]
+    );
+    expect(batchRows.rows).toEqual([{ action: 'updated', source_snapshot: {} }]);
+
+    // orders.raw_source_snapshot is empty '{}'
+    const orderSnap = await db.query<{ raw_source_snapshot: Record<string, unknown> }>(
+      `SELECT raw_source_snapshot FROM public.orders WHERE store_id = $1 AND order_id = 'OPT_ORD_2'`,
+      [tmk7StoreId]
+    );
+    expect(orderSnap.rows[0].raw_source_snapshot).toEqual({});
+
+    // order_revision_history keeps changed_fields & OTP flags without source snapshots
+    const revRow = await db.query<{
+      changed_fields: Record<string, { before: unknown; after: unknown }>;
+      previous_source_snapshot: unknown;
+      new_source_snapshot: Record<string, unknown>;
+      previous_derived_snapshot: Record<string, unknown>;
+      new_derived_snapshot: Record<string, unknown>;
+    }>(
+      `SELECT changed_fields, previous_source_snapshot, new_source_snapshot, previous_derived_snapshot, new_derived_snapshot
+       FROM public.order_revision_history WHERE store_id = $1 AND order_id = 'OPT_ORD_2'`,
+      [tmk7StoreId]
+    );
+    expect(revRow.rows).toHaveLength(1);
+    expect(revRow.rows[0].changed_fields.lm_distance.after).toBe(1888);
+    expect(revRow.rows[0].previous_source_snapshot).toBeNull();
+    expect(revRow.rows[0].new_source_snapshot).toEqual({});
+    expect(Object.keys(revRow.rows[0].previous_derived_snapshot).sort()).toEqual([
+      'otp_performance',
+      'otp_plus_3_performance',
+    ]);
+    expect(Object.keys(revRow.rows[0].new_derived_snapshot).sort()).toEqual([
+      'otp_performance',
+      'otp_plus_3_performance',
+    ]);
+
+    // Retention cleanup prunes >7d revisions and >2d batch rows while keeping today's orders
+    await db.exec(`
+      UPDATE public.order_revision_history SET changed_at = NOW() - INTERVAL '8 days' WHERE order_id = 'OPT_ORD_2';
+      UPDATE public.ingestion_batch_rows SET processed_at = NOW() - INTERVAL '3 days' WHERE order_id = 'OPT_ORD_2';
+    `);
+    const cleanupRes = await db.query<{ res: { deleted_revisions: number; deleted_batch_rows: number } }>(
+      `SELECT public.cleanup_old_orders(30) AS res`
+    );
+    expect(cleanupRes.rows[0].res.deleted_revisions).toBe(1);
+    // Batch 1 ('inserted') + Batch 2 ('updated') for OPT_ORD_2 = 2 aged rows pruned; OPT_ORD_1 stays
+    expect(cleanupRes.rows[0].res.deleted_batch_rows).toBe(2);
+    const remainingBatchRows = await db.query<{ order_id: string }>(
+      `SELECT order_id FROM public.ingestion_batch_rows`
+    );
+    expect(remainingBatchRows.rows).toEqual([{ order_id: 'OPT_ORD_1' }]);
+  });
 });

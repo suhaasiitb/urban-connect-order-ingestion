@@ -84,8 +84,8 @@ export interface OrderRevisionAuditRecord {
   order_id: string;
   action_type: 'INSERT' | 'UPDATE';
   changed_fields: Record<string, { before: unknown; after: unknown }>;
-  previous_source_snapshot: Record<string, unknown> | null;
-  new_source_snapshot: Record<string, unknown>;
+  previous_source_snapshot?: Record<string, unknown> | null;
+  new_source_snapshot?: Record<string, unknown>;
   previous_derived_snapshot: Record<string, unknown> | null;
   new_derived_snapshot: Record<string, unknown>;
   changed_at: string;
@@ -231,7 +231,7 @@ export async function submitConfirmedOrderBatch(params: {
   const rpcRecords = validation.rows.map((r) => ({
     source_row_number: r.source_row_number,
     source_row_hash: r.source_row_hash,
-    raw_source_snapshot: r.raw_source_snapshot,
+    raw_source_snapshot: {},
     normalized_source: r.normalized_source,
     derived_fields: r.derived_fields,
   }));
@@ -583,7 +583,7 @@ export async function fetchBatchInspectionDetails(batchId: string): Promise<{
     supabase
       .from('order_revision_history')
       .select(
-        'id, order_id, action_type, changed_fields, previous_source_snapshot, new_source_snapshot, previous_derived_snapshot, new_derived_snapshot, changed_at'
+        'id, order_id, action_type, changed_fields, previous_derived_snapshot, new_derived_snapshot, changed_at'
       )
       .eq('batch_id', batchId)
       .order('changed_at', { ascending: false })

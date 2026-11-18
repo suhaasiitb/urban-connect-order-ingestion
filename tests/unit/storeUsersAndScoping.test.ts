@@ -68,6 +68,7 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
       '20261024000002_store_users_and_scoping.sql',
       '20261117000001_add_otp_breach_rca_to_orders.sql',
       '20261117000002_add_dsr_rca_to_orders.sql',
+      '20261118000001_optimize_storage_and_retention.sql',
     ];
 
     for (const file of migrationFiles) {

@@ -394,7 +394,7 @@ export async function handleIngestOrderBatch(params: {
   const rpcRecords: RpcOrderRecordPayload[] = validation.rows.map((r) => ({
     source_row_number: r.source_row_number,
     source_row_hash: r.source_row_hash,
-    raw_source_snapshot: r.raw_source_snapshot,
+    raw_source_snapshot: {},
     normalized_source: r.normalized_source,
     derived_fields: r.derived_fields,
   }));
