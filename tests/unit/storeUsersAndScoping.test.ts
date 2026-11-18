@@ -66,10 +66,13 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
       '20261023000001_rider_shifts_schema.sql',
       '20261024000001_new_rider_onboarding.sql',
       '20261024000002_store_users_and_scoping.sql',
+      '20261031000002_rider_attendance_schema.sql',
+      '20261106000001_add_referral_columns_to_store_rider_shifts.sql',
       '20261117000001_add_otp_breach_rca_to_orders.sql',
       '20261117000002_add_dsr_rca_to_orders.sql',
       '20261118000001_optimize_storage_and_retention.sql',
       '20261118000002_add_incorrect_address_dsr_rca.sql',
+      '20261118000003_clear_tpe2_rider_shifts.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -494,5 +497,58 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
     ).rejects.toThrow(/Access denied/);
 
     await db.exec(`RESET ROLE;`);
+  });
+
+  it('clears all tagged shifts and attendance shift snapshots for TPE2 while keeping other stores untouched', async () => {
+    const tpe2Res = await db.query<{ id: string }>(
+      `INSERT INTO public.stores (store_code, store_name, external_store_id, timezone, is_active)
+       VALUES ('TPE2', 'Ambegaon (TPE2)', '4298', 'Asia/Kolkata', true)
+       ON CONFLICT (store_code) DO UPDATE SET store_name = EXCLUDED.store_name
+       RETURNING id`
+    );
+    const tpe2StoreId = tpe2Res.rows[0].id;
+
+    await db.exec(`
+      INSERT INTO public.store_rider_shifts (store_id, rider_name, normalized_name, shift_type, total_planned_hours, onboarded_by)
+      VALUES
+        ('${tpe2StoreId}', 'TPE2 Rider Plain', 'tpe2 rider plain', 'Morning Shift', 8.0, NULL),
+        ('${tpe2StoreId}', 'TPE2 Rider Meta', 'tpe2 rider meta', 'Split Shift', 8.0, 'Sunil'),
+        ('${tmk7StoreId}', 'TMK7 Rider Keep', 'tmk7 rider keep', 'Evening Shift', 8.0, NULL);
+
+      INSERT INTO public.store_rider_attendance (store_id, warehouse_id, attendance_date, rider_name, normalized_name, shift_type)
+      VALUES
+        ('${tpe2StoreId}', 'TPE2', '2026-11-18', 'TPE2 Rider Plain', 'tpe2 rider plain', 'Morning Shift'),
+        ('${tmk7StoreId}', 'TMK7', '2026-11-18', 'TMK7 Rider Keep', 'tmk7 rider keep', 'Evening Shift');
+    `);
+
+    const clearSql = fs.readFileSync(
+      path.join(MIGRATIONS_DIR, '20261118000003_clear_tpe2_rider_shifts.sql'),
+      'utf8'
+    );
+    await db.exec(clearSql);
+
+    const tpe2Shifts = await db.query<{ normalized_name: string; shift_type: string; total_planned_hours: string; onboarded_by: string | null }>(
+      `SELECT normalized_name, shift_type, total_planned_hours::text, onboarded_by
+       FROM public.store_rider_shifts WHERE store_id = '${tpe2StoreId}'`
+    );
+    expect(tpe2Shifts.rows).toEqual([
+      {
+        normalized_name: 'tpe2 rider meta',
+        shift_type: 'UNASSIGNED',
+        total_planned_hours: '0.0',
+        onboarded_by: 'Sunil',
+      },
+    ]);
+
+    const tpe2Attendance = await db.query<{ cnt: number }>(
+      `SELECT count(*)::int AS cnt FROM public.store_rider_attendance WHERE warehouse_id = 'TPE2'`
+    );
+    expect(tpe2Attendance.rows[0].cnt).toBe(0);
+
+    const tmk7Shifts = await db.query<{ shift_type: string }>(
+      `SELECT shift_type FROM public.store_rider_shifts
+       WHERE store_id = '${tmk7StoreId}' AND normalized_name = 'tmk7 rider keep'`
+    );
+    expect(tmk7Shifts.rows).toEqual([{ shift_type: 'Evening Shift' }]);
   });
 });
