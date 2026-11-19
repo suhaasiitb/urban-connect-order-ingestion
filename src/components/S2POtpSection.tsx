@@ -25,9 +25,16 @@ import {
   getDayOfWeekName,
   getDphImpactedSlots,
 } from '../services/s2pOtpService';
+import {
+  buildSnapshotHeader,
+  buildSnapshotTableCard,
+  createSnapshotEnvironment,
+  renderAndDownloadSnapshot,
+} from '../utils/snapshotExport';
 import { S2PKpiCardsGrid } from './S2PKpiCardsGrid';
 import { OtpBreachedRidersModal } from './OtpBreachedRidersModal';
 import { OtpBreachRcaModal } from './OtpBreachRcaModal';
+import { SnapshotButton, type SnapshotStatus } from './SnapshotButton';
 
 interface S2POtpSectionProps {
   stores: StoreMaster[];
@@ -56,24 +63,6 @@ const PRESET_ITEMS: PresetItem[] = [
   { id: 20, label: '20 Days', tooltip: 'Last 20 days' },
   { id: 30, label: '30 Days', tooltip: 'Last 30 days' },
 ];
-
-const ClipboardDocIcon: React.FC = () => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-    <rect x="9" y="3" width="6" height="4" rx="1" />
-    <path d="M9 12h6M9 16h4" />
-  </svg>
-);
 
 export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   stores,
@@ -105,11 +94,11 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   const kpiGridWrapperRef = useRef<HTMLDivElement | null>(null);
   const dailyTableContainerRef = useRef<HTMLDivElement | null>(null);
   const [takingScreenshot, setTakingScreenshot] = useState<boolean>(false);
-  const [screenshotStatus, setScreenshotStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [screenshotStatus, setScreenshotStatus] = useState<SnapshotStatus>('idle');
   const [takingRcaSnapshot, setTakingRcaSnapshot] = useState<boolean>(false);
-  const [rcaSnapshotStatus, setRcaSnapshotStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [rcaSnapshotStatus, setRcaSnapshotStatus] = useState<SnapshotStatus>('idle');
   const [takingBtoSnapshot, setTakingBtoSnapshot] = useState<boolean>(false);
-  const [btoSnapshotStatus, setBtoSnapshotStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [btoSnapshotStatus, setBtoSnapshotStatus] = useState<SnapshotStatus>('idle');
 
   // Strictly ensure the displayed summary matches the currently selected store and [startDate, endDate] window
   const activeSummary = useMemo<S2POtpSummaryResult | null>(() => {
@@ -430,170 +419,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     exportS2POtpToExcel(activeSummary, selectedStore.store_code);
   };
 
-  const createSnapshotEnvironment = (minWidth: number) => {
-    const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
-    const bgColor = isDarkTheme ? '#0b0d12' : '#f8fafc';
-    const textColor = isDarkTheme ? '#f1f5f9' : '#0f172a';
-    const subTextColor = isDarkTheme ? '#94a3b8' : '#475569';
-    const borderColor = isDarkTheme ? '#1e293b' : '#e2e8f0';
-
-    const offscreenHost = document.createElement('div');
-    offscreenHost.style.position = 'fixed';
-    offscreenHost.style.left = '-99999px';
-    offscreenHost.style.top = '0';
-    offscreenHost.style.pointerEvents = 'none';
-    offscreenHost.style.zIndex = '-1';
-
-    const captureTarget = document.createElement('div');
-    captureTarget.dataset.screenshotRoot = 'true';
-    captureTarget.className = 'analytics-container s2p-otp-container';
-    captureTarget.style.width = `${minWidth}px`;
-    captureTarget.style.padding = '20px 24px 24px';
-    captureTarget.style.backgroundColor = bgColor;
-    captureTarget.style.display = 'flex';
-    captureTarget.style.flexDirection = 'column';
-    captureTarget.style.gap = '16px';
-    captureTarget.style.boxSizing = 'border-box';
-    captureTarget.style.margin = '0';
-
-    return { offscreenHost, captureTarget, bgColor, textColor, subTextColor, borderColor };
-  };
-
-  const buildSnapshotHeader = (
-    titleText: string,
-    subtitleText: string,
-    colors: { textColor: string; subTextColor: string; borderColor: string }
-  ) => {
-    const headerBar = document.createElement('div');
-    headerBar.style.display = 'flex';
-    headerBar.style.alignItems = 'center';
-    headerBar.style.justifyContent = 'space-between';
-    headerBar.style.gap = '12px';
-    headerBar.style.paddingBottom = '10px';
-    headerBar.style.borderBottom = `1px solid ${colors.borderColor}`;
-
-    const leftMeta = document.createElement('div');
-    const titleEl = document.createElement('div');
-    titleEl.textContent = titleText;
-    titleEl.style.fontSize = '16px';
-    titleEl.style.fontWeight = '700';
-    titleEl.style.color = colors.textColor;
-
-    const subEl = document.createElement('div');
-    subEl.textContent = subtitleText;
-    subEl.style.fontSize = '12px';
-    subEl.style.color = colors.subTextColor;
-    subEl.style.marginTop = '2px';
-    leftMeta.append(titleEl, subEl);
-
-    const rightMeta = document.createElement('div');
-    rightMeta.textContent = `Captured ${new Date().toLocaleString('en-IN', {
-      timeZone,
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })}`;
-    rightMeta.style.fontSize = '11px';
-    rightMeta.style.color = colors.subTextColor;
-    rightMeta.style.whiteSpace = 'nowrap';
-
-    headerBar.append(leftMeta, rightMeta);
-    return headerBar;
-  };
-
-  const renderAndDownloadSnapshot = async (params: {
-    analyticsRoot: HTMLElement;
-    offscreenHost: HTMLElement;
-    captureTarget: HTMLElement;
-    bgColor: string;
-    minWidth: number;
-    fileName: string;
-  }) => {
-    const { analyticsRoot, offscreenHost, captureTarget, bgColor, minWidth, fileName } = params;
-    offscreenHost.appendChild(captureTarget);
-    analyticsRoot.appendChild(offscreenHost);
-
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-    );
-
-    const finalWidth = Math.max(minWidth, captureTarget.scrollWidth);
-    captureTarget.style.width = `${finalWidth}px`;
-    const finalHeight = captureTarget.scrollHeight;
-
-    const onCloneEachNode = (cloned: Node) => {
-      if (!(cloned instanceof HTMLElement)) return;
-      if (cloned.dataset.screenshotRoot === 'true') return;
-
-      const isFixedIcon =
-        cloned.classList.contains('s2p-expand-toggle-btn') ||
-        cloned.classList.contains('snop-breach-toggle-dot');
-
-      if (!isFixedIcon) {
-        // Clear frozen pixel height / logical box sizes computed in source font
-        // so text & flex containers flow naturally inside SVG <foreignObject> without overlapping.
-        cloned.style.removeProperty('height');
-        cloned.style.removeProperty('block-size');
-        cloned.style.removeProperty('inline-size');
-
-        const tag = cloned.tagName;
-        const isFlexOrText =
-          tag === 'SPAN' ||
-          tag === 'STRONG' ||
-          tag === 'H3' ||
-          tag === 'H4' ||
-          tag === 'P' ||
-          tag === 'BUTTON' ||
-          cloned.classList.contains('segmented-control') ||
-          cloned.classList.contains('flex-row');
-
-        if (isFlexOrText) {
-          cloned.style.removeProperty('width');
-        }
-        if (cloned.classList.contains('kpi-header-row') || cloned.classList.contains('s2p-slot-header')) {
-          cloned.style.width = '100%';
-        }
-        if (
-          cloned.classList.contains('badge') ||
-          cloned.classList.contains('segmented-btn') ||
-          cloned.classList.contains('dph-impacted-slots')
-        ) {
-          cloned.style.whiteSpace = 'nowrap';
-        }
-      }
-    };
-
-    const { domToPng } = await import('modern-screenshot');
-    let dataUrl: string;
-    try {
-      dataUrl = await domToPng(captureTarget, {
-        scale: 2,
-        backgroundColor: bgColor,
-        width: finalWidth,
-        height: finalHeight,
-        onCloneEachNode,
-      });
-    } catch {
-      dataUrl = await domToPng(captureTarget, {
-        scale: 2,
-        backgroundColor: bgColor,
-        width: finalWidth,
-        height: finalHeight,
-        font: false,
-        onCloneEachNode,
-      });
-    }
-
-    const link = document.createElement('a');
-    link.download = fileName;
-    link.href = dataUrl;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const handleTakeScreenshot = async () => {
     const analyticsRoot = analyticsContainerRef.current;
     const kpiEl = kpiGridWrapperRef.current?.querySelector('.kpi-grid') as HTMLElement | null;
@@ -621,6 +446,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           `Period: ${rangeText} · ${activeSummary.days.length} ${
             activeSummary.days.length === 1 ? 'Day' : 'Days'
           } · ${activeSummary.overallTotalOrders.toLocaleString()} Orders`,
+          timeZone,
           { textColor, subTextColor, borderColor }
         )
       );
@@ -709,7 +535,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
       const dateSlug = startDate === endDate ? startDate : `${startDate}_to_${endDate}`;
       await renderAndDownloadSnapshot({
-        analyticsRoot,
+        rootContainer: analyticsRoot,
         offscreenHost,
         captureTarget,
         bgColor,
@@ -727,89 +553,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       offscreenHost.remove();
       setTakingScreenshot(false);
     }
-  };
-
-  const buildSnapshotTableCard = (params: {
-    cardTitle: string;
-    borderColor: string;
-    headers: Array<{ label: string; className?: string; width?: string }>;
-    rows: Array<Array<{ text: string; className?: string }>>;
-    emptyText: string;
-    footerCells?: Array<{ text: string; className?: string; colSpan?: number }>;
-  }) => {
-    const { cardTitle, borderColor, headers, rows, emptyText, footerCells } = params;
-    const card = document.createElement('div');
-    card.className = 's2p-slot-breakdown-card';
-    card.style.border = `1px solid ${borderColor}`;
-    card.style.borderRadius = '10px';
-    card.style.padding = '14px';
-
-    const heading = document.createElement('h4');
-    heading.className = 's2p-slot-title';
-    heading.textContent = cardTitle;
-    heading.style.marginBottom = '10px';
-    card.appendChild(heading);
-
-    const tableWrap = document.createElement('div');
-    tableWrap.className = 'excel-pivot-table-container';
-    tableWrap.style.overflowX = 'visible';
-
-    const table = document.createElement('table');
-    table.className = 'excel-pivot-table';
-
-    const thead = document.createElement('thead');
-    const headRow = document.createElement('tr');
-    for (const h of headers) {
-      const th = document.createElement('th');
-      if (h.className) th.className = h.className;
-      if (h.width) th.style.width = h.width;
-      th.textContent = h.label;
-      headRow.appendChild(th);
-    }
-    thead.appendChild(headRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    if (rows.length === 0) {
-      const emptyRow = document.createElement('tr');
-      const emptyCell = document.createElement('td');
-      emptyCell.colSpan = headers.length;
-      emptyCell.className = 'text-center text-green font-semibold';
-      emptyCell.textContent = emptyText;
-      emptyRow.appendChild(emptyCell);
-      tbody.appendChild(emptyRow);
-    } else {
-      for (const cells of rows) {
-        const tr = document.createElement('tr');
-        for (const cell of cells) {
-          const td = document.createElement('td');
-          if (cell.className) td.className = cell.className;
-          td.textContent = cell.text;
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      }
-    }
-    table.appendChild(tbody);
-
-    if (footerCells && footerCells.length > 0) {
-      const tfoot = document.createElement('tfoot');
-      const footRow = document.createElement('tr');
-      footRow.className = 'excel-pivot-grand-total';
-      for (const fc of footerCells) {
-        const td = document.createElement('td');
-        if (fc.colSpan && fc.colSpan > 1) td.colSpan = fc.colSpan;
-        if (fc.className) td.className = fc.className;
-        td.textContent = fc.text;
-        footRow.appendChild(td);
-      }
-      tfoot.appendChild(footRow);
-      table.appendChild(tfoot);
-    }
-
-    tableWrap.appendChild(table);
-    card.appendChild(tableWrap);
-    return card;
   };
 
   const handleDownloadRcaSnapshot = async () => {
@@ -855,6 +598,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           } · ${pivots.distinctRiders} ${pivots.distinctRiders === 1 ? 'Rider' : 'Riders'} · ${
             pivots.rcaTaggedCount
           }/${pivots.totalBreaches} RCA Tagged (${coveragePct}%)`,
+          timeZone,
           { textColor, subTextColor, borderColor }
         )
       );
@@ -943,7 +687,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
       const dateSlug = startDate === endDate ? startDate : `${startDate}_to_${endDate}`;
       await renderAndDownloadSnapshot({
-        analyticsRoot,
+        rootContainer: analyticsRoot,
         offscreenHost,
         captureTarget,
         bgColor,
@@ -1007,6 +751,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           } (RTO_DELIVERED) · ${btoSummary.distinctRiders} ${
             btoSummary.distinctRiders === 1 ? 'Rider' : 'Riders'
           } · ${btoSummary.rcaTaggedCount}/${btoSummary.totalBtoOrders} RCA Tagged (${coveragePct}%)`,
+          timeZone,
           { textColor, subTextColor, borderColor }
         )
       );
@@ -1093,7 +838,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
 
       const dateSlug = isMultiDay ? `${startDate}_to_${endDate}` : startDate;
       await renderAndDownloadSnapshot({
-        analyticsRoot,
+        rootContainer: analyticsRoot,
         offscreenHost,
         captureTarget,
         bgColor,
@@ -1352,79 +1097,48 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               <h3 className="section-title editorial-serif-heading">Daily S2P, OTP, DPH &amp; DSR Summary</h3>
             </div>
             <div className="flex-row items-center gap-sm flex-wrap s2p-summary-header-actions">
-              <button
-                type="button"
-                className={`s2p-screenshot-btn ${screenshotStatus === 'saved' ? 'saved' : ''} ${
-                  screenshotStatus === 'error' ? 'error' : ''
-                }`}
+              <SnapshotButton
+                icon="camera"
+                loading={takingScreenshot}
+                status={screenshotStatus}
+                disabled={!activeSummary || activeSummary.days.length === 0 || loading}
                 onClick={() => void handleTakeScreenshot()}
-                disabled={!activeSummary || activeSummary.days.length === 0 || loading || takingScreenshot}
                 title="Capture and download the top KPI cards and Daily/Hourly Slot Summary together in one PNG snapshot"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
-                </svg>
-                <span>
-                  {takingScreenshot
-                    ? 'Capturing...'
-                    : screenshotStatus === 'saved'
-                    ? 'Screenshot Saved'
-                    : screenshotStatus === 'error'
-                    ? 'Screenshot Failed'
-                    : 'Take Screenshot'}
-                </span>
-              </button>
-              <button
-                type="button"
-                className={`s2p-screenshot-btn ${rcaSnapshotStatus === 'saved' ? 'saved' : ''} ${
-                  rcaSnapshotStatus === 'error' ? 'error' : ''
-                }`}
+                labels={{
+                  idle: 'Take Screenshot',
+                  loading: 'Capturing...',
+                  saved: 'Screenshot Saved',
+                  error: 'Screenshot Failed',
+                }}
+              />
+              <SnapshotButton
+                icon="clipboard"
+                loading={takingRcaSnapshot}
+                status={rcaSnapshotStatus}
+                disabled={!activeSummary || activeSummary.days.length === 0 || loading}
                 onClick={() => void handleDownloadRcaSnapshot()}
-                disabled={!activeSummary || activeSummary.days.length === 0 || loading || takingRcaSnapshot}
                 title="Download OTP Breach RCA summary snapshot with Rider, RCA, and Slot pivot tables"
-              >
-                <ClipboardDocIcon />
-                <span>
-                  {takingRcaSnapshot
-                    ? 'Capturing RCA...'
-                    : rcaSnapshotStatus === 'saved'
-                    ? 'RCA Saved'
-                    : rcaSnapshotStatus === 'error'
-                    ? 'RCA Failed'
-                    : 'OTP Breach RCA'}
-                </span>
-              </button>
-              <button
-                type="button"
-                className={`s2p-screenshot-btn ${btoSnapshotStatus === 'saved' ? 'saved' : ''} ${
-                  btoSnapshotStatus === 'error' ? 'error' : ''
-                }`}
+                labels={{
+                  idle: 'OTP Breach RCA',
+                  loading: 'Capturing RCA...',
+                  saved: 'RCA Saved',
+                  error: 'RCA Failed',
+                }}
+              />
+              <SnapshotButton
+                icon="clipboard"
+                loading={takingBtoSnapshot}
+                status={btoSnapshotStatus}
+                disabled={!activeSummary || activeSummary.days.length === 0 || loading}
                 onClick={() => void handleDownloadBtoRcaSnapshot()}
-                disabled={!activeSummary || activeSummary.days.length === 0 || loading || takingBtoSnapshot}
                 title="Download BTO RCA summary snapshot with Rider vs BTO Count pivot table and Rider / Order ID / RCA list"
-              >
-                <ClipboardDocIcon />
-                <span>
-                  {takingBtoSnapshot
-                    ? 'Capturing BTO...'
-                    : btoSnapshotStatus === 'saved'
-                    ? 'BTO Saved'
-                    : btoSnapshotStatus === 'error'
-                    ? 'BTO Failed'
-                    : 'BTO RCA'}
-                </span>
-              </button>
+                labels={{
+                  idle: 'BTO RCA',
+                  loading: 'Capturing BTO...',
+                  saved: 'BTO Saved',
+                  error: 'BTO Failed',
+                }}
+              />
               <button
                 type="button"
                 className={`snop-breach-toggle-btn ${showSnopBreach ? 'active' : ''}`}

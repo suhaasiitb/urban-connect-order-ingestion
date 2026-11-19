@@ -6,7 +6,13 @@ import {
   type S2POtpSummaryResult,
   fetchS2POtpAnalytics,
 } from '../services/s2pOtpService';
+import {
+  createSnapshotEnvironment,
+  formatCapturedTimestamp,
+  renderAndDownloadSnapshot,
+} from '../utils/snapshotExport';
 import { S2PKpiCardsGrid } from './S2PKpiCardsGrid';
+import { SnapshotButton, type SnapshotStatus } from './SnapshotButton';
 
 interface AdminDashboardSectionProps {
   stores: StoreMaster[];
@@ -39,9 +45,13 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
   const [storeStates, setStoreStates] = useState<Record<string, StoreTodayState>>({});
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [takingScreenshot, setTakingScreenshot] = useState<boolean>(false);
+  const [screenshotStatus, setScreenshotStatus] = useState<SnapshotStatus>('idle');
   const latestRequestIdRef = useRef<number>(0);
+  const dashboardContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const primaryTodayStr = getTodayDateString(orderedStores[0]?.timezone || 'Asia/Kolkata');
+  const primaryTimeZone = orderedStores[0]?.timezone || 'Asia/Kolkata';
+  const primaryTodayStr = getTodayDateString(primaryTimeZone);
 
   const loadAllStoresToday = useCallback(
     async (forceRefresh = false) => {
@@ -141,8 +151,72 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
     };
   }, [orderedStores, storeStates, primaryTodayStr]);
 
+  const handleTakeScreenshot = async () => {
+    const dashboardRoot = dashboardContainerRef.current;
+    if (!dashboardRoot || orderedStores.length === 0 || isAnyStoreLoading || refreshing || takingScreenshot) {
+      return;
+    }
+
+    setTakingScreenshot(true);
+    setScreenshotStatus('idle');
+
+    const minWidth = Math.max(1360, dashboardRoot.scrollWidth || 1360);
+    const { offscreenHost, captureTarget, bgColor, subTextColor } = createSnapshotEnvironment(
+      minWidth,
+      'analytics-container admin-dashboard-container'
+    );
+    captureTarget.style.gap = '0.75rem';
+
+    try {
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+
+      for (const child of Array.from(dashboardRoot.children)) {
+        if (!(child instanceof HTMLElement)) continue;
+        if (child.contains(offscreenHost) || child.dataset.screenshotRoot === 'true') continue;
+
+        const cloned = child.cloneNode(true) as HTMLElement;
+        cloned.querySelectorAll('[data-snapshot-exclude="true"]').forEach((el) => el.remove());
+
+        if (cloned.classList.contains('admin-dashboard-header-card')) {
+          const topHeaderRow = cloned.querySelector(':scope > div:first-child') as HTMLElement | null;
+          if (topHeaderRow) {
+            const stampEl = document.createElement('span');
+            stampEl.textContent = formatCapturedTimestamp(primaryTimeZone);
+            stampEl.style.fontSize = '11px';
+            stampEl.style.color = subTextColor;
+            stampEl.style.whiteSpace = 'nowrap';
+            topHeaderRow.appendChild(stampEl);
+          }
+        }
+
+        captureTarget.appendChild(cloned);
+      }
+
+      await renderAndDownloadSnapshot({
+        rootContainer: dashboardRoot,
+        offscreenHost,
+        captureTarget,
+        bgColor,
+        minWidth,
+        fileName: `Executive-Dashboard-All-Stores-${primaryTodayStr}.png`,
+      });
+
+      setScreenshotStatus('saved');
+      window.setTimeout(() => setScreenshotStatus('idle'), 2200);
+    } catch (err) {
+      console.error('Failed to capture Executive Dashboard screenshot:', err);
+      setScreenshotStatus('error');
+      window.setTimeout(() => setScreenshotStatus('idle'), 3000);
+    } finally {
+      offscreenHost.remove();
+      setTakingScreenshot(false);
+    }
+  };
+
   return (
-    <div className="analytics-container admin-dashboard-container">
+    <div ref={dashboardContainerRef} className="analytics-container admin-dashboard-container">
       <div className="section-card admin-dashboard-header-card">
         <div className="flex-row items-center justify-between flex-wrap gap-sm">
           <div>
@@ -158,14 +232,30 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
               {lastUpdatedAt ? ` · Updated ${lastUpdatedAt}` : ''}
             </p>
           </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => void loadAllStoresToday(true)}
-            disabled={refreshing}
-          >
-            {refreshing ? 'Refreshing...' : '↻ Refresh All'}
-          </button>
+          <div className="flex-row items-center gap-sm flex-wrap" data-snapshot-exclude="true">
+            <SnapshotButton
+              icon="camera"
+              loading={takingScreenshot}
+              status={screenshotStatus}
+              disabled={orderedStores.length === 0 || isAnyStoreLoading || refreshing}
+              onClick={() => void handleTakeScreenshot()}
+              title="Capture and download the All-Store Summary and Individual Store Breakdown together in one PNG snapshot"
+              labels={{
+                idle: 'Take Screenshot',
+                loading: 'Capturing...',
+                saved: 'Screenshot Saved',
+                error: 'Screenshot Failed',
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => void loadAllStoresToday(true)}
+              disabled={refreshing}
+            >
+              {refreshing ? 'Refreshing...' : '↻ Refresh All'}
+            </button>
+          </div>
         </div>
 
         <S2PKpiCardsGrid
@@ -216,6 +306,7 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
+                data-snapshot-exclude="true"
                 onClick={() => onOpenStoreS2POtp(store.id)}
               >
                 View Store S2P &amp; OTP →
