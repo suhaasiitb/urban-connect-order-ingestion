@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type RiderPerformancePivotResult,
+  buildRiderPerformanceExportSheet,
   formatDateToHeader,
   getAllDatesInRange,
   getDateRangeForDays,
@@ -192,5 +194,165 @@ describe('Rider Performance Analytics Unit Tests', () => {
     const activeWorkingDays = 2;
     const activeAvgDistanceKm = Math.round((totalDistanceKm / activeWorkingDays) * 10) / 10; // 8.5 / 2 = 4.3 km/day
     expect(activeAvgDistanceKm).toBe(4.3);
+  });
+
+  it('builds Rider Performance export matching filtered table rows, referral/shift metadata, active days, and 8h target', () => {
+    const filteredPivot: RiderPerformancePivotResult = {
+      storeId: 'store-tpe2',
+      startDate: '2026-11-04',
+      endDate: '2026-11-05',
+      periodDays: 2,
+      totalRiders: 2,
+      overallAvgHours: 4.3,
+      overallAvgOrders: 9,
+      dateColumns: [
+        { dateStr: '2026-11-05', formattedHeader: '05-Nov' },
+        { dateStr: '2026-11-04', formattedHeader: '04-Nov' },
+      ],
+      rows: [
+        {
+          riderName: 'Aditya Ananta Yadav',
+          dailyMetrics: {
+            '2026-11-05': { hours: 9, orders: 20, distanceKm: 55.2 },
+            '2026-11-04': { hours: 8, orders: 16, distanceKm: 42.1 },
+          },
+          workingDays: 2,
+          totalHours: 17,
+          totalOrders: 36,
+          totalDistanceKm: 97.3,
+          avgHours: 8.5,
+          avgOrders: 18,
+          avgDistanceKm: 48.7,
+          activeAvgHours: 8.5,
+          activeAvgOrders: 18,
+          activeAvgDistanceKm: 48.7,
+          otpBreachedCount: 2,
+          otpBreachedDays: 2,
+        },
+        {
+          riderName: 'Zero Turnup Referral',
+          dailyMetrics: {},
+          workingDays: 0,
+          totalHours: 0,
+          totalOrders: 0,
+          totalDistanceKm: 0,
+          avgHours: 0,
+          avgOrders: 0,
+          avgDistanceKm: 0,
+          activeAvgHours: 0,
+          activeAvgOrders: 0,
+          activeAvgDistanceKm: 0,
+        },
+      ],
+    };
+
+    const activeNames = new Set<string>(['aditya ananta yadav']);
+    const phoneMap = new Map<string, string>([['aditya ananta yadav', '9876543210']]);
+    const shiftsMap = new Map([
+      [
+        'aditya ananta yadav',
+        {
+          shiftType: 'Split Shift',
+          timings: '7 AM - 12 PM & 4 PM - 9 PM',
+          target8h: '≥ 8h',
+          onboardedBy: 'Supervisor',
+          referredBy: 'KETAN JADHAV',
+          referredPhone: '9000011111',
+        },
+      ],
+      [
+        'zero turnup referral',
+        {
+          shiftType: 'Unassigned',
+          timings: '',
+          target8h: '—',
+          onboardedBy: null,
+          referredBy: 'KETAN JADHAV',
+          referredPhone: null,
+        },
+      ],
+    ]);
+
+    const { sheetData, merges, filename } = buildRiderPerformanceExportSheet(
+      filteredPivot,
+      'TPE2',
+      false,
+      activeNames,
+      phoneMap,
+      shiftsMap,
+      { includeOtpBreachCol: true }
+    );
+
+    expect(filename).toBe('Rider_Performance_TPE2_2026-11-04_to_2026-11-05.xlsx');
+    // 2 header rows + 2 filtered rider rows
+    expect(sheetData).toHaveLength(4);
+    expect(sheetData[0].slice(0, 11)).toEqual([
+      'Rider Name',
+      'Rider Number',
+      'Active',
+      'Shift',
+      'Timings',
+      '8h Target',
+      'Active Days',
+      'Onboarded By',
+      'Referred By',
+      'Referred Mobile No',
+      'OTP Breaches',
+    ]);
+    // Dynamic merges start right after baseColCount (11)
+    expect(merges[0]).toEqual({ s: { r: 0, c: 11 }, e: { r: 0, c: 13 } });
+    expect(merges[1]).toEqual({ s: { r: 0, c: 14 }, e: { r: 0, c: 16 } });
+
+    // Row 1: active referral rider with deliveries
+    expect(sheetData[2]).toEqual([
+      'Aditya Ananta Yadav',
+      '9876543210',
+      'Yes',
+      'Split Shift',
+      '7 AM - 12 PM & 4 PM - 9 PM',
+      '≥ 8h',
+      2,
+      'Supervisor',
+      'KETAN JADHAV',
+      '9000011111',
+      '2 (2d)',
+      9,
+      20,
+      55.2,
+      8,
+      16,
+      42.1,
+      8.5,
+      18,
+      48.7,
+      36,
+      97.3,
+    ]);
+
+    // Row 2: 0-delivery referral rider with blank daily metrics
+    expect(sheetData[3]).toEqual([
+      'Zero Turnup Referral',
+      '',
+      'No',
+      'Unassigned',
+      '',
+      '—',
+      0,
+      '',
+      'KETAN JADHAV',
+      '',
+      '0',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
   });
 });

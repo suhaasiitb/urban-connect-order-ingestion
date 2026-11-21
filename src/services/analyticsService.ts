@@ -543,48 +543,73 @@ export async function fetchRiderPerformanceAnalytics(params: {
   }
 }
 
-/**
- * Exports the Rider Performance Pivot Table to a formatted Excel workbook (.xlsx).
- */
-export function exportRiderPerformanceToExcel(
+export interface RiderExportShiftMeta {
+  shiftType: string;
+  timings?: string;
+  target8h?: string;
+  onboardedBy?: string | null;
+  referredBy?: string | null;
+  referredPhone?: string | null;
+}
+
+export interface RiderExportExtraColumnMeta {
+  otpBreachesLabel?: string;
+  dnrSummaryLabel?: string;
+}
+
+export interface RiderExportOptions {
+  includeOtpBreachCol?: boolean;
+  includeDnrCol?: boolean;
+  extraMetaByNameMap?: Map<string, RiderExportExtraColumnMeta>;
+}
+
+export function buildRiderPerformanceExportSheet(
   pivot: RiderPerformancePivotResult,
   storeCode: string,
   useActiveAvg = false,
   activeNamesSet?: Set<string>,
   phoneByNameMap?: Map<string, string>,
-  riderShiftsMap?: Map<
-    string,
-    {
-      shiftType: string;
-      timings?: string;
-      onboardedBy?: string | null;
-      referredBy?: string | null;
-      referredPhone?: string | null;
-    }
-  >
-): void {
-  const wb = XLSX.utils.book_new();
+  riderShiftsMap?: Map<string, RiderExportShiftMeta>,
+  options?: RiderExportOptions
+): {
+  sheetData: Array<Array<string | number>>;
+  merges: XLSX.Range[];
+  filename: string;
+} {
+  const includeOtpCol = Boolean(options?.includeOtpBreachCol);
+  const includeDnrCol = Boolean(options?.includeDnrCol);
+  const extraMetaMap = options?.extraMetaByNameMap;
 
   // Row 1: Group headers
-  // [Rider Name, Rider Number, Active, Shift, Timings, Onboarded By, Referred By, Referred Mobile No, Date1, '', '', Date2, '', '', ... Avg, '', '', Totals, '']
   const row1: string[] = [
     'Rider Name',
     'Rider Number',
     'Active',
     'Shift',
     'Timings',
+    '8h Target',
+    'Active Days',
     'Onboarded By',
     'Referred By',
     'Referred Mobile No',
   ];
-  const row2: string[] = ['', '', '', '', '', '', '', ''];
+  if (includeOtpCol) {
+    row1.push('OTP Breaches');
+  }
+  if (includeDnrCol) {
+    row1.push('DNR Cases');
+  }
+  const baseColCount = row1.length;
+  const row2: string[] = Array(baseColCount).fill('');
 
   for (const col of pivot.dateColumns) {
     row1.push(col.formattedHeader, '', '');
     row2.push('Hours', 'Orders', 'KM');
   }
 
-  const periodLabel = useActiveAvg ? 'Active Days Avg' : `${pivot.dateColumns.length} Days Avg`;
+  const periodLabel = useActiveAvg
+    ? 'Active Days Avg'
+    : `${pivot.periodDays || pivot.dateColumns.length} Days Avg`;
   row1.push(periodLabel, '', '', 'Totals', '');
   row2.push('Hours', 'Orders', 'KM', 'Total Orders', 'Total KM');
 
@@ -592,11 +617,12 @@ export function exportRiderPerformanceToExcel(
 
   for (const row of pivot.rows) {
     const norm = normalizeRiderName(row.riderName);
-    const isActive = activeNamesSet ? activeNamesSet.has(norm) : true;
+    const isActive = activeNamesSet ? activeNamesSet.has(norm) : false;
     const phone = phoneByNameMap ? phoneByNameMap.get(norm) ?? '' : '';
     const shift = riderShiftsMap?.get(norm);
     const shiftName = shift?.shiftType ?? 'Not Set';
     const shiftTimings = shift?.timings ?? '';
+    const target8h = shift?.target8h ?? '—';
     const onboardedBy = shift?.onboardedBy ?? '';
     const referredBy = shift?.referredBy ?? '';
     const referredPhone = shift?.referredPhone ?? '';
@@ -606,10 +632,21 @@ export function exportRiderPerformanceToExcel(
       isActive ? 'Yes' : 'No',
       shiftName,
       shiftTimings,
+      target8h,
+      row.workingDays,
       onboardedBy,
       referredBy,
       referredPhone,
     ];
+    if (includeOtpCol) {
+      const customOtp = extraMetaMap?.get(norm)?.otpBreachesLabel;
+      const bCount = row.otpBreachedCount ?? 0;
+      const bDays = row.otpBreachedDays ?? 0;
+      rowVals.push(customOtp ?? (bCount > 0 ? `${bCount} (${bDays}d)` : '0'));
+    }
+    if (includeDnrCol) {
+      rowVals.push(extraMetaMap?.get(norm)?.dnrSummaryLabel ?? '0');
+    }
 
     for (const col of pivot.dateColumns) {
       const metric = row.dailyMetrics[col.dateStr];
@@ -627,11 +664,9 @@ export function exportRiderPerformanceToExcel(
     sheetData.push(rowVals);
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(sheetData);
-
   // Set merge ranges for top-tier headers
   const merges: XLSX.Range[] = [];
-  let colIdx = 8;
+  let colIdx = baseColCount;
   for (let i = 0; i < pivot.dateColumns.length; i++) {
     merges.push({
       s: { r: 0, c: colIdx },
@@ -651,9 +686,36 @@ export function exportRiderPerformanceToExcel(
     e: { r: 0, c: colIdx + 1 },
   });
 
+  const filename = `Rider_Performance_${storeCode}_${pivot.startDate}_to_${pivot.endDate}.xlsx`;
+  return { sheetData, merges, filename };
+}
+
+/**
+ * Exports the Rider Performance Pivot Table to a formatted Excel workbook (.xlsx).
+ */
+export function exportRiderPerformanceToExcel(
+  pivot: RiderPerformancePivotResult,
+  storeCode: string,
+  useActiveAvg = false,
+  activeNamesSet?: Set<string>,
+  phoneByNameMap?: Map<string, string>,
+  riderShiftsMap?: Map<string, RiderExportShiftMeta>,
+  options?: RiderExportOptions
+): void {
+  const wb = XLSX.utils.book_new();
+  const { sheetData, merges, filename } = buildRiderPerformanceExportSheet(
+    pivot,
+    storeCode,
+    useActiveAvg,
+    activeNamesSet,
+    phoneByNameMap,
+    riderShiftsMap,
+    options
+  );
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
   ws['!merges'] = merges;
 
   XLSX.utils.book_append_sheet(wb, ws, 'Rider Performance');
-  const filename = `Rider_Performance_${storeCode}_${pivot.startDate}_to_${pivot.endDate}.xlsx`;
   XLSX.writeFile(wb, filename);
 }

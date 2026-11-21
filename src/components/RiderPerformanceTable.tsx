@@ -1,5 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  type RiderExportExtraColumnMeta,
+  type RiderExportShiftMeta,
   type RiderPerformancePivotResult,
   type RiderPivotRow,
   exportRiderPerformanceToExcel,
@@ -449,21 +451,24 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   };
 
   const handleExport = () => {
-    const shiftsExportMap = new Map<
-      string,
-      {
-        shiftType: string;
-        timings?: string;
-        onboardedBy?: string | null;
-        referredBy?: string | null;
-        referredPhone?: string | null;
-      }
-    >();
+    const shiftsExportMap = new Map<string, RiderExportShiftMeta>();
     if (riderShiftsMap) {
       for (const [norm, cfg] of riderShiftsMap.entries()) {
+        const hasAssignedShift =
+          cfg.shiftType !== 'UNASSIGNED' && (cfg.totalPlannedHours ?? 0) > 0;
+        const plannedHours = hasAssignedShift
+          ? Math.max(cfg.totalPlannedHours ?? 0, calculatePlannedHours(cfg))
+          : 0;
+        const isActive = activeNamesSet ? activeNamesSet.has(norm) : false;
+
         shiftsExportMap.set(norm, {
-          shiftType: cfg.shiftType,
-          timings: formatShiftTimings(cfg),
+          shiftType: hasAssignedShift
+            ? classifyShiftType(cfg)
+            : isActive
+            ? 'No Shift'
+            : 'Unassigned',
+          timings: hasAssignedShift ? formatShiftTimings(cfg) : '',
+          target8h: hasAssignedShift ? (plannedHours >= 8.0 ? '≥ 8h' : '< 8h') : '—',
           onboardedBy: cfg.onboardedBy || null,
           referredBy: cfg.referredBy || null,
           referredPhone: cfg.referredPhone || null,
@@ -471,13 +476,44 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
       }
     }
 
+    const extraMetaByNameMap = new Map<string, RiderExportExtraColumnMeta>();
+    for (const row of filteredRows) {
+      const norm = normalizeRiderName(row.riderName);
+      const riderDnr = dnrSummary?.riderSummariesMap.get(norm);
+      const dnrTotal = riderDnr?.totalDnrCount ?? 0;
+      const dnrParts: string[] = [];
+      if (riderDnr?.nonAbusiveCount) {
+        dnrParts.push(`Non_abusive: ${riderDnr.nonAbusiveCount}`);
+      }
+      if (riderDnr?.potentialAbuseCount) {
+        dnrParts.push(`Potential_abuse: ${riderDnr.potentialAbuseCount}`);
+      }
+
+      const breachCount = row.otpBreachedCount ?? 0;
+      const breachDays = row.otpBreachedDays ?? 0;
+      extraMetaByNameMap.set(norm, {
+        otpBreachesLabel:
+          breachCount > 0
+            ? isSingleDayPeriod
+              ? `${breachCount}`
+              : `${breachCount} (${breachDays}d)`
+            : '0',
+        dnrSummaryLabel: dnrTotal > 0 ? `${dnrTotal} (${dnrParts.join(', ')})` : '0',
+      });
+    }
+
     exportRiderPerformanceToExcel(
-      { ...data, dateColumns: displayedDateColumns },
+      { ...data, rows: filteredRows, dateColumns: displayedDateColumns },
       storeCode,
       avgMode === 'active',
       activeNamesSet,
       phoneByNameMap,
-      shiftsExportMap
+      shiftsExportMap,
+      {
+        includeOtpBreachCol: filterOtpBreach,
+        includeDnrCol: highlightDnr || activeShiftFilter.startsWith('DNR_'),
+        extraMetaByNameMap,
+      }
     );
   };
 
@@ -868,8 +904,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               type="button"
               className="btn-export-excel"
               onClick={handleExport}
-              disabled={data.rows.length === 0}
-              title="Download Excel spreadsheet matching Google Sheets layout"
+              disabled={filteredRows.length === 0}
+              title={`Download Excel spreadsheet for the ${filteredRows.length} displayed rider(s)`}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" strokeLinecap="round" strokeLinejoin="round" />
