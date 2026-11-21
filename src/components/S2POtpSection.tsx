@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { StoreMaster } from '../domain/types';
 import type { UserProfile } from '../services/authService';
 import {
@@ -93,8 +94,12 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   const analyticsContainerRef = useRef<HTMLDivElement | null>(null);
   const kpiGridWrapperRef = useRef<HTMLDivElement | null>(null);
   const dailyTableContainerRef = useRef<HTMLDivElement | null>(null);
+  const snopPortalHostRef = useRef<HTMLDivElement | null>(null);
   const [takingScreenshot, setTakingScreenshot] = useState<boolean>(false);
   const [screenshotStatus, setScreenshotStatus] = useState<SnapshotStatus>('idle');
+  const [takingSnopScreenshot, setTakingSnopScreenshot] = useState<boolean>(false);
+  const [snopSnapshotStatus, setSnopSnapshotStatus] = useState<SnapshotStatus>('idle');
+  const [renderSnopPortal, setRenderSnopPortal] = useState<boolean>(false);
   const [takingRcaSnapshot, setTakingRcaSnapshot] = useState<boolean>(false);
   const [rcaSnapshotStatus, setRcaSnapshotStatus] = useState<SnapshotStatus>('idle');
   const [takingBtoSnapshot, setTakingBtoSnapshot] = useState<boolean>(false);
@@ -126,8 +131,8 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
   // Active slot sub-view per date (defaults to 'all', can switch to 's2p', 'otp', 'dph')
   const [slotViewModes, setSlotViewModes] = useState<Record<string, SlotViewType>>({});
 
-  // Toggle for displaying SNOP Plan (left of Orders) and Breach (SNOP Plan - Orders, right of Orders)
-  const [showSnopBreach, setShowSnopBreach] = useState<boolean>(false);
+  // Toggle for displaying SNOP Plan (left of Orders) and Breach (Orders - SNOP Plan, right of Orders)
+  const [snopBreachVisible, setSnopBreachVisible] = useState<boolean>(false);
   const [otpBreachedModal, setOtpBreachedModal] = useState<{
     orderDate: string;
     formattedDate: string;
@@ -419,30 +424,69 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     exportS2POtpToExcel(activeSummary, selectedStore.store_code);
   };
 
-  const handleTakeScreenshot = async () => {
+  const captureDailySummarySnapshot = async (mode: 'standard' | 'snop_breach') => {
+    const isSnopMode = mode === 'snop_breach';
+    const isBusy = isSnopMode ? takingSnopScreenshot : takingScreenshot;
+    const setBusy = isSnopMode ? setTakingSnopScreenshot : setTakingScreenshot;
+    const setStatus = isSnopMode ? setSnopSnapshotStatus : setScreenshotStatus;
+
     const analyticsRoot = analyticsContainerRef.current;
     const kpiEl = kpiGridWrapperRef.current?.querySelector('.kpi-grid') as HTMLElement | null;
-    const tableEl = dailyTableContainerRef.current;
-    if (!analyticsRoot || !kpiEl || !tableEl || !activeSummary || !selectedStore || takingScreenshot) {
+    if (!analyticsRoot || !kpiEl || !activeSummary || !selectedStore || activeSummary.days.length === 0 || isBusy) {
       return;
     }
 
-    setTakingScreenshot(true);
-    setScreenshotStatus('idle');
+    setBusy(true);
+    setStatus('idle');
 
-    const minWidth = Math.max(1480, tableEl.scrollWidth + 48);
-    const { offscreenHost, captureTarget, bgColor, textColor, subTextColor, borderColor } =
-      createSnapshotEnvironment(minWidth);
+    const hasExpandedNonSnopView = activeSummary.days.some(
+      (d) =>
+        expandedDates.has(d.dateStr) &&
+        (slotViewModes[d.dateStr] === 's2p' || slotViewModes[d.dateStr] === 'otp')
+    );
+    const needsOffscreenPortal = isSnopMode && (!snopBreachVisible || hasExpandedNonSnopView);
 
+    let offscreenHost: HTMLDivElement | null = null;
     try {
       if (document.fonts?.ready) {
         await document.fonts.ready;
       }
 
+      if (needsOffscreenPortal) {
+        setRenderSnopPortal(true);
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
+      }
+
+      const sourceTableEl = needsOffscreenPortal
+        ? (snopPortalHostRef.current?.firstElementChild as HTMLElement | null)
+        : dailyTableContainerRef.current;
+
+      if (!sourceTableEl) {
+        throw new Error('Daily summary table element not available for snapshot.');
+      }
+
+      const tableClone = sourceTableEl.cloneNode(true) as HTMLElement;
+      const includeSnopColumns = isSnopMode || snopBreachVisible;
+      const minWidth = Math.max(includeSnopColumns ? 1580 : 1480, sourceTableEl.scrollWidth + 48);
+
+      if (needsOffscreenPortal) {
+        setRenderSnopPortal(false);
+      }
+
+      const env = createSnapshotEnvironment(minWidth);
+      offscreenHost = env.offscreenHost;
+      const { captureTarget, bgColor, textColor, subTextColor, borderColor } = env;
+
       const rangeText = startDate === endDate ? startDate : `${startDate} → ${endDate}`;
+      const headerTitle = isSnopMode
+        ? `${selectedStore.store_code} (${selectedStore.store_name}) — S2P, OTP+3, DPH, DSR & SNOP Breach Summary`
+        : `${selectedStore.store_code} (${selectedStore.store_name}) — S2P, OTP+3, DPH & DSR Summary`;
+
       captureTarget.appendChild(
         buildSnapshotHeader(
-          `${selectedStore.store_code} (${selectedStore.store_name}) — S2P, OTP+3, DPH & DSR Summary`,
+          headerTitle,
           `Period: ${rangeText} · ${activeSummary.days.length} ${
             activeSummary.days.length === 1 ? 'Day' : 'Days'
           } · ${activeSummary.overallTotalOrders.toLocaleString()} Orders`,
@@ -461,7 +505,6 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       captureTarget.appendChild(kpiClone);
 
       // Section 2: Clone Daily Summary & Expanded Hourly Slot Breakdown without scroll clipping
-      const tableClone = tableEl.cloneNode(true) as HTMLElement;
       tableClone.classList.remove('opacity-70');
       tableClone.style.marginTop = '0';
       tableClone.style.overflowX = 'visible';
@@ -534,26 +577,33 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
       captureTarget.appendChild(tableClone);
 
       const dateSlug = startDate === endDate ? startDate : `${startDate}_to_${endDate}`;
+      const filePrefix = isSnopMode ? 'SNOP-Breach-Summary' : 'S2P-OTP-Summary';
       await renderAndDownloadSnapshot({
         rootContainer: analyticsRoot,
         offscreenHost,
         captureTarget,
         bgColor,
         minWidth,
-        fileName: `S2P-OTP-Summary-${selectedStore.store_code}-${dateSlug}.png`,
+        fileName: `${filePrefix}-${selectedStore.store_code}-${dateSlug}.png`,
       });
 
-      setScreenshotStatus('saved');
-      window.setTimeout(() => setScreenshotStatus('idle'), 2200);
+      setStatus('saved');
+      window.setTimeout(() => setStatus('idle'), 2200);
     } catch (err) {
-      console.error('Failed to capture S2P & OTP screenshot:', err);
-      setScreenshotStatus('error');
-      window.setTimeout(() => setScreenshotStatus('idle'), 3000);
+      console.error(`Failed to capture ${isSnopMode ? 'SNOP breach' : 'S2P & OTP'} screenshot:`, err);
+      setStatus('error');
+      window.setTimeout(() => setStatus('idle'), 3000);
     } finally {
-      offscreenHost.remove();
-      setTakingScreenshot(false);
+      if (needsOffscreenPortal) {
+        setRenderSnopPortal(false);
+      }
+      offscreenHost?.remove();
+      setBusy(false);
     }
   };
+
+  const handleTakeScreenshot = () => captureDailySummarySnapshot('standard');
+  const handleTakeSnopScreenshot = () => captureDailySummarySnapshot('snop_breach');
 
   const handleDownloadRcaSnapshot = async () => {
     const analyticsRoot = analyticsContainerRef.current;
@@ -1112,6 +1162,20 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                 }}
               />
               <SnapshotButton
+                icon="camera"
+                loading={takingSnopScreenshot}
+                status={snopSnapshotStatus}
+                disabled={!activeSummary || activeSummary.days.length === 0 || loading}
+                onClick={() => void handleTakeSnopScreenshot()}
+                title="Capture and download a PNG snapshot including the SNOP Plan and Breach columns"
+                labels={{
+                  idle: 'SNOP Screenshot',
+                  loading: 'Capturing...',
+                  saved: 'SNOP Saved',
+                  error: 'SNOP Failed',
+                }}
+              />
+              <SnapshotButton
                 icon="clipboard"
                 loading={takingRcaSnapshot}
                 status={rcaSnapshotStatus}
@@ -1141,9 +1205,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               />
               <button
                 type="button"
-                className={`snop-breach-toggle-btn ${showSnopBreach ? 'active' : ''}`}
-                onClick={() => setShowSnopBreach((prev) => !prev)}
-                aria-pressed={showSnopBreach}
+                className={`snop-breach-toggle-btn ${snopBreachVisible ? 'active' : ''}`}
+                onClick={() => setSnopBreachVisible((prev) => !prev)}
+                aria-pressed={snopBreachVisible}
                 title="Highlight SNOP Breach: adds SNOP Plan (left of Orders) and Breach = Orders − SNOP Plan (right of Orders)"
               >
                 <span className="snop-breach-toggle-dot" aria-hidden="true" />
@@ -1180,9 +1244,14 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
           </div>
         )}
 
-        {activeSummary && activeSummary.days.length > 0 && (
+        {activeSummary && activeSummary.days.length > 0 && (() => {
+          const renderDailySummaryTable = (
+            showSnopBreach: boolean,
+            forcedSlotView?: SlotViewType,
+            attachRef = true
+          ) => (
           <div
-            ref={dailyTableContainerRef}
+            ref={attachRef ? dailyTableContainerRef : undefined}
             className={`s2p-daily-table-container ${loading ? 'opacity-70' : ''}`}
           >
             <table className="s2p-daily-table">
@@ -1206,7 +1275,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               <tbody>
                 {activeSummary.days.map((day) => {
                   const isExpanded = expandedDates.has(day.dateStr);
-                  const activeView = slotViewModes[day.dateStr] || 'all';
+                  const activeView = forcedSlotView ?? slotViewModes[day.dateStr] ?? 'all';
                   const impactedSlots = getDphImpactedSlots(day.slots, dphTarget);
                   const daySnopPlan = getDaySnopPlan(day);
                   const dayBreach = day.totalOrders - daySnopPlan;
@@ -1791,7 +1860,30 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               </tfoot>
             </table>
           </div>
-        )}
+          );
+
+          return (
+            <>
+              {renderDailySummaryTable(snopBreachVisible, undefined, true)}
+              <div
+                ref={snopPortalHostRef}
+                aria-hidden="true"
+                style={{
+                  position: 'fixed',
+                  left: '-99999px',
+                  top: 0,
+                  width: 'max-content',
+                  minWidth: '1580px',
+                  pointerEvents: 'none',
+                  zIndex: -1,
+                }}
+              />
+              {renderSnopPortal &&
+                snopPortalHostRef.current &&
+                createPortal(renderDailySummaryTable(true, 'all', false), snopPortalHostRef.current)}
+            </>
+          );
+        })()}
       </div>
 
       {selectedStore && otpBreachedModal && (
