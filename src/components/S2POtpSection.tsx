@@ -16,13 +16,16 @@ import {
 } from '../services/planningService';
 import {
   type DailyPerformanceSummary,
+  type DaySnopBreachMetrics,
   type S2POtpSummaryResult,
   buildBtoRcaSummary,
   buildOtpBreachRcaPivots,
+  calculateDaySnopBreachMetrics,
   exportS2POtpToExcel,
   fetchDsrRtoOrders,
   fetchOtpBreachedOrders,
   fetchS2POtpAnalytics,
+  getCurrentHourInTimeZone,
   getDayOfWeekName,
   getDphImpactedSlots,
 } from '../services/s2pOtpService';
@@ -213,17 +216,19 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
     [snopLookup]
   );
 
-  const getDaySnopPlan = useCallback(
-    (day: DailyPerformanceSummary): number => {
-      return day.slots.reduce(
-        (sum, s) => sum + getSlotSnopPlan(day.dateStr, day.dayOfWeek, s.slotHour),
-        0
-      );
+  const getDaySnopMetrics = useCallback(
+    (day: DailyPerformanceSummary): DaySnopBreachMetrics => {
+      return calculateDaySnopBreachMetrics({
+        day,
+        todayStr,
+        currentSlotHour: getCurrentHourInTimeZone(timeZone),
+        getSlotSnopPlan,
+      });
     },
-    [getSlotSnopPlan]
+    [getSlotSnopPlan, todayStr, timeZone]
   );
 
-  const renderBreachCellContent = (breach: number, snopPlan: number) => {
+  const renderBreachCellContent = (breach: number, snopPlan: number, tooltip?: string) => {
     const isBreach = breach > 0;
     const formattedDiff = isBreach ? `+${breach.toLocaleString()}` : breach.toLocaleString();
     const pctStr =
@@ -231,7 +236,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
         ? ` (${isBreach ? '+' : ''}${((breach / snopPlan) * 100).toFixed(1)}%)`
         : '';
     return (
-      <span className={isBreach ? 'text-red font-bold' : 'text-green font-semibold'}>
+      <span className={isBreach ? 'text-red font-bold' : 'text-green font-semibold'} title={tooltip}>
         {formattedDiff}
         {pctStr}
       </span>
@@ -1277,8 +1282,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                   const isExpanded = expandedDates.has(day.dateStr);
                   const activeView = forcedSlotView ?? slotViewModes[day.dateStr] ?? 'all';
                   const impactedSlots = getDphImpactedSlots(day.slots, dphTarget);
-                  const daySnopPlan = getDaySnopPlan(day);
-                  const dayBreach = day.totalOrders - daySnopPlan;
+                  const daySnopMetrics = getDaySnopMetrics(day);
+                  const daySnopPlan = daySnopMetrics.totalSnopPlan;
+                  const dayBreach = daySnopMetrics.completedBreach;
+                  const dayBreachPlanDenom = daySnopMetrics.completedSnopPlan;
+                  const dayBreachTooltip = daySnopMetrics.hasOngoingSlotExcluded
+                    ? `Completed slots only (excludes ongoing slot): ${daySnopMetrics.completedOrders.toLocaleString()} orders vs ${daySnopMetrics.completedSnopPlan.toLocaleString()} SNOP plan`
+                    : undefined;
 
                   return (
                     <React.Fragment key={day.dateStr}>
@@ -1330,7 +1340,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                         )}
                         <td className="text-right font-bold">{day.totalOrders.toLocaleString()}</td>
                         {showSnopBreach && (
-                          <td className="text-right">{renderBreachCellContent(dayBreach, daySnopPlan)}</td>
+                          <td className="text-right">
+                            {renderBreachCellContent(dayBreach, dayBreachPlanDenom, dayBreachTooltip)}
+                          </td>
                         )}
                         <td className="text-right font-bold">
                           <span
@@ -1565,7 +1577,7 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                         )}
                                         <td className="text-center font-bold">{day.totalOrders}</td>
                                         {showSnopBreach && (
-                                          <td className="text-center">{renderBreachCellContent(dayBreach, daySnopPlan)}</td>
+                                          <td className="text-center">{renderBreachCellContent(dayBreach, dayBreachPlanDenom, dayBreachTooltip)}</td>
                                         )}
                                         <td className="text-center font-bold">{day.distinctRidersCount}</td>
                                         <td className="text-center font-bold">
@@ -1794,7 +1806,9 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                                           )}
                                           <td className="text-center font-bold">{day.totalOrders}</td>
                                           {showSnopBreach && (
-                                            <td className="text-center">{renderBreachCellContent(dayBreach, daySnopPlan)}</td>
+                                            <td className="text-center">
+                                              {renderBreachCellContent(dayBreach, dayBreachPlanDenom, dayBreachTooltip)}
+                                            </td>
                                           )}
                                           <td className="text-center font-bold">{day.distinctRidersCount}</td>
                                           <td className={`text-center font-bold ${getDphHeatmapClass(day.avgDph)}`}>
@@ -1821,8 +1835,24 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
               </tbody>
               <tfoot>
                 {(() => {
-                  const periodSnopTotal = activeSummary.days.reduce((sum, d) => sum + getDaySnopPlan(d), 0);
-                  const periodBreach = activeSummary.overallTotalOrders - periodSnopTotal;
+                  let periodSnopTotal = 0;
+                  let periodCompletedSnopPlan = 0;
+                  let periodCompletedBreach = 0;
+                  let periodCompletedOrders = 0;
+                  let periodHasOngoingExcluded = false;
+                  for (const d of activeSummary.days) {
+                    const m = getDaySnopMetrics(d);
+                    periodSnopTotal += m.totalSnopPlan;
+                    periodCompletedSnopPlan += m.completedSnopPlan;
+                    periodCompletedBreach += m.completedBreach;
+                    periodCompletedOrders += m.completedOrders;
+                    if (m.hasOngoingSlotExcluded) {
+                      periodHasOngoingExcluded = true;
+                    }
+                  }
+                  const periodBreachTooltip = periodHasOngoingExcluded
+                    ? `Completed slots only (excludes ongoing slot): ${periodCompletedOrders.toLocaleString()} orders vs ${periodCompletedSnopPlan.toLocaleString()} SNOP plan`
+                    : undefined;
                   return (
                     <tr className="s2p-overall-grand-total">
                       <td colSpan={3} className="font-bold">
@@ -1833,7 +1863,13 @@ export const S2POtpSection: React.FC<S2POtpSectionProps> = ({
                       )}
                       <td className="text-right font-bold">{activeSummary.overallTotalOrders.toLocaleString()}</td>
                       {showSnopBreach && (
-                        <td className="text-right">{renderBreachCellContent(periodBreach, periodSnopTotal)}</td>
+                        <td className="text-right">
+                          {renderBreachCellContent(
+                            periodCompletedBreach,
+                            periodCompletedSnopPlan,
+                            periodBreachTooltip
+                          )}
+                        </td>
                       )}
                       <td className="text-right font-bold">
                         <span className={(activeSummary.overallDsrPct ?? 0) > 99.0 ? 'text-green' : 'text-red'}>

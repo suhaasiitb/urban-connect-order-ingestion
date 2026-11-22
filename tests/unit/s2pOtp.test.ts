@@ -4,6 +4,8 @@ import {
   DSR_RCA_OPTIONS,
   OTP_BREACH_RCA_OPTIONS,
   buildBtoRcaSummary,
+  calculateDaySnopBreachMetrics,
+  getCurrentHourInTimeZone,
   buildOtpBreachRcaPivots,
   buildSummaryFromRawOrders,
   buildSummaryFromRpcRows,
@@ -826,6 +828,120 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
       byRider: [],
       byRca: [],
       orders: [],
+    });
+  });
+
+  it('resolves current hour 0-23 in store timezone including midnight h23 rollover', () => {
+    // 2026-11-22 10:45 UTC = 16:15 IST
+    expect(getCurrentHourInTimeZone('Asia/Kolkata', new Date('2026-11-22T10:45:00.000Z'))).toBe(16);
+    // 2026-11-22 18:30 UTC = 00:00 IST (must be 0, not 24)
+    expect(getCurrentHourInTimeZone('Asia/Kolkata', new Date('2026-11-22T18:30:00.000Z'))).toBe(0);
+  });
+
+  it('excludes ongoing slot from day-level SNOP breach totals while keeping full visible SNOP plan sum', () => {
+    const slotData: Array<{ slotHour: number; snopPlan: number; ordersCount: number }> = [
+      { slotHour: 6, snopPlan: 9, ordersCount: 11 },
+      { slotHour: 7, snopPlan: 51, ordersCount: 41 },
+      { slotHour: 8, snopPlan: 106, ordersCount: 108 },
+      { slotHour: 9, snopPlan: 163, ordersCount: 177 },
+      { slotHour: 10, snopPlan: 174, ordersCount: 213 },
+      { slotHour: 11, snopPlan: 151, ordersCount: 189 },
+      { slotHour: 12, snopPlan: 143, ordersCount: 176 },
+      { slotHour: 13, snopPlan: 118, ordersCount: 146 },
+      { slotHour: 14, snopPlan: 96, ordersCount: 132 },
+      { slotHour: 15, snopPlan: 77, ordersCount: 134 },
+      { slotHour: 16, snopPlan: 89, ordersCount: 25 },
+    ];
+    const planByHour = new Map(slotData.map((s) => [s.slotHour, s.snopPlan]));
+
+    const buildDay = (dateStr: string) =>
+      buildSummaryFromRpcRows(
+        slotData.map((s) => ({
+          order_date: dateStr,
+          slot_hour: s.slotHour,
+          orders_count: s.ordersCount,
+          riders_count: 10,
+          s2p_sum: s.ordersCount,
+          s2p_count: s.ordersCount,
+          otp_achieved_count: s.ordersCount,
+          otp_breached_count: 0,
+          day_distinct_riders: 50,
+          period_distinct_riders: 50,
+        })),
+        {
+          storeId: '00000000-0000-0000-0000-000000000001',
+          startDate: dateStr,
+          endDate: dateStr,
+        }
+      ).days[0];
+
+    const todayMetrics = calculateDaySnopBreachMetrics({
+      day: buildDay('2026-11-22'),
+      todayStr: '2026-11-22',
+      currentSlotHour: 16,
+      getSlotSnopPlan: (_d, _dow, slotHour) => planByHour.get(slotHour) ?? 0,
+    });
+
+    expect(todayMetrics).toEqual({
+      totalSnopPlan: 1177,
+      completedSnopPlan: 1088,
+      completedOrders: 1327,
+      completedBreach: 239,
+      hasOngoingSlotExcluded: true,
+    });
+
+    // Edge case: before any slot on today has completed
+    const earlyMorningSummary = buildSummaryFromRpcRows(
+      [
+        {
+          order_date: '2026-11-22',
+          slot_hour: 6,
+          orders_count: 2,
+          riders_count: 3,
+          s2p_sum: 2,
+          s2p_count: 2,
+          otp_achieved_count: 2,
+          otp_breached_count: 0,
+          day_distinct_riders: 3,
+          period_distinct_riders: 3,
+        },
+      ],
+      {
+        storeId: '00000000-0000-0000-0000-000000000001',
+        startDate: '2026-11-22',
+        endDate: '2026-11-22',
+      }
+    ).days[0];
+
+    expect(
+      calculateDaySnopBreachMetrics({
+        day: earlyMorningSummary,
+        todayStr: '2026-11-22',
+        currentSlotHour: 6,
+        getSlotSnopPlan: (_d, _dow, slotHour) => planByHour.get(slotHour) ?? 0,
+      })
+    ).toEqual({
+      totalSnopPlan: 9,
+      completedSnopPlan: 0,
+      completedOrders: 0,
+      completedBreach: 0,
+      hasOngoingSlotExcluded: true,
+    });
+
+    // Historical completed day includes all slots even when slotHour >= currentSlotHour
+    const historicalMetrics = calculateDaySnopBreachMetrics({
+      day: buildDay('2026-11-21'),
+      todayStr: '2026-11-22',
+      currentSlotHour: 16,
+      getSlotSnopPlan: (_d, _dow, slotHour) => planByHour.get(slotHour) ?? 0,
+    });
+
+    expect(historicalMetrics).toEqual({
+      totalSnopPlan: 1177,
+      completedSnopPlan: 1177,
+      completedOrders: 1352,
+      completedBreach: 175,
+      hasOngoingSlotExcluded: false,
     });
   });
 });

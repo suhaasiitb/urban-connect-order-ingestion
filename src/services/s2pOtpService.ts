@@ -1516,3 +1516,75 @@ export function buildBtoRcaSummary(orders: DsrRtoOrderRecord[]): BtoRcaSummary {
     orders: normalizedOrders,
   };
 }
+
+export interface DaySnopBreachMetrics {
+  totalSnopPlan: number;
+  completedSnopPlan: number;
+  completedOrders: number;
+  completedBreach: number;
+  hasOngoingSlotExcluded: boolean;
+}
+
+/**
+ * Returns the current hour (0-23) in the specified store IANA timezone.
+ */
+export function getCurrentHourInTimeZone(
+  timeZone = 'Asia/Kolkata',
+  now: Date = new Date()
+): number {
+  try {
+    const hourStr = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).format(now);
+    const parsed = parseInt(hourStr, 10);
+    if (Number.isFinite(parsed)) {
+      return parsed % 24;
+    }
+  } catch {
+    // Fallback to local clock hour if timeZone identifier is invalid
+  }
+  return now.getHours();
+}
+
+/**
+ * Computes day-level SNOP plan and breach totals for Daily S2P/OTP/DPH summary,
+ * excluding any ongoing/incomplete slot (`slotHour >= currentSlotHour` when viewing todayStr)
+ * from `completedBreach` and its percentage denominator `completedSnopPlan`.
+ */
+export function calculateDaySnopBreachMetrics(params: {
+  day: DailyPerformanceSummary;
+  todayStr: string;
+  currentSlotHour: number;
+  getSlotSnopPlan: (dateStr: string, dayOfWeek: string, slotHour: number) => number;
+}): DaySnopBreachMetrics {
+  const { day, todayStr, currentSlotHour, getSlotSnopPlan } = params;
+  const isOngoingDay = day.dateStr === todayStr;
+
+  let totalSnopPlan = 0;
+  let completedSnopPlan = 0;
+  let completedOrders = 0;
+  let hasOngoingSlotExcluded = false;
+
+  for (const s of day.slots) {
+    const slotSnop = getSlotSnopPlan(day.dateStr, day.dayOfWeek, s.slotHour);
+    totalSnopPlan += slotSnop;
+
+    if (isOngoingDay && s.slotHour >= currentSlotHour) {
+      hasOngoingSlotExcluded = true;
+      continue;
+    }
+
+    completedSnopPlan += slotSnop;
+    completedOrders += s.ordersCount;
+  }
+
+  return {
+    totalSnopPlan,
+    completedSnopPlan,
+    completedOrders,
+    completedBreach: completedOrders - completedSnopPlan,
+    hasOngoingSlotExcluded,
+  };
+}
