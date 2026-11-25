@@ -12717,6 +12717,80 @@ html[data-theme="dark"] .admin-stores-divider::after {
   margin: 0;
 }
 
+.admin-date-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.admin-date-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  padding: 0.16rem 0.25rem;
+}
+
+.admin-date-input {
+  border: none !important;
+  background: transparent !important;
+  padding: 0.16rem 0.25rem !important;
+  font-size: 0.78rem !important;
+  font-weight: 600;
+}
+
+.admin-date-input:focus {
+  box-shadow: none !important;
+}
+
+.btn-date-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #4f46e5;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-date-step:hover:not(:disabled) {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.btn-date-step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+html[data-theme="dark"] .admin-date-stepper {
+  background: rgba(15, 23, 42, 0.75);
+  border-color: rgba(129, 140, 248, 0.4);
+}
+
+html[data-theme="dark"] .admin-date-input {
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .btn-date-step {
+  color: #a5b4fc;
+}
+
+html[data-theme="dark"] .btn-date-step:hover:not(:disabled) {
+  background: rgba(129, 140, 248, 0.24);
+  color: #e0e7ff;
+}
+
 .admin-dashboard-store-card {
   padding: 0.65rem 1rem !important;
   gap: 0.5rem !important;

@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
-import { formatDateToHeader, getTodayDateString } from '../services/analyticsService';
+import {
+  formatDateToHeader,
+  getTodayDateString,
+  shiftIsoDate,
+} from '../services/analyticsService';
 import { getDefaultStoreDph } from '../services/planningService';
 import {
   type S2POtpSummaryResult,
@@ -19,8 +23,9 @@ interface AdminDashboardSectionProps {
   onOpenStoreS2POtp: (storeId: string) => void;
 }
 
-interface StoreTodayState {
+interface StoreDayState {
   summary: S2POtpSummaryResult | null;
+  loadedForDate: string | null;
   loading: boolean;
   error: string | null;
 }
@@ -42,7 +47,14 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
     });
   }, [stores]);
 
-  const [storeStates, setStoreStates] = useState<Record<string, StoreTodayState>>({});
+  const primaryTimeZone = orderedStores[0]?.timezone || 'Asia/Kolkata';
+  const primaryTodayStr = getTodayDateString(primaryTimeZone);
+  const yesterdayStr = shiftIsoDate(primaryTodayStr, -1);
+
+  const [selectedDate, setSelectedDate] = useState<string>(() =>
+    getTodayDateString(orderedStores[0]?.timezone || 'Asia/Kolkata')
+  );
+  const [storeStates, setStoreStates] = useState<Record<string, StoreDayState>>({});
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [takingScreenshot, setTakingScreenshot] = useState<boolean>(false);
@@ -50,21 +62,29 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
   const latestRequestIdRef = useRef<number>(0);
   const dashboardContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const primaryTimeZone = orderedStores[0]?.timezone || 'Asia/Kolkata';
-  const primaryTodayStr = getTodayDateString(primaryTimeZone);
+  const isViewingToday = selectedDate === primaryTodayStr;
+  const isViewingYesterday = selectedDate === yesterdayStr;
 
-  const loadAllStoresToday = useCallback(
-    async (forceRefresh = false) => {
+  const handleSelectDate = useCallback((nextDate: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) return;
+    setSelectedDate(nextDate);
+  }, []);
+
+  const loadAllStoresForDate = useCallback(
+    async (targetDate: string, forceRefresh = false) => {
       if (orderedStores.length === 0) return;
 
       const requestId = ++latestRequestIdRef.current;
       setRefreshing(true);
 
       setStoreStates((prev) => {
-        const next: Record<string, StoreTodayState> = {};
+        const next: Record<string, StoreDayState> = {};
         for (const store of orderedStores) {
+          const prevState = prev[store.id];
+          const sameDate = prevState?.loadedForDate === targetDate;
           next[store.id] = {
-            summary: prev[store.id]?.summary ?? null,
+            summary: sameDate ? prevState.summary : null,
+            loadedForDate: sameDate ? prevState.loadedForDate : null,
             loading: true,
             error: null,
           };
@@ -72,13 +92,16 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
         return next;
       });
 
+      const usePerStoreToday = targetDate === primaryTodayStr;
       const results = await Promise.all(
         orderedStores.map(async (store) => {
-          const storeToday = getTodayDateString(store.timezone || 'Asia/Kolkata');
+          const storeDate = usePerStoreToday
+            ? getTodayDateString(store.timezone || 'Asia/Kolkata')
+            : targetDate;
           const res = await fetchS2POtpAnalytics({
             storeId: store.id,
-            startDate: storeToday,
-            endDate: storeToday,
+            startDate: storeDate,
+            endDate: storeDate,
             forceRefresh,
           });
           return { storeId: store.id, res };
@@ -87,10 +110,11 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
 
       if (requestId !== latestRequestIdRef.current) return;
 
-      const nextStates: Record<string, StoreTodayState> = {};
+      const nextStates: Record<string, StoreDayState> = {};
       for (const { storeId, res } of results) {
         nextStates[storeId] = {
           summary: res.data,
+          loadedForDate: targetDate,
           loading: false,
           error: res.error ?? null,
         };
@@ -105,12 +129,12 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
       );
       setRefreshing(false);
     },
-    [orderedStores]
+    [orderedStores, primaryTodayStr]
   );
 
   useEffect(() => {
-    void loadAllStoresToday(false);
-  }, [loadAllStoresToday]);
+    void loadAllStoresForDate(selectedDate, false);
+  }, [loadAllStoresForDate, selectedDate]);
 
   const isAnyStoreLoading = useMemo(() => {
     if (orderedStores.length === 0) return false;
@@ -119,7 +143,11 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
 
   const combinedSummary = useMemo<S2POtpSummaryResult>(() => {
     const activeSummaries = orderedStores
-      .map((s) => storeStates[s.id]?.summary)
+      .map((s) => {
+        const st = storeStates[s.id];
+        if (!st || st.loadedForDate !== selectedDate) return null;
+        return st.summary;
+      })
       .filter((sum): sum is S2POtpSummaryResult => Boolean(sum && sum.overallTotalOrders > 0));
 
     const count = activeSummaries.length;
@@ -134,8 +162,8 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
 
     return {
       storeId: 'ALL_STORES',
-      startDate: primaryTodayStr,
-      endDate: primaryTodayStr,
+      startDate: selectedDate,
+      endDate: selectedDate,
       periodDays: 1,
       days: [],
       overallTotalOrders: totalOrders,
@@ -149,7 +177,7 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
       overallDsrEligibleOrders: totalDsrEligible,
       overallDsrPct: Math.round(avg((s) => s.overallDsrPct) * 100) / 100,
     };
-  }, [orderedStores, storeStates, primaryTodayStr]);
+  }, [orderedStores, storeStates, selectedDate]);
 
   const handleTakeScreenshot = async () => {
     const dashboardRoot = dashboardContainerRef.current;
@@ -200,7 +228,7 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
         captureTarget,
         bgColor,
         minWidth,
-        fileName: `Executive-Dashboard-All-Stores-${primaryTodayStr}.png`,
+        fileName: `Executive-Dashboard-All-Stores-${selectedDate}.png`,
       });
 
       setScreenshotStatus('saved');
@@ -215,6 +243,8 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
     }
   };
 
+  const formattedSelectedDate = formatDateToHeader(selectedDate);
+
   return (
     <div ref={dashboardContainerRef} className="analytics-container admin-dashboard-container">
       <div className="section-card admin-dashboard-header-card">
@@ -223,16 +253,72 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
             <div className="flex-row items-center gap-xs flex-wrap">
               <span className="admin-summary-pill">All-Store Summary</span>
               <h2 className="section-title editorial-serif-heading" style={{ margin: 0 }}>
-                Executive Dashboard — All Stores (Today)
+                Executive Dashboard — All Stores ({isViewingToday ? 'Today' : formattedSelectedDate})
               </h2>
             </div>
             <p className="section-subtitle">
               Average metrics &amp; combined volume across {orderedStores.map((s) => s.store_code).join(', ')} ·{' '}
-              {formatDateToHeader(primaryTodayStr)} ({primaryTodayStr})
+              {formattedSelectedDate} ({selectedDate})
               {lastUpdatedAt ? ` · Updated ${lastUpdatedAt}` : ''}
             </p>
           </div>
           <div className="flex-row items-center gap-sm flex-wrap" data-snapshot-exclude="true">
+            <div className="admin-date-controls">
+              <div className="segmented-control" role="group" aria-label="Quick date selection">
+                <button
+                  type="button"
+                  className={`segmented-btn ${isViewingToday ? 'segmented-btn-active' : ''}`}
+                  onClick={() => handleSelectDate(primaryTodayStr)}
+                  disabled={refreshing}
+                  title={`View today's metrics (${primaryTodayStr})`}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${isViewingYesterday ? 'segmented-btn-active' : ''}`}
+                  onClick={() => handleSelectDate(yesterdayStr)}
+                  disabled={refreshing}
+                  title={`View yesterday's metrics (${yesterdayStr})`}
+                >
+                  Yesterday
+                </button>
+              </div>
+              <div className="admin-date-stepper">
+                <button
+                  type="button"
+                  className="btn-date-step"
+                  onClick={() => handleSelectDate(shiftIsoDate(selectedDate, -1))}
+                  disabled={refreshing}
+                  title="Previous day"
+                  aria-label="Previous day"
+                >
+                  ‹
+                </button>
+                <input
+                  id="admin-dashboard-date-input"
+                  type="date"
+                  className="custom-range-date-input admin-date-input"
+                  value={selectedDate}
+                  max={primaryTodayStr}
+                  onChange={(e) => handleSelectDate(e.target.value)}
+                  disabled={refreshing}
+                  aria-label="Select date for Executive Dashboard"
+                  title="Pick any date to view all-store metrics"
+                />
+                <button
+                  type="button"
+                  className="btn-date-step"
+                  onClick={() => handleSelectDate(shiftIsoDate(selectedDate, 1))}
+                  disabled={refreshing || selectedDate >= primaryTodayStr}
+                  title="Next day"
+                  aria-label="Next day"
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+
             <SnapshotButton
               icon="camera"
               loading={takingScreenshot}
@@ -250,7 +336,7 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
             <button
               type="button"
               className="btn btn-secondary btn-sm"
-              onClick={() => void loadAllStoresToday(true)}
+              onClick={() => void loadAllStoresForDate(selectedDate, true)}
               disabled={refreshing}
             >
               {refreshing ? 'Refreshing...' : '↻ Refresh All'}
@@ -282,7 +368,7 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
         const state = storeStates[store.id];
         const summary = state?.summary ?? null;
         const isLoading = state?.loading ?? true;
-        const hasOrdersToday = (summary?.overallTotalOrders ?? 0) > 0;
+        const hasOrders = (summary?.overallTotalOrders ?? 0) > 0;
 
         return (
           <section key={store.id} className="section-card perf-card admin-dashboard-store-card">
@@ -294,11 +380,13 @@ export const AdminDashboardSection: React.FC<AdminDashboardSectionProps> = ({
                 </h3>
                 {!isLoading && (
                   <span
-                    className={`badge ${hasOrdersToday ? 'badge-success' : 'badge-neutral'}`}
+                    className={`badge ${hasOrders ? 'badge-success' : 'badge-neutral'}`}
                   >
-                    {hasOrdersToday
-                      ? `Live Today · ${summary?.overallTotalOrders.toLocaleString()} orders`
-                      : 'No orders uploaded today'}
+                    {hasOrders
+                      ? `${isViewingToday ? 'Live Today' : formattedSelectedDate} · ${summary?.overallTotalOrders.toLocaleString()} orders`
+                      : isViewingToday
+                      ? 'No orders uploaded today'
+                      : `No orders for ${formattedSelectedDate}`}
                   </span>
                 )}
               </div>

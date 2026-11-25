@@ -82,6 +82,26 @@ export function formatDateToHeader(dateStr: string): string {
   return `${day}-${m}`;
 }
 
+function formatUtcNoonDate(utcMs: number): string {
+  const d = new Date(utcMs);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Shifts a YYYY-MM-DD date string by deltaDays using UTC noon arithmetic (DST-safe).
+ */
+export function shiftIsoDate(dateStr: string, deltaDays: number): string {
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    return dateStr;
+  }
+  const [y, m, d] = parts;
+  return formatUtcNoonDate(Date.UTC(y, m - 1, d, 12, 0, 0) + deltaDays * 86400000);
+}
+
 /**
  * Computes all calendar date strings (YYYY-MM-DD) between startDate and endDate inclusive.
  * Default order is 'desc' (newest date first, e.g. 19th down to 13th), or 'asc' (chronological).
@@ -101,11 +121,7 @@ export function getAllDatesInRange(
   const oneDayMs = 86400000;
 
   for (let t = startUtc; t <= endUtc + 1000; t += oneDayMs) {
-    const d = new Date(t);
-    const yyyy = d.getUTCFullYear();
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    result.push(`${yyyy}-${mm}-${dd}`);
+    result.push(formatUtcNoonDate(t));
   }
 
   if (order === 'desc') {

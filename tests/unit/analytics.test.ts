@@ -6,6 +6,7 @@ import {
   getAllDatesInRange,
   getDateRangeForDays,
   isHighBtoRider,
+  shiftIsoDate,
 } from '../../src/services/analyticsService';
 
 describe('Rider Performance Analytics Unit Tests', () => {
@@ -426,5 +427,14 @@ describe('Rider Performance Analytics Unit Tests', () => {
     ]);
     expect(sheetData[2][10]).toBe('3 (2d)');
     expect(merges[0]).toEqual({ s: { r: 0, c: 11 }, e: { r: 0, c: 13 } });
+  });
+
+  it('shifts ISO YYYY-MM-DD dates accurately across month, year, and leap boundaries', () => {
+    expect(shiftIsoDate('2026-11-25', -1)).toBe('2026-11-24');
+    expect(shiftIsoDate('2026-11-01', -1)).toBe('2026-10-31');
+    expect(shiftIsoDate('2026-01-01', -1)).toBe('2025-12-31');
+    expect(shiftIsoDate('2024-02-29', 1)).toBe('2024-03-01');
+    expect(shiftIsoDate('2024-03-01', -1)).toBe('2024-02-29');
+    expect(shiftIsoDate('invalid-date', -1)).toBe('invalid-date');
   });
 });
