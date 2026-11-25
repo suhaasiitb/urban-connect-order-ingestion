@@ -14,23 +14,38 @@ export interface RiderDailyMetric {
   distanceKm: number; // One-way distance in km (LM Distance in meters / 1000)
   distanceMeters?: number; // Exact sum of distance in meters
   otpBreachedCount?: number; // Count of OTP Breached orders on this day
+  btoCount?: number; // Count of BTO (RTO_DELIVERED) orders on this day
 }
 
 export interface RiderPivotRow {
   riderName: string;
-  dailyMetrics: Record<string, RiderDailyMetric>; // dateStr -> { hours, orders, distanceKm, distanceMeters, otpBreachedCount }
+  dailyMetrics: Record<string, RiderDailyMetric>; // dateStr -> { hours, orders, distanceKm, distanceMeters, otpBreachedCount, btoCount }
   workingDays: number;
   totalHours: number;
   totalOrders: number;
   totalDistanceKm: number; // Total km delivered in period
   otpBreachedCount?: number; // Total OTP Breached orders in selected period
   otpBreachedDays?: number; // Number of distinct days in period with >= 1 OTP breach
+  btoCount?: number; // Total BTO (RTO_DELIVERED) orders in selected period
+  btoDays?: number; // Number of distinct days in period with >= 1 BTO order
   avgHours: number; // Period average (totalHours / periodDays)
   avgOrders: number; // Period average (totalOrders / periodDays)
   avgDistanceKm: number; // Period average daily distance (totalDistanceKm / periodDays)
   activeAvgHours: number; // Active-working-days average (totalHours / workingDays)
   activeAvgOrders: number; // Active-working-days average (totalOrders / workingDays)
   activeAvgDistanceKm: number; // Active-working-days average (totalDistanceKm / workingDays)
+}
+
+/**
+ * Returns true when a rider qualifies as a high-BTO rider for the selected period
+ * (>= 1 BTO order on a single-day period, >= 2 BTO orders on multi-day periods).
+ */
+export function isHighBtoRider(
+  row: Pick<RiderPivotRow, 'btoCount'>,
+  isSingleDayPeriod: boolean
+): boolean {
+  const threshold = isSingleDayPeriod ? 1 : 2;
+  return (row.btoCount ?? 0) >= threshold;
 }
 
 export interface RiderPerformancePivotResult {
@@ -191,6 +206,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
       orders: number;
       distance_meters: number;
       otp_breached_count: number;
+      bto_count: number;
     }> = [];
     let rpcSucceeded = false;
 
@@ -206,6 +222,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
         orders: number;
         distance_meters: number;
         otp_breached_count: number;
+        bto_count: number;
       }> = [];
 
       let rpcRanSuccessfully = false;
@@ -224,10 +241,14 @@ export async function fetchRiderPerformanceAnalytics(params: {
         }
 
         if (Array.isArray(rpcData) && rpcData.length > 0) {
-          // If the RPC returned data but does NOT yet have distance_meters or otp_breached_count (pre-migration),
+          // If the RPC returned data without distance_meters, otp_breached_count, or bto_count (pre-migration),
           // fallback to client-side aggregation from public.orders to guarantee all fields are populated
           const firstRow = rpcData[0] as Record<string, unknown>;
-          if (firstRow.distance_meters === undefined || firstRow.otp_breached_count === undefined) {
+          if (
+            firstRow.distance_meters === undefined ||
+            firstRow.otp_breached_count === undefined ||
+            firstRow.bto_count === undefined
+          ) {
             rpcRanSuccessfully = false;
             break;
           }
@@ -242,6 +263,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
               orders: Number(item.orders || 0),
               distance_meters: Number(item.distance_meters || 0),
               otp_breached_count: Number(item.otp_breached_count || 0),
+              bto_count: Number(item.bto_count || 0),
             });
           }
           if (rpcData.length < RPC_PAGE_SIZE) {
@@ -276,12 +298,13 @@ export async function fetchRiderPerformanceAnalytics(params: {
         distance_meters?: number | null;
         lm_distance?: number | null;
         otp_plus_3_performance?: string | null;
+        status?: string | null;
       }> = [];
 
       while (hasMore) {
         const { data: pageRows, error: ordersError } = await supabase
           .from('orders')
-          .select('rider_name, slot_hour, order_date, order_id, distance_meters, lm_distance, otp_plus_3_performance')
+          .select('rider_name, slot_hour, order_date, order_id, distance_meters, lm_distance, otp_plus_3_performance, status')
           .eq('store_id', storeId)
           .gte('order_date', startDate)
           .lte('order_date', endDate)
@@ -306,11 +329,12 @@ export async function fetchRiderPerformanceAnalytics(params: {
         }
       }
 
-      // Group by (normalized rider_name, order_date) and compute COUNTUNIQUE(slot_hour), COUNT(order_id), SUM(distance_meters), and OTP Breached count
+      // Group by (normalized rider_name, order_date) and compute COUNTUNIQUE(slot_hour), COUNT(order_id), SUM(distance_meters), OTP Breached count, and BTO (RTO_DELIVERED) count
       const riderDateSlots = new Map<string, Set<number>>();
       const riderDateOrders = new Map<string, number>();
       const riderDateDistanceMeters = new Map<string, number>();
       const riderDateOtpBreached = new Map<string, number>();
+      const riderDateBto = new Map<string, number>();
       const canonicalDisplayByNorm = new Map<string, string>();
 
       for (const row of orderRows) {
@@ -346,6 +370,10 @@ export async function fetchRiderPerformanceAnalytics(params: {
         if (row.otp_plus_3_performance === 'OTP Breached') {
           riderDateOtpBreached.set(key, (riderDateOtpBreached.get(key) ?? 0) + 1);
         }
+
+        if (String(row.status ?? '').trim().toUpperCase() === 'RTO_DELIVERED') {
+          riderDateBto.set(key, (riderDateBto.get(key) ?? 0) + 1);
+        }
       }
 
       for (const [key, slots] of riderDateSlots.entries()) {
@@ -354,6 +382,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
         const orders = riderDateOrders.get(key) ?? 0;
         const distance_meters = riderDateDistanceMeters.get(key) ?? 0;
         const otp_breached_count = riderDateOtpBreached.get(key) ?? 0;
+        const bto_count = riderDateBto.get(key) ?? 0;
         rawAggregated.push({
           rider_name,
           order_date,
@@ -361,6 +390,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
           orders,
           distance_meters,
           otp_breached_count,
+          bto_count,
         });
       }
     }
@@ -403,6 +433,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
 
       const distMeters = item.distance_meters || 0;
       const otpBreached = item.otp_breached_count || 0;
+      const btoCount = item.bto_count || 0;
       const existingMetric = entry.dailyMetrics[item.order_date];
       if (existingMetric) {
         const newMeters = (existingMetric.distanceMeters || 0) + distMeters;
@@ -412,6 +443,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
           distanceMeters: newMeters,
           distanceKm: Math.round((newMeters / 1000) * 10) / 10,
           otpBreachedCount: (existingMetric.otpBreachedCount || 0) + otpBreached,
+          btoCount: (existingMetric.btoCount || 0) + btoCount,
         };
       } else {
         entry.dailyMetrics[item.order_date] = {
@@ -420,6 +452,7 @@ export async function fetchRiderPerformanceAnalytics(params: {
           distanceMeters: distMeters,
           distanceKm: Math.round((distMeters / 1000) * 10) / 10,
           otpBreachedCount: otpBreached,
+          btoCount,
         };
       }
     }
@@ -438,6 +471,8 @@ export async function fetchRiderPerformanceAnalytics(params: {
       let totalDistanceMeters = 0;
       let otpBreachedCount = 0;
       let otpBreachedDays = 0;
+      let btoCount = 0;
+      let btoDays = 0;
 
       for (const m of Object.values(entry.dailyMetrics)) {
         if (m.orders > 0 || m.hours > 0 || (m.distanceKm && m.distanceKm > 0)) {
@@ -450,6 +485,11 @@ export async function fetchRiderPerformanceAnalytics(params: {
         if (dayBreaches > 0) {
           otpBreachedCount += dayBreaches;
           otpBreachedDays += 1;
+        }
+        const dayBto = m.btoCount ?? 0;
+        if (dayBto > 0) {
+          btoCount += dayBto;
+          btoDays += 1;
         }
       }
 
@@ -486,6 +526,8 @@ export async function fetchRiderPerformanceAnalytics(params: {
         totalDistanceKm,
         otpBreachedCount,
         otpBreachedDays,
+        btoCount,
+        btoDays,
         avgHours,
         avgOrders,
         avgDistanceKm,
@@ -554,11 +596,13 @@ export interface RiderExportShiftMeta {
 
 export interface RiderExportExtraColumnMeta {
   otpBreachesLabel?: string;
+  btoLabel?: string;
   dnrSummaryLabel?: string;
 }
 
 export interface RiderExportOptions {
   includeOtpBreachCol?: boolean;
+  includeBtoCol?: boolean;
   includeDnrCol?: boolean;
   extraMetaByNameMap?: Map<string, RiderExportExtraColumnMeta>;
 }
@@ -577,6 +621,7 @@ export function buildRiderPerformanceExportSheet(
   filename: string;
 } {
   const includeOtpCol = Boolean(options?.includeOtpBreachCol);
+  const includeBtoCol = Boolean(options?.includeBtoCol);
   const includeDnrCol = Boolean(options?.includeDnrCol);
   const extraMetaMap = options?.extraMetaByNameMap;
 
@@ -595,6 +640,9 @@ export function buildRiderPerformanceExportSheet(
   ];
   if (includeOtpCol) {
     row1.push('OTP Breaches');
+  }
+  if (includeBtoCol) {
+    row1.push('BTO Orders');
   }
   if (includeDnrCol) {
     row1.push('DNR Cases');
@@ -643,6 +691,12 @@ export function buildRiderPerformanceExportSheet(
       const bCount = row.otpBreachedCount ?? 0;
       const bDays = row.otpBreachedDays ?? 0;
       rowVals.push(customOtp ?? (bCount > 0 ? `${bCount} (${bDays}d)` : '0'));
+    }
+    if (includeBtoCol) {
+      const customBto = extraMetaMap?.get(norm)?.btoLabel;
+      const btoCount = row.btoCount ?? 0;
+      const btoDays = row.btoDays ?? 0;
+      rowVals.push(customBto ?? (btoCount > 0 ? `${btoCount} (${btoDays}d)` : '0'));
     }
     if (includeDnrCol) {
       rowVals.push(extraMetaMap?.get(norm)?.dnrSummaryLabel ?? '0');

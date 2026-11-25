@@ -74,6 +74,7 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
       '20261118000002_add_incorrect_address_dsr_rca.sql',
       '20261118000003_clear_tpe2_rider_shifts.sql',
       '20261125000001_clear_tpe2_rider_shifts.sql',
+      '20261125000002_add_bto_to_rider_performance_rpc.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -568,5 +569,53 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
        WHERE store_id = '${tmk7StoreId}' AND normalized_name = 'tmk7 rider keep'`
     );
     expect(tmk7Shifts.rows).toEqual([{ shift_type: 'Evening Shift' }]);
+  });
+
+  it('aggregates bto_count (RTO_DELIVERED) and otp_breached_count per rider/date in get_rider_daily_performance RPC', async () => {
+    const hash1 = 'c'.repeat(64);
+    const hash2 = 'd'.repeat(64);
+    const hash3 = 'e'.repeat(64);
+    await db.exec(`
+      INSERT INTO public.orders (
+        store_id, source_store_name, order_created_at, status, rider_name, order_id,
+        external_store_id, order_type, store_code, slot_hour, order_date,
+        staging_to_pickup_minutes, s2p_minutes, distance_meters,
+        actual_arrival_minutes, arrival_eta_minutes, otp_performance, otp_plus_3_performance,
+        source_row_hash, raw_source_snapshot
+      ) VALUES
+        ('${tmk7StoreId}', 'TMK7', now(), 'RTO_DELIVERED', 'Ketan Jadhav', 'ORD-BTO-RPC-1',
+         '4247', 'Actual', 'TMK7', 9, '2026-11-24',
+         1.0, 1.0, 900, 0, 0, 'Not Applicable', 'Not Applicable', '${hash1}', '{}'::jsonb),
+        ('${tmk7StoreId}', 'TMK7', now(), ' rto_delivered ', 'Ketan Jadhav*', 'ORD-BTO-RPC-2',
+         '4247', 'Actual', 'TMK7', 11, '2026-11-24',
+         1.5, 1.5, 1100, 0, 0, 'Not Applicable', 'Not Applicable', '${hash2}', '{}'::jsonb),
+        ('${tmk7StoreId}', 'TMK7', now(), 'COMPLETED', 'Ketan Jadhav', 'ORD-BTO-RPC-3',
+         '4247', 'Actual', 'TMK7', 12, '2026-11-24',
+         0.8, 0.8, 1000, 14.0, 9.0, 'OTP Breached', 'OTP Breached', '${hash3}', '{}'::jsonb);
+    `);
+
+    await db.exec(`SET ROLE authenticated; SET request.jwt.claim.sub = '${TMK7_USER_ID}';`);
+    const perfRes = await db.query<{
+      rider_name: string;
+      orders: string;
+      hours: string;
+      otp_breached_count: string;
+      bto_count: string;
+    }>(
+      `SELECT rider_name, orders::text, hours::text, otp_breached_count::text, bto_count::text
+       FROM public.get_rider_daily_performance('${tmk7StoreId}'::uuid, '2026-11-24', '2026-11-24')
+       WHERE rider_name = 'Ketan Jadhav'`
+    );
+    expect(perfRes.rows).toEqual([
+      {
+        rider_name: 'Ketan Jadhav',
+        orders: '3',
+        hours: '3',
+        otp_breached_count: '1',
+        bto_count: '2',
+      },
+    ]);
+
+    await db.exec(`RESET ROLE;`);
   });
 });

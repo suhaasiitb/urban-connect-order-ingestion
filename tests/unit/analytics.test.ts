@@ -5,6 +5,7 @@ import {
   formatDateToHeader,
   getAllDatesInRange,
   getDateRangeForDays,
+  isHighBtoRider,
 } from '../../src/services/analyticsService';
 
 describe('Rider Performance Analytics Unit Tests', () => {
@@ -354,5 +355,76 @@ describe('Rider Performance Analytics Unit Tests', () => {
       0,
       0,
     ]);
+  });
+
+  it('identifies high BTO riders using >= 1 on single-day periods and >= 2 on multi-day periods', () => {
+    expect(isHighBtoRider({ btoCount: 0 }, true)).toBe(false);
+    expect(isHighBtoRider({ btoCount: 1 }, true)).toBe(true);
+    expect(isHighBtoRider({ btoCount: 1 }, false)).toBe(false);
+    expect(isHighBtoRider({ btoCount: 2 }, false)).toBe(true);
+    expect(isHighBtoRider({ btoCount: undefined }, false)).toBe(false);
+  });
+
+  it('includes BTO Orders column and shifted date merges when includeBtoCol is enabled in export', () => {
+    const pivot: RiderPerformancePivotResult = {
+      storeId: 'store-tpe2',
+      startDate: '2026-11-20',
+      endDate: '2026-11-21',
+      periodDays: 2,
+      totalRiders: 1,
+      overallAvgHours: 8,
+      overallAvgOrders: 15,
+      dateColumns: [
+        { dateStr: '2026-11-21', formattedHeader: '21-Nov' },
+        { dateStr: '2026-11-20', formattedHeader: '20-Nov' },
+      ],
+      rows: [
+        {
+          riderName: 'Rohan Shinde',
+          dailyMetrics: {
+            '2026-11-21': { hours: 8, orders: 16, distanceKm: 40, btoCount: 2 },
+            '2026-11-20': { hours: 8, orders: 14, distanceKm: 35, btoCount: 1 },
+          },
+          workingDays: 2,
+          totalHours: 16,
+          totalOrders: 30,
+          totalDistanceKm: 75,
+          btoCount: 3,
+          btoDays: 2,
+          avgHours: 8,
+          avgOrders: 15,
+          avgDistanceKm: 37.5,
+          activeAvgHours: 8,
+          activeAvgOrders: 15,
+          activeAvgDistanceKm: 37.5,
+        },
+      ],
+    };
+
+    const { sheetData, merges } = buildRiderPerformanceExportSheet(
+      pivot,
+      'TPE2',
+      false,
+      new Set(['rohan shinde']),
+      new Map([['rohan shinde', '9876543210']]),
+      undefined,
+      { includeBtoCol: true }
+    );
+
+    expect(sheetData[0].slice(0, 11)).toEqual([
+      'Rider Name',
+      'Rider Number',
+      'Active',
+      'Shift',
+      'Timings',
+      '8h Target',
+      'Active Days',
+      'Onboarded By',
+      'Referred By',
+      'Referred Mobile No',
+      'BTO Orders',
+    ]);
+    expect(sheetData[2][10]).toBe('3 (2d)');
+    expect(merges[0]).toEqual({ s: { r: 0, c: 11 }, e: { r: 0, c: 13 } });
   });
 });

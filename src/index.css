@@ -13056,6 +13056,230 @@ html[data-theme="dark"] .badge-otp-breach-cue-btn:hover {
   border-color: rgba(248, 113, 113, 0.65);
 }
 
+/* High BTO (RTO_DELIVERED) Highlight & Filter Toggle Button */
+.btn-bto-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+  background-color: #ffffff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.btn-bto-toggle:hover,
+.btn-bto-toggle.has-bto:hover {
+  background-color: #fff7ed;
+  color: #c2410c;
+  border-color: #fdba74;
+}
+
+.btn-bto-toggle-active {
+  background-color: #ffedd5 !important;
+  color: #9a3412 !important;
+  border-color: #ea580c !important;
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.18);
+}
+
+.bto-toggle-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.badge-bto-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ea580c;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+}
+
+.btn-bto-toggle-active .badge-bto-pill {
+  background: #9a3412;
+}
+
+.alert-box-bto-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  margin-bottom: 0.75rem;
+  border-radius: 8px;
+  background-color: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #7c2d12;
+}
+
+.alert-bto-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.alert-bto-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.alert-bto-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: #9a3412;
+}
+
+.btn-clear-bto {
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #fb923c;
+  background-color: #ffffff;
+  color: #9a3412;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+
+.btn-clear-bto:hover {
+  background-color: #ffedd5;
+}
+
+.row-bto-highlight {
+  background-color: #fff7ed !important;
+  border-left: 3px solid #ea580c !important;
+}
+
+.row-bto-highlight .td-rider-name {
+  background-color: #fff7ed !important;
+}
+
+.badge-bto-cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 9999px;
+  background-color: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #c2410c;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.badge-bto-cue-btn {
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.badge-bto-cue-btn:hover {
+  background-color: #ffedd5;
+  border-color: #fb923c;
+  transform: translateY(-1px);
+}
+
+.td-orders-bto-hit {
+  background-color: rgba(251, 146, 60, 0.12) !important;
+}
+
+.daily-orders-with-bto {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.daily-bto-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.32rem;
+  border-radius: 9999px;
+  background-color: #ffedd5;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+html[data-theme="dark"] .btn-bto-toggle {
+  background-color: #1e293b;
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
+html[data-theme="dark"] .btn-bto-toggle:hover,
+html[data-theme="dark"] .btn-bto-toggle.has-bto:hover {
+  background-color: rgba(234, 88, 12, 0.18);
+  color: #fdba74;
+  border-color: rgba(251, 146, 60, 0.5);
+}
+
+html[data-theme="dark"] .btn-bto-toggle-active {
+  background-color: rgba(234, 88, 12, 0.25) !important;
+  color: #fed7aa !important;
+  border-color: #fb923c !important;
+}
+
+html[data-theme="dark"] .alert-box-bto-banner {
+  background-color: rgba(124, 45, 18, 0.28);
+  border-color: rgba(251, 146, 60, 0.38);
+  color: #fed7aa;
+}
+
+html[data-theme="dark"] .alert-bto-sub {
+  color: #fdba74;
+}
+
+html[data-theme="dark"] .btn-clear-bto {
+  background-color: rgba(30, 41, 59, 0.9);
+  border-color: rgba(251, 146, 60, 0.45);
+  color: #fed7aa;
+}
+
+html[data-theme="dark"] .btn-clear-bto:hover {
+  background-color: rgba(234, 88, 12, 0.25);
+}
+
+html[data-theme="dark"] .row-bto-highlight td,
+html[data-theme="dark"] .row-bto-highlight .td-rider-name {
+  background-color: #1f130a !important;
+}
+
+html[data-theme="dark"] .badge-bto-cue {
+  background-color: rgba(234, 88, 12, 0.18);
+  border-color: rgba(251, 146, 60, 0.42);
+  color: #fdba74;
+}
+
+html[data-theme="dark"] .badge-bto-cue-btn:hover {
+  background-color: rgba(234, 88, 12, 0.3);
+  border-color: rgba(251, 146, 60, 0.7);
+}
+
+html[data-theme="dark"] .td-orders-bto-hit {
+  background-color: rgba(234, 88, 12, 0.2) !important;
+}
+
+html[data-theme="dark"] .daily-bto-tag {
+  background-color: rgba(234, 88, 12, 0.25);
+  border-color: rgba(251, 146, 60, 0.45);
+  color: #fed7aa;
+}
+
 
 
 

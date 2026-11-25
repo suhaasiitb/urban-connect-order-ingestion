@@ -1218,16 +1218,17 @@ async function saveOrderRcaViaRpc(
 }
 
 /**
- * Fetches RTO_DELIVERED (BTO) orders for a store/date (or date range and optional slotHour) for DSR / BTO RCA submission & reporting.
+ * Fetches RTO_DELIVERED (BTO) orders for a store/date (or date range and optional riderName/slotHour) for DSR / BTO RCA submission & reporting.
  */
 export async function fetchDsrRtoOrders(params: {
   storeId: string;
   orderDate?: string;
   startDate?: string;
   endDate?: string;
+  riderName?: string;
   slotHour?: number | null;
 }): Promise<{ orders: DsrRtoOrderRecord[]; error?: string }> {
-  const { storeId, orderDate, startDate, endDate, slotHour } = params;
+  const { storeId, orderDate, startDate, endDate, riderName, slotHour } = params;
   const rangeStart = startDate || orderDate;
   const rangeEnd = endDate || orderDate;
   if (!storeId || !rangeStart || !rangeEnd) {
@@ -1267,8 +1268,20 @@ export async function fetchDsrRtoOrders(params: {
       return { orders: [], error };
     }
 
+    const targetRiderNorm = riderName ? normalizeBreachRiderName(riderName) : null;
+
     const orders: DsrRtoOrderRecord[] = rawRows
-      .filter((r) => String(r.status ?? '').trim().toUpperCase() === 'RTO_DELIVERED')
+      .filter((r) => {
+        if (String(r.status ?? '').trim().toUpperCase() !== 'RTO_DELIVERED') {
+          return false;
+        }
+        if (targetRiderNorm) {
+          return Boolean(
+            r.rider_name && normalizeBreachRiderName(String(r.rider_name)) === targetRiderNorm
+          );
+        }
+        return true;
+      })
       .map((r) => ({
         orderId: String(r.order_id ?? ''),
         orderDate: r.order_date ? String(r.order_date) : undefined,
@@ -1280,15 +1293,24 @@ export async function fetchDsrRtoOrders(params: {
         dsrRcaUpdatedAt: r.dsr_rca_updated_at ? String(r.dsr_rca_updated_at) : null,
       }));
 
-    orders.sort((a, b) => {
-      const nameCmp = a.riderName.toLowerCase().localeCompare(b.riderName.toLowerCase()) ||
-        a.riderName.localeCompare(b.riderName);
-      if (nameCmp !== 0) return nameCmp;
-      const dateCmp = (a.orderDate ?? '').localeCompare(b.orderDate ?? '');
-      if (dateCmp !== 0) return dateCmp;
-      if (a.slotHour !== b.slotHour) return a.slotHour - b.slotHour;
-      return a.orderId.localeCompare(b.orderId);
-    });
+    if (riderName && startDate && endDate) {
+      orders.sort((a, b) => {
+        const dateCmp = (b.orderDate ?? '').localeCompare(a.orderDate ?? '');
+        if (dateCmp !== 0) return dateCmp;
+        if (a.slotHour !== b.slotHour) return a.slotHour - b.slotHour;
+        return a.orderId.localeCompare(b.orderId);
+      });
+    } else {
+      orders.sort((a, b) => {
+        const nameCmp = a.riderName.toLowerCase().localeCompare(b.riderName.toLowerCase()) ||
+          a.riderName.localeCompare(b.riderName);
+        if (nameCmp !== 0) return nameCmp;
+        const dateCmp = (a.orderDate ?? '').localeCompare(b.orderDate ?? '');
+        if (dateCmp !== 0) return dateCmp;
+        if (a.slotHour !== b.slotHour) return a.slotHour - b.slotHour;
+        return a.orderId.localeCompare(b.orderId);
+      });
+    }
     return { orders };
   } catch (err) {
     return {

@@ -5,6 +5,7 @@ import {
   type RiderPerformancePivotResult,
   type RiderPivotRow,
   exportRiderPerformanceToExcel,
+  isHighBtoRider,
 } from '../services/analyticsService';
 import { normalizeRiderName } from '../services/activeRiderService';
 import {
@@ -19,6 +20,7 @@ import { type RiderDnrSummary, type StoreDnrSummary } from '../services/dnrServi
 import { RiderDnrResolutionModal } from './RiderDnrResolutionModal';
 import { IndividualRiderShiftModal } from './IndividualRiderShiftModal';
 import { OtpBreachedRidersModal } from './OtpBreachedRidersModal';
+import { OtpBreachRcaModal } from './OtpBreachRcaModal';
 
 interface RiderPerformanceTableProps {
   data: RiderPerformancePivotResult;
@@ -79,7 +81,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   };
   const [highlightDnr, setHighlightDnr] = useState<boolean>(false);
   const [filterOtpBreach, setFilterOtpBreach] = useState<boolean>(false);
+  const [filterBto, setFilterBto] = useState<boolean>(false);
   const [otpBreachModalRider, setOtpBreachModalRider] = useState<string | null>(null);
+  const [btoModalRider, setBtoModalRider] = useState<string | null>(null);
   const [selectedDnrRider, setSelectedDnrRider] = useState<RiderDnrSummary | null>(null);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<boolean>(false);
   const [individualModalRider, setIndividualModalRider] = useState<string | null>(null);
@@ -99,9 +103,14 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const periodDays = data.periodDays || data.dateColumns.length || Math.max(1, selectedDays);
   const periodLabel = avgMode === 'period' ? `${periodDays}d Avg` : 'Active Avg';
   const isSingleDayPeriod = selectedDays === 0 || periodDays <= 1 || startDate === endDate;
+  const minBtoThreshold = isSingleDayPeriod ? 1 : 2;
   const isOtpBreachDefaulter = useCallback(
     (r: RiderPivotRow): boolean =>
       (r.otpBreachedCount ?? 0) >= 1 && (isSingleDayPeriod || (r.otpBreachedDays ?? 0) > 1),
+    [isSingleDayPeriod]
+  );
+  const isRiderHighBto = useCallback(
+    (r: RiderPivotRow): boolean => isHighBtoRider(r, isSingleDayPeriod),
     [isSingleDayPeriod]
   );
 
@@ -231,7 +240,22 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
       result = result.filter(isOtpBreachDefaulter);
     }
 
+    // High BTO Highlight filter: >= 1 BTO on single-day period, >= 2 BTO orders on multi-day period
+    if (filterBto) {
+      result = result.filter(isRiderHighBto);
+    }
+
     result.sort((a: RiderPivotRow, b: RiderPivotRow) => {
+      // When High BTO Highlight is active, sort highest-to-lowest by BTO count, then BTO days, then total orders
+      if (filterBto) {
+        const btoDiff = (b.btoCount ?? 0) - (a.btoCount ?? 0);
+        if (btoDiff !== 0) return btoDiff;
+        const daysDiff = (b.btoDays ?? 0) - (a.btoDays ?? 0);
+        if (daysDiff !== 0) return daysDiff;
+        const ordersDiff = b.totalOrders - a.totalOrders;
+        if (ordersDiff !== 0) return ordersDiff;
+      }
+
       // When OTP Breach Highlight is active, sort highest-to-lowest by breach count, then breached days, then total orders
       if (filterOtpBreach) {
         const breachDiff = (b.otpBreachedCount ?? 0) - (a.otpBreachedCount ?? 0);
@@ -340,11 +364,15 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr, filterOtpBreach, isOtpBreachDefaulter]);
+  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr, filterOtpBreach, isOtpBreachDefaulter, filterBto, isRiderHighBto]);
 
   const frequentOtpBreachCount = useMemo(() => {
     return data.rows.filter(isOtpBreachDefaulter).length;
   }, [data.rows, isOtpBreachDefaulter]);
+
+  const highBtoCount = useMemo(() => {
+    return data.rows.filter(isRiderHighBto).length;
+  }, [data.rows, isRiderHighBto]);
 
   const compliantShiftCount = useMemo(() => {
     return filteredRows.filter((r) => {
@@ -491,12 +519,20 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
 
       const breachCount = row.otpBreachedCount ?? 0;
       const breachDays = row.otpBreachedDays ?? 0;
+      const btoCount = row.btoCount ?? 0;
+      const btoDays = row.btoDays ?? 0;
       extraMetaByNameMap.set(norm, {
         otpBreachesLabel:
           breachCount > 0
             ? isSingleDayPeriod
               ? `${breachCount}`
               : `${breachCount} (${breachDays}d)`
+            : '0',
+        btoLabel:
+          btoCount > 0
+            ? isSingleDayPeriod
+              ? `${btoCount}`
+              : `${btoCount} (${btoDays}d)`
             : '0',
         dnrSummaryLabel: dnrTotal > 0 ? `${dnrTotal} (${dnrParts.join(', ')})` : '0',
       });
@@ -511,6 +547,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
       shiftsExportMap,
       {
         includeOtpBreachCol: filterOtpBreach,
+        includeBtoCol: filterBto,
         includeDnrCol: highlightDnr || activeShiftFilter.startsWith('DNR_'),
         extraMetaByNameMap,
       }
@@ -872,6 +909,34 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                     </span>
                   )}
                 </button>
+
+                {/* High BTO (RTO_DELIVERED) Highlight & Filter Toggle Button */}
+                <button
+                  type="button"
+                  className={`btn-bto-toggle ${filterBto ? 'btn-bto-toggle-active' : ''} ${highBtoCount > 0 ? 'has-bto' : ''}`}
+                  onClick={() => setFilterBto(!filterBto)}
+                  title={
+                    filterBto
+                      ? isSingleDayPeriod
+                        ? 'Showing riders with >= 1 BTO (RTO_DELIVERED) order in this period, sorted highest-to-lowest. Click to show all riders'
+                        : 'Showing high BTO riders (>= 2 RTO_DELIVERED orders) in this period, sorted highest-to-lowest. Click to show all riders'
+                      : highBtoCount > 0
+                      ? isSingleDayPeriod
+                        ? `Highlight & filter ${highBtoCount} rider(s) with >= 1 BTO order in ${startDate}`
+                        : `Highlight & filter ${highBtoCount} high BTO rider(s) (>= 2 BTO orders) in ${startDate} to ${endDate}`
+                      : isSingleDayPeriod
+                      ? 'No riders with BTO orders in this period'
+                      : 'No riders with high BTO orders (>= 2) in this period'
+                  }
+                >
+                  <span className="bto-toggle-icon">📦</span>
+                  <span>BTO</span>
+                  {highBtoCount > 0 && (
+                    <span className="badge-bto-pill">
+                      {highBtoCount}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -1024,6 +1089,30 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
             type="button"
             className="btn-clear-otp-breach"
             onClick={() => setFilterOtpBreach(false)}
+          >
+            Show All Riders
+          </button>
+        </div>
+      )}
+
+      {/* High BTO Filter Information Banner */}
+      {filterBto && (
+        <div className="alert-box alert-box-bto-banner" role="alert">
+          <div className="alert-bto-left">
+            <span className="alert-bto-icon">📦</span>
+            <div>
+              <strong>
+                High BTO Riders ({filteredRows.length} shown)
+              </strong>
+              <p className="alert-bto-sub">
+                Riders with <strong>&ge; {minBtoThreshold} BTO {minBtoThreshold === 1 ? 'order' : 'orders'}</strong> (RTO_DELIVERED) in <strong>{startDate} &rarr; {endDate}</strong>, sorted highest-to-lowest by BTO count. Click a rider badge to inspect BTO orders &amp; RCA.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-clear-bto"
+            onClick={() => setFilterBto(false)}
           >
             Show All Riders
           </button>
@@ -1372,6 +1461,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                 <td colSpan={totalColSpan} className="table-empty-cell text-center">
                   {searchQuery
                     ? `No riders matching "${searchQuery}".`
+                    : filterBto || filterOtpBreach
+                    ? `No riders matching the active highlight filters for ${storeCode} between ${startDate} and ${endDate}.`
                     : `No order records found for ${storeCode} between ${startDate} and ${endDate}. Upload order files in the Data Ingestion tab to see rider analytics.`}
                 </td>
               </tr>
@@ -1418,7 +1509,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                           ? 'row-dnr-highlight row-dnr-frequent'
                           : 'row-dnr-highlight'
                         : ''
-                    } ${hasReferralTag ? 'row-referral-tagged' : ''}`}
+                    } ${filterBto && isRiderHighBto(row) ? 'row-bto-highlight' : ''} ${hasReferralTag ? 'row-referral-tagged' : ''}`}
                   >
                     {/* Sticky Rider Name & Stacked Phone Number */}
                     <td className="td-rider-name sticky-col text-center">
@@ -1446,6 +1537,23 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                                   )}
                                 </button>
                               )}
+                            {filterBto && isRiderHighBto(row) && (
+                              <button
+                                type="button"
+                                className="badge-bto-cue badge-bto-cue-btn"
+                                onClick={() => setBtoModalRider(row.riderName)}
+                                title={`${row.btoCount} BTO ${row.btoCount === 1 ? 'order' : 'orders'} (RTO_DELIVERED) across ${row.btoDays ?? 0} distinct ${(row.btoDays ?? 0) === 1 ? 'day' : 'days'} in ${startDate} to ${endDate}. Click to view BTO orders & RCA.`}
+                              >
+                                📦 {row.btoCount} BTO
+                                {!isSingleDayPeriod && (row.btoDays ?? 0) > 0 && (
+                                  <>
+                                    {' '}
+                                    &middot; {row.btoDays}{' '}
+                                    {row.btoDays === 1 ? 'day' : 'days'}
+                                  </>
+                                )}
+                              </button>
+                            )}
                             {rawRiderShift?.onboardedBy && (
                               <span
                                 className="rider-onboarded-tag"
@@ -1656,9 +1764,25 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                             <td
                               className={`td-metric td-orders text-center ${
                                 !hasData ? 'td-blank' : ''
-                              }`}
+                              } ${filterBto && hasData && (metric.btoCount ?? 0) > 0 ? 'td-orders-bto-hit' : ''}`}
+                              title={
+                                filterBto && hasData && (metric.btoCount ?? 0) > 0
+                                  ? `${metric.btoCount} BTO (RTO_DELIVERED) ${metric.btoCount === 1 ? 'order' : 'orders'} on ${col.formattedHeader}`
+                                  : undefined
+                              }
                             >
-                              {hasData ? metric.orders : <span className="cell-dash">—</span>}
+                              {hasData ? (
+                                filterBto && (metric.btoCount ?? 0) > 0 ? (
+                                  <span className="daily-orders-with-bto">
+                                    <span>{metric.orders}</span>
+                                    <span className="daily-bto-tag">📦{metric.btoCount}</span>
+                                  </span>
+                                ) : (
+                                  metric.orders
+                                )
+                              ) : (
+                                <span className="cell-dash">—</span>
+                              )}
                             </td>
                             <td
                               className={`td-metric td-distance text-center ${
@@ -1857,6 +1981,22 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
           startDate={startDate}
           endDate={endDate}
           riderName={otpBreachModalRider}
+        />
+      )}
+
+      {/* Rider BTO (RTO_DELIVERED) Orders & RCA Modal */}
+      {btoModalRider && storeId && (
+        <OtpBreachRcaModal
+          isOpen={Boolean(btoModalRider)}
+          onClose={() => setBtoModalRider(null)}
+          storeId={storeId}
+          storeCode={storeCode}
+          startDate={startDate}
+          endDate={endDate}
+          slotHour={null}
+          riderName={btoModalRider}
+          mode="dsr"
+          onSaved={() => onRefresh()}
         />
       )}
 
