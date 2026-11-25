@@ -73,6 +73,7 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
       '20261118000001_optimize_storage_and_retention.sql',
       '20261118000002_add_incorrect_address_dsr_rca.sql',
       '20261118000003_clear_tpe2_rider_shifts.sql',
+      '20261125000001_clear_tpe2_rider_shifts.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -509,32 +510,49 @@ describe('Store Users & Store Scoping Verification (PGlite)', () => {
     const tpe2StoreId = tpe2Res.rows[0].id;
 
     await db.exec(`
-      INSERT INTO public.store_rider_shifts (store_id, rider_name, normalized_name, shift_type, total_planned_hours, onboarded_by)
+      INSERT INTO public.store_rider_shifts (
+        store_id, rider_name, normalized_name, shift_type,
+        slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour,
+        total_planned_hours, onboarded_by
+      )
       VALUES
-        ('${tpe2StoreId}', 'TPE2 Rider Plain', 'tpe2 rider plain', 'Morning Shift', 8.0, NULL),
-        ('${tpe2StoreId}', 'TPE2 Rider Meta', 'tpe2 rider meta', 'Split Shift', 8.0, 'Sunil'),
-        ('${tmk7StoreId}', 'TMK7 Rider Keep', 'tmk7 rider keep', 'Evening Shift', 8.0, NULL);
+        ('${tpe2StoreId}', 'TPE2 Rider Plain', 'tpe2 rider plain', 'Morning Shift', 6, 14, NULL, NULL, 8.0, NULL),
+        ('${tpe2StoreId}', 'TPE2 Rider Meta', 'tpe2 rider meta', 'Split Shift', 10, 14, 18, 22, 8.0, 'Sunil'),
+        ('${tmk7StoreId}', 'TMK7 Rider Keep', 'tmk7 rider keep', 'Evening Shift', 14, 22, NULL, NULL, 8.0, NULL);
 
       INSERT INTO public.store_rider_attendance (store_id, warehouse_id, attendance_date, rider_name, normalized_name, shift_type)
       VALUES
-        ('${tpe2StoreId}', 'TPE2', '2026-11-18', 'TPE2 Rider Plain', 'tpe2 rider plain', 'Morning Shift'),
-        ('${tmk7StoreId}', 'TMK7', '2026-11-18', 'TMK7 Rider Keep', 'tmk7 rider keep', 'Evening Shift');
+        ('${tpe2StoreId}', 'TPE2', '2026-11-25', 'TPE2 Rider Plain', 'tpe2 rider plain', 'Morning Shift'),
+        ('${tmk7StoreId}', 'TMK7', '2026-11-25', 'TMK7 Rider Keep', 'tmk7 rider keep', 'Evening Shift');
     `);
 
     const clearSql = fs.readFileSync(
-      path.join(MIGRATIONS_DIR, '20261118000003_clear_tpe2_rider_shifts.sql'),
+      path.join(MIGRATIONS_DIR, '20261125000001_clear_tpe2_rider_shifts.sql'),
       'utf8'
     );
     await db.exec(clearSql);
 
-    const tpe2Shifts = await db.query<{ normalized_name: string; shift_type: string; total_planned_hours: string; onboarded_by: string | null }>(
-      `SELECT normalized_name, shift_type, total_planned_hours::text, onboarded_by
+    const tpe2Shifts = await db.query<{
+      normalized_name: string;
+      shift_type: string;
+      slot1_start_hour: number;
+      slot1_end_hour: number;
+      slot2_start_hour: number | null;
+      slot2_end_hour: number | null;
+      total_planned_hours: string;
+      onboarded_by: string | null;
+    }>(
+      `SELECT normalized_name, shift_type, slot1_start_hour, slot1_end_hour, slot2_start_hour, slot2_end_hour, total_planned_hours::text, onboarded_by
        FROM public.store_rider_shifts WHERE store_id = '${tpe2StoreId}'`
     );
     expect(tpe2Shifts.rows).toEqual([
       {
         normalized_name: 'tpe2 rider meta',
         shift_type: 'UNASSIGNED',
+        slot1_start_hour: 6,
+        slot1_end_hour: 14,
+        slot2_start_hour: null,
+        slot2_end_hour: null,
         total_planned_hours: '0.0',
         onboarded_by: 'Sunil',
       },

@@ -358,9 +358,9 @@ function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F)
 let remoteHasOnboardedByColumn = true;
 let remoteHasReferralColumns = true;
 
-// Cutoff timestamp for TPE2 shift reset migration (2026-11-18T16:17:00Z / 21:47 IST)
-const REMOTE_SHIFTS_RESET_CUTOFF_MS = Date.parse('2026-11-18T16:17:00Z');
-const TPE2_ATTENDANCE_RESET_FLAG = 'uc_tpe2_attendance_reset_20261118_v2';
+// Cutoff timestamp for TPE2 shift reset migration (2026-11-25T04:51:00Z / 10:21 IST)
+const REMOTE_SHIFTS_RESET_CUTOFF_MS = Date.parse('2026-11-25T04:51:00Z');
+const TPE2_ATTENDANCE_RESET_FLAG = 'uc_tpe2_attendance_reset_20261125_v3';
 
 /**
  * Loads rider shifts for a store from Supabase and merges with localStorage.
