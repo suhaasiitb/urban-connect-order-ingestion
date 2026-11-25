@@ -77,6 +77,45 @@ export function getStoreAttendanceStorageKey(warehouseId: string, attendanceDate
   return `${LOCAL_STORAGE_ATTENDANCE_PREFIX}${normWh}_${attendanceDate}`;
 }
 
+function isAssignedAttendanceShift(shiftType?: string | null): boolean {
+  return Boolean(shiftType && shiftType.trim().toUpperCase() !== 'UNASSIGNED');
+}
+
+/**
+ * Filters attendance records to riders present in the active roster (when non-empty),
+ * enriching missing phone numbers and canonical names from activeRiders.
+ */
+export function filterRecordsByActiveRoster(
+  records: RiderAttendanceRecord[],
+  activeRiders?: Array<{ name: string; phone?: string }>
+): RiderAttendanceRecord[] {
+  if (!activeRiders || activeRiders.length === 0) {
+    return records;
+  }
+
+  const activeByNorm = new Map<string, { name: string; phone?: string }>();
+  for (const r of activeRiders) {
+    const norm = normalizeRiderName(r.name);
+    if (norm && !activeByNorm.has(norm)) {
+      activeByNorm.set(norm, { name: r.name, phone: r.phone });
+    }
+  }
+
+  return records
+    .filter((rec) => {
+      const norm = rec.normalizedName || normalizeRiderName(rec.riderName);
+      return Boolean(norm && activeByNorm.has(norm));
+    })
+    .map((rec) => {
+      const norm = rec.normalizedName || normalizeRiderName(rec.riderName);
+      const activeEntry = activeByNorm.get(norm);
+      if (!rec.phone && activeEntry?.phone) {
+        return { ...rec, normalizedName: norm, phone: activeEntry.phone };
+      }
+      return { ...rec, normalizedName: norm };
+    });
+}
+
 /**
  * Checks if a rider's shift timings cover a specific slot hour (0-23).
  * Slot 1: [slot1StartHour, slot1EndHour)
@@ -201,6 +240,7 @@ export function calculateSlotTurnUpFromAttendance(
   }
 
   for (const rider of targetRiders) {
+    if (!isAssignedAttendanceShift(rider.shiftType)) continue;
     for (let h = 6; h <= 23; h++) {
       if (isRiderWorkingInSlot(rider, h)) {
         slotMap[h] = (slotMap[h] || 0) + 1;
@@ -244,6 +284,7 @@ export function getRidersForSlot(
   const list: SlotRiderInfo[] = [];
 
   for (const r of records) {
+    if (!isAssignedAttendanceShift(r.shiftType)) continue;
     if (isRiderWorkingInSlot(r, slotHour)) {
       let isCounted = false;
       if (hasPresentRiders) {
@@ -375,9 +416,12 @@ export async function fetchStoreRiderAttendance(params: {
   if (storeId && storeId.startsWith('test-')) {
     if (cached && cached.length > 0) {
       const synced = params.shiftsMap ? syncAttendanceWithLatestShifts(cached, params.shiftsMap) : cached;
-      return buildAttendanceSummary(normWh, attendanceDate, synced, storeId);
+      const activeFiltered = filterRecordsByActiveRoster(synced, params.activeRiders);
+      return buildAttendanceSummary(normWh, attendanceDate, activeFiltered, storeId);
     }
-    return buildAttendanceSummary(normWh, attendanceDate, [], storeId);
+    if (!params.activeRiders) {
+      return buildAttendanceSummary(normWh, attendanceDate, [], storeId);
+    }
   }
 
   // 2. Fetch shifts, active roster, and Supabase store_rider_attendance in parallel
@@ -400,20 +444,25 @@ export async function fetchStoreRiderAttendance(params: {
   let resolvedActiveRiders: Array<{ name: string; phone?: string }> | undefined = params.activeRiders;
 
   try {
-    const [resolvedShifts, fetchedActiveRiders, res] = await Promise.all([
-      shiftsPromise,
-      activeRidersPromise,
-      withTimeout(
-        supabase
-          .from('store_rider_attendance')
-          .select('*')
-          .eq('warehouse_id', normWh)
-          .eq('attendance_date', attendanceDate)
-          .order('rider_name', { ascending: true }),
-        12000,
-        { data: null, error: null }
-      ),
-    ]);
+      const remoteQueryPromise =
+        storeId && storeId.startsWith('test-')
+          ? Promise.resolve({ data: null, error: null })
+          : withTimeout(
+              supabase
+                .from('store_rider_attendance')
+                .select('*')
+                .eq('warehouse_id', normWh)
+                .eq('attendance_date', attendanceDate)
+                .order('rider_name', { ascending: true }),
+              12000,
+              { data: null, error: null }
+            );
+
+      const [resolvedShifts, fetchedActiveRiders, res] = await Promise.all([
+        shiftsPromise,
+        activeRidersPromise,
+        remoteQueryPromise,
+      ]);
     shifts = resolvedShifts;
     resolvedActiveRiders = fetchedActiveRiders;
     const data = res?.data;
@@ -458,14 +507,15 @@ export async function fetchStoreRiderAttendance(params: {
     mergedBaseRecords = cached;
   }
 
-  // If we have saved/cached records, merge in any newly added active riders from the active roster
+  // If we have saved/cached records, restrict to active roster (when available) and merge newly added active riders
   if (mergedBaseRecords && mergedBaseRecords.length > 0) {
     const syncedBase = shifts
       ? syncAttendanceWithLatestShifts(mergedBaseRecords, shifts)
       : mergedBaseRecords;
+    const activeFilteredBase = filterRecordsByActiveRoster(syncedBase, resolvedActiveRiders);
 
     const byNorm = new Map<string, RiderAttendanceRecord>();
-    for (const rec of syncedBase) {
+    for (const rec of activeFilteredBase) {
       const norm = rec.normalizedName || normalizeRiderName(rec.riderName);
       if (norm && !byNorm.has(norm)) {
         byNorm.set(norm, { ...rec, normalizedName: norm });
@@ -543,16 +593,16 @@ export async function fetchStoreRiderAttendance(params: {
     }
   }
 
-  // Combine unique riders from active roster and shifts map
+  // Build roster strictly from active riders when an active roster exists; fall back to shifts map only if no active roster is uploaded
   const ridersMap = new Map<string, { name: string; phone?: string }>();
   if (ridersList && ridersList.length > 0) {
     for (const r of ridersList) {
       const norm = normalizeRiderName(r.name);
-      if (norm) ridersMap.set(norm, { name: r.name, phone: r.phone });
+      if (norm && !ridersMap.has(norm)) {
+        ridersMap.set(norm, { name: r.name, phone: r.phone });
+      }
     }
-  }
-
-  if (shifts && shifts.size > 0) {
+  } else if (shifts && shifts.size > 0) {
     for (const [norm, s] of shifts.entries()) {
       if (!ridersMap.has(norm)) {
         ridersMap.set(norm, { name: s.riderName });
@@ -717,7 +767,8 @@ export async function saveStoreRiderAttendance(params: {
 export function subscribeStoreRiderAttendance(
   warehouseId: string,
   attendanceDate: string,
-  onUpdate: (summary: StoreAttendanceSummary) => void
+  onUpdate: (summary: StoreAttendanceSummary) => void,
+  storeId?: string
 ): () => void {
   const normWh = (warehouseId || 'TMK7').toUpperCase().trim();
   const storageKey = getStoreAttendanceStorageKey(normWh, attendanceDate);
@@ -778,6 +829,7 @@ export function subscribeStoreRiderAttendance(
         () => {
           // Re-fetch fresh attendance for this date from database
           void fetchStoreRiderAttendance({
+            storeId,
             warehouseId: normWh,
             attendanceDate,
           }).then((fresh) => {

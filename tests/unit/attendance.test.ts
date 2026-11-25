@@ -10,6 +10,7 @@ import {
   buildAttendanceSummary,
   calculateSlotTurnUpFromAttendance,
   fetchStoreRiderAttendance,
+  filterRecordsByActiveRoster,
   getStoreAttendanceStorageKey,
   getRidersForSlot,
   isRiderWorkingInSlot,
@@ -815,6 +816,145 @@ describe('Rider Attendance & Turn-Up Planning Suite', () => {
       expect(afterNewerSync[0].slot1StartHour).toBe(15);
       expect(afterNewerSync[0].slot1EndHour).toBe(24);
       expect(afterNewerSync[0].slot2StartHour).toBeNull();
+    });
+
+    it('includes only active riders in attendance roster and excludes inactive riders from shifts or stale cache', async () => {
+      const activeRiders = [
+        { name: 'Abdul Raheem salmani', phone: '8429891727' },
+        { name: 'ABHAY GORE', phone: '8530615177' },
+      ];
+
+      const shiftsMap = new Map<string, RiderShiftConfig>([
+        [
+          'abdul raheem salmani',
+          {
+            riderName: 'Abdul Raheem salmani',
+            normalizedName: 'abdul raheem salmani',
+            shiftType: 'Split Shift',
+            slot1StartHour: 9,
+            slot1EndHour: 14,
+            slot2StartHour: 16,
+            slot2EndHour: 24,
+            totalPlannedHours: 13,
+          },
+        ],
+        [
+          'abhijeet wagh', // Inactive rider lingering in store_rider_shifts
+          {
+            riderName: 'ABHIJEET WAGH',
+            normalizedName: 'abhijeet wagh',
+            shiftType: 'UNASSIGNED',
+            slot1StartHour: 6,
+            slot1EndHour: 14,
+            totalPlannedHours: 0,
+            onboardedBy: 'FM1',
+          },
+        ],
+        [
+          'inactive legacy rider', // Inactive rider with old assigned shift
+          {
+            riderName: 'Inactive Legacy Rider',
+            normalizedName: 'inactive legacy rider',
+            shiftType: 'Morning Shift',
+            slot1StartHour: 6,
+            slot1EndHour: 15,
+            totalPlannedHours: 9,
+          },
+        ],
+      ]);
+
+      // 1. Fresh roster should only list the 2 active riders
+      const freshSummary = await fetchStoreRiderAttendance({
+        storeId: 'test-store-id',
+        warehouseId: 'TPE2',
+        attendanceDate: '2026-11-26',
+        activeRiders,
+        shiftsMap,
+      });
+
+      expect(freshSummary.totalRiders).toBe(2);
+      expect(freshSummary.records.map((r) => r.normalizedName)).toEqual([
+        'abdul raheem salmani',
+        'abhay gore',
+      ]);
+
+      // 2. Saved/cached attendance containing inactive riders is also pruned to activeRiders
+      await saveStoreRiderAttendance({
+        storeId: 'test-store-id',
+        warehouseId: 'TPE2',
+        attendanceDate: '2026-11-27',
+        records: [
+          {
+            warehouseId: 'TPE2',
+            attendanceDate: '2026-11-27',
+            riderName: 'ABHAY GORE',
+            normalizedName: 'abhay gore',
+            shiftType: 'Split Shift',
+            slot1StartHour: 8,
+            slot1EndHour: 15,
+            slot2StartHour: 16,
+            slot2EndHour: 24,
+            status: 'present',
+            isPresent: true,
+          },
+          {
+            warehouseId: 'TPE2',
+            attendanceDate: '2026-11-27',
+            riderName: 'Inactive Legacy Rider',
+            normalizedName: 'inactive legacy rider',
+            shiftType: 'Morning Shift',
+            slot1StartHour: 6,
+            slot1EndHour: 15,
+            status: 'present',
+            isPresent: true,
+          },
+        ],
+      });
+
+      const cachedSummary = await fetchStoreRiderAttendance({
+        storeId: 'test-store-id',
+        warehouseId: 'TPE2',
+        attendanceDate: '2026-11-27',
+        activeRiders,
+        shiftsMap,
+      });
+      expect(cachedSummary.totalRiders).toBe(1);
+      expect(cachedSummary.records[0].normalizedName).toBe('abhay gore');
+      expect(cachedSummary.records[0].phone).toBe('8530615177');
+
+      // Direct helper preserves records unchanged when activeRiders is empty/omitted
+      expect(filterRecordsByActiveRoster(cachedSummary.records, [])).toHaveLength(1);
+    });
+
+    it('excludes UNASSIGNED shift rows from slot turn-up calculations', () => {
+      const records: RiderAttendanceRecord[] = [
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-26',
+          riderName: 'Unassigned Active',
+          normalizedName: 'unassigned active',
+          shiftType: 'UNASSIGNED',
+          slot1StartHour: 6,
+          slot1EndHour: 14,
+          status: 'present',
+          isPresent: true,
+        },
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-26',
+          riderName: 'Assigned Active',
+          normalizedName: 'assigned active',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 14,
+          status: 'present',
+          isPresent: true,
+        },
+      ];
+
+      const turnUp = calculateSlotTurnUpFromAttendance(records);
+      expect(turnUp[6]).toBe(1);
+      expect(getRidersForSlot(records, 6).map((r) => r.riderName)).toEqual(['Assigned Active']);
     });
   });
 });

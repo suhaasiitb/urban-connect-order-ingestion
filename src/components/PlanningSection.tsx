@@ -217,7 +217,8 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       (newSummary) => {
         setAttendanceSummary(newSummary);
         void loadPlanningData();
-      }
+      },
+      selectedStore.id
     );
 
     // In-tab event listener for rider shifts updates (recalibrates PLANNED TURN-UP instantly)

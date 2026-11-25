@@ -432,13 +432,17 @@ export const RiderAttendanceModal: React.FC<RiderAttendanceModalProps> = ({
                                 ? 'badge-morning'
                                 : rider.shiftType === '2nd Shift'
                                 ? 'badge-second'
-                                : 'badge-split'
+                                : rider.shiftType === 'Split Shift'
+                                ? 'badge-split'
+                                : rider.shiftType === 'UNASSIGNED'
+                                ? 'badge-shift-unassigned'
+                                : 'badge-custom'
                             }`}
                           >
-                            {rider.shiftType}
+                            {rider.shiftType === 'UNASSIGNED' ? 'Unassigned' : rider.shiftType}
                           </span>
-                          <span className="shift-hours-text">
-                            {timingsLabel}
+                          <span className={`shift-hours-text ${rider.shiftType === 'UNASSIGNED' ? 'text-muted' : ''}`}>
+                            {rider.shiftType === 'UNASSIGNED' ? 'No shift assigned' : timingsLabel}
                           </span>
                         </div>
                       </td>
