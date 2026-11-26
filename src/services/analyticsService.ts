@@ -789,3 +789,46 @@ export function exportRiderPerformanceToExcel(
   XLSX.utils.book_append_sheet(wb, ws, 'Rider Performance');
   XLSX.writeFile(wb, filename);
 }
+
+export interface Under6HoursReportRow {
+  riderName: string;
+  avgHours: number;
+  loginTimeLabel: string;
+  totalOrders: number;
+}
+
+/**
+ * Formats period-average login hours cleanly for the <=6h performance list
+ * (e.g. 1 -> "1 hr", 2 -> "2 hrs", 2.5 -> "2.5 hrs").
+ */
+export function formatUnder6HoursLoginTime(hours: number): string {
+  const safeHours = Number.isFinite(hours) ? Math.max(0, Math.round(hours * 10) / 10) : 0;
+  if (safeHours === 1) {
+    return '1 hr';
+  }
+  const numericStr = Number.isInteger(safeHours) ? String(safeHours) : safeHours.toFixed(1);
+  return `${numericStr} hrs`;
+}
+
+/**
+ * Filters Rider Performance rows to riders with period average login time <= 6 hours,
+ * sorted by total orders ascending (then avg hours ascending, then rider name).
+ */
+export function buildUnder6HoursReportRows(rows: RiderPivotRow[]): Under6HoursReportRow[] {
+  return rows
+    .filter((row) => row.avgHours <= 6.0)
+    .slice()
+    .sort((a, b) => {
+      const ordersDiff = a.totalOrders - b.totalOrders;
+      if (ordersDiff !== 0) return ordersDiff;
+      const hoursDiff = a.avgHours - b.avgHours;
+      if (hoursDiff !== 0) return hoursDiff;
+      return a.riderName.localeCompare(b.riderName);
+    })
+    .map((row) => ({
+      riderName: row.riderName,
+      avgHours: row.avgHours,
+      loginTimeLabel: formatUnder6HoursLoginTime(row.avgHours),
+      totalOrders: row.totalOrders,
+    }));
+}

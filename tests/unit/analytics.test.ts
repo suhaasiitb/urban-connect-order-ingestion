@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   type RiderPerformancePivotResult,
+  type RiderPivotRow,
   buildRiderPerformanceExportSheet,
+  buildUnder6HoursReportRows,
   formatDateToHeader,
+  formatUnder6HoursLoginTime,
   getAllDatesInRange,
   getDateRangeForDays,
   isHighBtoRider,
@@ -436,5 +439,53 @@ describe('Rider Performance Analytics Unit Tests', () => {
     expect(shiftIsoDate('2024-02-29', 1)).toBe('2024-03-01');
     expect(shiftIsoDate('2024-03-01', -1)).toBe('2024-02-29');
     expect(shiftIsoDate('invalid-date', -1)).toBe('invalid-date');
+  });
+
+  it('formats <=6h performance list login time cleanly (1 hr vs plural hrs & decimals)', () => {
+    expect(formatUnder6HoursLoginTime(1)).toBe('1 hr');
+    expect(formatUnder6HoursLoginTime(1.0)).toBe('1 hr');
+    expect(formatUnder6HoursLoginTime(2)).toBe('2 hrs');
+    expect(formatUnder6HoursLoginTime(6)).toBe('6 hrs');
+    expect(formatUnder6HoursLoginTime(2.5)).toBe('2.5 hrs');
+    expect(formatUnder6HoursLoginTime(0)).toBe('0 hrs');
+  });
+
+  it('builds <=6h Rider Performance List filtered to avgHours <= 6 and sorted by orders ascending', () => {
+    const makeRow = (riderName: string, avgHours: number, totalOrders: number): RiderPivotRow => ({
+      riderName,
+      dailyMetrics: {},
+      workingDays: 1,
+      totalHours: avgHours,
+      totalOrders,
+      totalDistanceKm: 0,
+      avgHours,
+      avgOrders: totalOrders,
+      avgDistanceKm: 0,
+      activeAvgHours: avgHours,
+      activeAvgOrders: totalOrders,
+      activeAvgDistanceKm: 0,
+    });
+
+    const input: RiderPivotRow[] = [
+      makeRow('Rahul Walhekar', 5, 7),
+      makeRow('Borderline Six', 6.0, 9),
+      makeRow('Above Six', 6.1, 4),
+      makeRow('Full Time Rider', 8.0, 22),
+      makeRow('Atharva Ladkat', 1, 1),
+      makeRow('Dipak Waghmare', 2, 4),
+      makeRow('Anil Pawar', 3, 4),
+      makeRow('Jetharam Choudhary', 2, 2),
+    ];
+
+    const reportRows = buildUnder6HoursReportRows(input);
+
+    expect(reportRows).toEqual([
+      { riderName: 'Atharva Ladkat', avgHours: 1, loginTimeLabel: '1 hr', totalOrders: 1 },
+      { riderName: 'Jetharam Choudhary', avgHours: 2, loginTimeLabel: '2 hrs', totalOrders: 2 },
+      { riderName: 'Dipak Waghmare', avgHours: 2, loginTimeLabel: '2 hrs', totalOrders: 4 },
+      { riderName: 'Anil Pawar', avgHours: 3, loginTimeLabel: '3 hrs', totalOrders: 4 },
+      { riderName: 'Rahul Walhekar', avgHours: 5, loginTimeLabel: '5 hrs', totalOrders: 7 },
+      { riderName: 'Borderline Six', avgHours: 6, loginTimeLabel: '6 hrs', totalOrders: 9 },
+    ]);
   });
 });

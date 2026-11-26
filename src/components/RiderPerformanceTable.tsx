@@ -1,9 +1,10 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   type RiderExportExtraColumnMeta,
   type RiderExportShiftMeta,
   type RiderPerformancePivotResult,
   type RiderPivotRow,
+  buildUnder6HoursReportRows,
   exportRiderPerformanceToExcel,
   isHighBtoRider,
 } from '../services/analyticsService';
@@ -17,10 +18,12 @@ import {
   deleteSingleRiderShift,
 } from '../services/riderShiftService';
 import { type RiderDnrSummary, type StoreDnrSummary } from '../services/dnrService';
+import { downloadUnder6HoursPerformanceReport } from '../utils/snapshotExport';
 import { RiderDnrResolutionModal } from './RiderDnrResolutionModal';
 import { IndividualRiderShiftModal } from './IndividualRiderShiftModal';
 import { OtpBreachedRidersModal } from './OtpBreachedRidersModal';
 import { OtpBreachRcaModal } from './OtpBreachRcaModal';
+import { SnapshotButton, type SnapshotStatus } from './SnapshotButton';
 
 interface RiderPerformanceTableProps {
   data: RiderPerformancePivotResult;
@@ -71,7 +74,10 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   shiftFilter: shiftFilterProp,
   onSelectShiftFilter,
 }) => {
+  const sectionRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [takingUnder6Report, setTakingUnder6Report] = useState(false);
+  const [under6ReportStatus, setUnder6ReportStatus] = useState<SnapshotStatus>('idle');
   const [activeStatusFilter, setActiveStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [internalShiftFilter, setInternalShiftFilter] = useState<string>('ALL');
   const activeShiftFilter = shiftFilterProp !== undefined ? shiftFilterProp : internalShiftFilter;
@@ -544,8 +550,40 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     );
   };
 
+  const under6HoursReportRows = useMemo(
+    () => buildUnder6HoursReportRows(filteredRows),
+    [filteredRows]
+  );
+
+  const handleDownloadUnder6Report = async () => {
+    const rootContainer = sectionRef.current;
+    if (!rootContainer || takingUnder6Report || under6HoursReportRows.length === 0) {
+      return;
+    }
+
+    setTakingUnder6Report(true);
+    setUnder6ReportStatus('idle');
+    try {
+      await downloadUnder6HoursPerformanceReport({
+        rootContainer,
+        rows: under6HoursReportRows,
+        storeCode,
+        startDate,
+        endDate,
+      });
+      setUnder6ReportStatus('saved');
+      window.setTimeout(() => setUnder6ReportStatus('idle'), 2200);
+    } catch (err) {
+      console.error('Failed to download <=6h Rider Performance report:', err);
+      setUnder6ReportStatus('error');
+      window.setTimeout(() => setUnder6ReportStatus('idle'), 3000);
+    } finally {
+      setTakingUnder6Report(false);
+    }
+  };
+
   return (
-    <div className="rider-perf-section">
+    <div className="rider-perf-section" ref={sectionRef}>
       {/* Modern Controls & Filter Bar — Segregated into Data Filters (Row 1) & Search / Highlights / Actions (Row 2) */}
       <div className="perf-controls-bar perf-controls-bar-structured">
         {/* Tier 1: Data Filters (Left) & Calculation Settings (Right) */}
@@ -946,6 +984,21 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               </svg>
               <span>Export Excel</span>
             </button>
+
+            <SnapshotButton
+              icon="clipboard"
+              loading={takingUnder6Report}
+              status={under6ReportStatus}
+              disabled={loading || under6HoursReportRows.length === 0}
+              onClick={() => void handleDownloadUnder6Report()}
+              title={`Download PNG Performance List report for ${under6HoursReportRows.length} rider(s) with ≤ 6 hrs login time`}
+              labels={{
+                idle: `≤6h Report (${under6HoursReportRows.length})`,
+                loading: 'Generating...',
+                saved: 'Report Saved',
+                error: 'Export Failed',
+              }}
+            />
           </div>
         </div>
       </div>

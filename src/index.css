@@ -1929,6 +1929,12 @@ input[type='text'].perf-search-input:focus {
   font-size: 0.82rem;
 }
 
+.perf-actions-right .s2p-screenshot-btn {
+  border-radius: 8px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+}
+
 .btn-export-excel {
   display: flex;
   align-items: center;
@@ -8692,6 +8698,10 @@ html[data-theme="dark"] .btn-export-excel {
   box-shadow: none;
 }
 
+html[data-theme="dark"] .perf-actions-right .s2p-screenshot-btn {
+  border-radius: var(--radius-buttons);
+}
+
 html[data-theme="dark"] .btn-export-excel:hover:not(:disabled) {
   background: var(--color-bone-white);
   border-color: var(--color-bone-white);
@@ -11959,6 +11969,7 @@ html[data-theme="dark"] .side-panel-close-mobile-btn:hover {
 
   .perf-actions-right .btn,
   .perf-actions-right .btn-export-excel,
+  .perf-actions-right .s2p-screenshot-btn,
   .perf-controls-right .btn {
     flex: 1 1 calc(50% - 0.25rem) !important;
     min-height: 38px !important;
@@ -12261,6 +12272,7 @@ html[data-theme="dark"] .side-panel-close-mobile-btn:hover {
 
   .perf-actions-right .btn,
   .perf-actions-right .btn-export-excel,
+  .perf-actions-right .s2p-screenshot-btn,
   .perf-controls-right .btn {
     flex: 1 1 100% !important;
   }
