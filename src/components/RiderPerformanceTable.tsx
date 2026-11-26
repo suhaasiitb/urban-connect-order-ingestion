@@ -94,14 +94,13 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const [showCustomRange, setShowCustomRange] = useState(false);
   const [customStart, setCustomStart] = useState(startDate);
   const [customEnd, setCustomEnd] = useState(endDate);
-  const [avgMode, setAvgMode] = useState<'period' | 'active'>('period');
   const [dateOrder, setDateOrder] = useState<'desc' | 'asc'>('desc');
   const [referralViewMode, setReferralViewMode] = useState<'ALL' | 'ACTIVE_ONLY'>('ALL');
 
   const presets = [0, 1, 3, 7, 10, 14, 20, 30];
 
   const periodDays = data.periodDays || data.dateColumns.length || Math.max(1, selectedDays);
-  const periodLabel = avgMode === 'period' ? `${periodDays}d Avg` : 'Active Avg';
+  const periodLabel = `${periodDays}d Avg`;
   const isSingleDayPeriod = selectedDays === 0 || periodDays <= 1 || startDate === endDate;
   const minBtoThreshold = isSingleDayPeriod ? 1 : 2;
   const isOtpBreachDefaulter = useCallback(
@@ -190,7 +189,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
         const norm = normalizeRiderName(r.riderName);
         const shift = riderShiftsMap?.get(norm);
         const effectiveType = shift ? classifyShiftType(shift) : null;
-        const displayHours = avgMode === 'period' ? r.avgHours : r.activeAvgHours;
+        const displayHours = r.avgHours;
         if (activeShiftFilter === 'COMPLIANT_8H') {
           return displayHours >= 8.0;
         }
@@ -335,27 +334,18 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
         case 'activeDays':
           comparison = a.workingDays - b.workingDays;
           break;
-        case 'avgOrders': {
-          const valA = avgMode === 'period' ? a.avgOrders : a.activeAvgOrders;
-          const valB = avgMode === 'period' ? b.avgOrders : b.activeAvgOrders;
-          comparison = valA - valB;
+        case 'avgOrders':
+          comparison = a.avgOrders - b.avgOrders;
           break;
-        }
-        case 'avgHours': {
-          const valA = avgMode === 'period' ? a.avgHours : a.activeAvgHours;
-          const valB = avgMode === 'period' ? b.avgHours : b.activeAvgHours;
-          comparison = valA - valB;
+        case 'avgHours':
+          comparison = a.avgHours - b.avgHours;
           break;
-        }
         case 'totalOrders':
           comparison = a.totalOrders - b.totalOrders;
           break;
-        case 'avgDistance': {
-          const valA = avgMode === 'period' ? a.avgDistanceKm : a.activeAvgDistanceKm;
-          const valB = avgMode === 'period' ? b.avgDistanceKm : b.activeAvgDistanceKm;
-          comparison = valA - valB;
+        case 'avgDistance':
+          comparison = a.avgDistanceKm - b.avgDistanceKm;
           break;
-        }
         case 'totalDistance':
           comparison = a.totalDistanceKm - b.totalDistanceKm;
           break;
@@ -364,7 +354,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     });
 
     return result;
-  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, avgMode, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr, filterOtpBreach, isOtpBreachDefaulter, filterBto, isRiderHighBto]);
+  }, [data.rows, searchQuery, activeStatusFilter, activeShiftFilter, referralViewMode, sortBy, sortAsc, activeNamesSet, phoneByNameMap, riderShiftsMap, dnrSummary, highlightDnr, filterOtpBreach, isOtpBreachDefaulter, filterBto, isRiderHighBto]);
 
   const frequentOtpBreachCount = useMemo(() => {
     return data.rows.filter(isOtpBreachDefaulter).length;
@@ -541,7 +531,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     exportRiderPerformanceToExcel(
       { ...data, rows: filteredRows, dateColumns: displayedDateColumns },
       storeCode,
-      avgMode === 'active',
+      false,
       activeNamesSet,
       phoneByNameMap,
       shiftsExportMap,
@@ -725,32 +715,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
             </div>
           </div>
 
-          <div className="perf-toolbar-group perf-toolbar-group-right">
-            {/* Average Divisor Segmented Control */}
-            <div className="perf-filter-group">
-              <span className="perf-control-label">Avg Divisor:</span>
-              <div className="segmented-control">
-                <button
-                  type="button"
-                  className={`segmented-btn ${avgMode === 'period' ? 'segmented-btn-active' : ''}`}
-                  onClick={() => setAvgMode('period')}
-                  title={`Divide by total ${periodDays} days in period`}
-                >
-                  {periodDays} Days
-                </button>
-                <button
-                  type="button"
-                  className={`segmented-btn ${avgMode === 'active' ? 'segmented-btn-active' : ''}`}
-                  onClick={() => setAvgMode('active')}
-                  title="Divide by active working days only"
-                >
-                  Active Days
-                </button>
-              </div>
-            </div>
-
-            {/* Date Order Segmented Control (relevant when Daily Breakdown is open) */}
-            {showDailyBreakdown && (
+          {/* Date Order Segmented Control (relevant when Daily Breakdown is open) */}
+          {showDailyBreakdown && (
+            <div className="perf-toolbar-group perf-toolbar-group-right">
               <div className="perf-filter-group">
                 <span className="perf-control-label">Date Order:</span>
                 <div className="segmented-control">
@@ -772,8 +739,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
                   </button>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Tier 2: Search & Alert/Highlight Toggles (Left) + Actions (Right) */}
@@ -1468,9 +1435,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               </tr>
             ) : (
               filteredRows.map((row) => {
-                const displayHours = avgMode === 'period' ? row.avgHours : row.activeAvgHours;
-                const displayOrders = avgMode === 'period' ? row.avgOrders : row.activeAvgOrders;
-                const displayDistance = avgMode === 'period' ? row.avgDistanceKm : row.activeAvgDistanceKm;
+                const displayHours = row.avgHours;
+                const displayOrders = row.avgOrders;
+                const displayDistance = row.avgDistanceKm;
                 const tooltipText = `Period Avg: ${row.avgHours.toFixed(1)} hrs / ${row.avgOrders.toFixed(1)} orders / ${row.avgDistanceKm.toFixed(1)} km (divided by ${periodDays} days) • Active Avg: ${row.activeAvgHours.toFixed(1)} hrs / ${row.activeAvgOrders.toFixed(1)} orders / ${row.activeAvgDistanceKm.toFixed(1)} km (across ${row.workingDays} working days) • Total: ${row.totalOrders} orders / ${row.totalDistanceKm.toFixed(1)} km`;
                 const normName = normalizeRiderName(row.riderName);
                 const riderPhone = phoneByNameMap?.get(normName);
@@ -1953,7 +1920,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
         <div className="formula-hint-pills">
           <span className="formula-tag"><strong>Hours:</strong> COUNTUNIQUE(slot)</span>
           <span className="formula-tag"><strong>Orders:</strong> COUNTA(orders)</span>
-          <span className="formula-tag"><strong>Avg Mode:</strong> {avgMode === 'period' ? `Divided by ${periodDays} days` : 'Divided by active working days'}</span>
+          <span className="formula-tag"><strong>Avg Mode:</strong> Divided by {periodDays} days</span>
         </div>
       </div>
 
