@@ -1041,9 +1041,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               status={under6ReportStatus}
               disabled={loading || under6HoursReportRows.length === 0}
               onClick={() => void handleDownloadUnder6Report()}
-              title={`Download PNG Performance List report for ${under6HoursReportRows.length} rider(s) with ≤ 6 hrs login time`}
+              title={`Download PNG ≤6h Login Report for ${under6HoursReportRows.length} rider(s) with ≤ 6 hrs login time`}
               labels={{
-                idle: `≤6h Report (${under6HoursReportRows.length})`,
+                idle: `≤6h Login Report (${under6HoursReportRows.length})`,
                 loading: 'Generating...',
                 saved: 'Report Saved',
                 error: 'Export Failed',
@@ -1056,9 +1056,9 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               status={delayedReportStatus}
               disabled={loading || delayedReportRows.length === 0}
               onClick={() => void handleDownloadDelayedReport()}
-              title={`Download PNG Delayed Orders Report for ${delayedReportRows.length} rider(s) with > 1 delayed (OTP breached) orders`}
+              title={`Download PNG OTP Breach Report for ${delayedReportRows.length} rider(s) with > 1 delayed (OTP breached) orders`}
               labels={{
-                idle: `Delayed Report (${delayedReportRows.length})`,
+                idle: `OTP Breach Report (${delayedReportRows.length})`,
                 loading: 'Generating...',
                 saved: 'Report Saved',
                 error: 'Export Failed',
