@@ -498,7 +498,7 @@ describe('Rider Performance Analytics Unit Tests', () => {
     expect(formatHumanReportPeriod('2026-12-28', '2027-01-03')).toBe('28 December 2026 – 3 January 2027');
   });
 
-  it('builds Delayed Orders Report rows with >=1 OTP breach sorted by delayed orders and breached days descending', () => {
+  it('builds Delayed Orders Report rows with >1 delayed (OTP breached) order sorted highest to lowest', () => {
     const makeRow = (
       riderName: string,
       otpBreachedCount: number,
@@ -522,6 +522,8 @@ describe('Rider Performance Analytics Unit Tests', () => {
 
     const input: RiderPivotRow[] = [
       makeRow('Clean Rider', 0, 0),
+      makeRow('Single Delay Rider', 1, 1),
+      makeRow('Two Delays Rider', 2, 1),
       makeRow('Deepak Kumar Bhagat', 13, 6),
       makeRow('Ajit Kumar', 18, 6),
       makeRow('Dipak Santosh Ghogare', 13, 5),
@@ -535,6 +537,7 @@ describe('Rider Performance Analytics Unit Tests', () => {
       { riderName: 'Deepak Kumar Bhagat', delayedOrders: 13, delayedDays: 6 },
       { riderName: 'Dipak Santosh Ghogare', delayedOrders: 13, delayedDays: 5 },
       { riderName: 'Kamlesh Kumar Chandane', delayedOrders: 13, delayedDays: 5 },
+      { riderName: 'Two Delays Rider', delayedOrders: 2, delayedDays: 1 },
     ]);
   });
 });

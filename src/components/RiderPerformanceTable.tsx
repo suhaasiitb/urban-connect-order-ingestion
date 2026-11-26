@@ -1056,7 +1056,7 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               status={delayedReportStatus}
               disabled={loading || delayedReportRows.length === 0}
               onClick={() => void handleDownloadDelayedReport()}
-              title={`Download PNG Delayed Orders Report for ${delayedReportRows.length} rider(s) with OTP breached orders`}
+              title={`Download PNG Delayed Orders Report for ${delayedReportRows.length} rider(s) with > 1 delayed (OTP breached) orders`}
               labels={{
                 idle: `Delayed Report (${delayedReportRows.length})`,
                 loading: 'Generating...',

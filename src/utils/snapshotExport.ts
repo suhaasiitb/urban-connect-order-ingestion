@@ -563,7 +563,7 @@ export async function downloadDelayedOrdersReport(params: {
 
       const tbody = document.createElement('tbody');
       if (rows.length === 0) {
-        appendEmptyReportRow(tbody, 3, 'No OTP breached (delayed) orders in selected period.');
+        appendEmptyReportRow(tbody, 3, 'No riders with > 1 delayed (OTP breached) orders in selected period.');
       } else {
         rows.forEach((row, idx) => {
           const tr = document.createElement('tr');

@@ -876,12 +876,12 @@ export function formatHumanReportPeriod(startDate: string, endDate: string): str
 }
 
 /**
- * Filters Rider Performance rows to riders with >= 1 delayed (OTP breached) order,
+ * Filters Rider Performance rows to riders with > 1 delayed (OTP breached) order,
  * sorted highest-to-lowest by delayed orders (then breached days descending, then rider name).
  */
 export function buildDelayedOrdersReportRows(rows: RiderPivotRow[]): DelayedOrdersReportRow[] {
   return rows
-    .filter((row) => (row.otpBreachedCount ?? 0) >= 1)
+    .filter((row) => (row.otpBreachedCount ?? 0) > 1)
     .map((row) => {
       const delayedOrders = row.otpBreachedCount ?? 0;
       const delayedDays = row.otpBreachedDays ?? (delayedOrders > 0 ? 1 : 0);
