@@ -64,7 +64,7 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
 }) => {
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'MISSING_SHIFT' | 'WITH_REFERRAL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'MISSING_SHIFT' | 'WITH_REFERRAL'>('ALL');
   const [shiftFilter, setShiftFilter] = useState<string>('ALL');
   const [onboardedByFilter, setOnboardedByFilter] = useState<string>('ALL');
 
@@ -475,9 +475,7 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
     }
 
     // Status filter
-    if (statusFilter === 'ACTIVE') {
-      rows = rows.filter((r) => r.isActive);
-    } else if (statusFilter === 'MISSING_SHIFT') {
+    if (statusFilter === 'MISSING_SHIFT') {
       rows = rows.filter((r) => r.isActive && (!r.shiftConfig || r.draftShiftType === 'UNASSIGNED'));
     } else if (statusFilter === 'WITH_REFERRAL') {
       rows = rows.filter((r) => !!r.draftReferredBy || !!r.draftReferredPhone);
@@ -553,21 +551,6 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
           </div>
           <strong className="kpi-value text-blue">{totalRidersCount}</strong>
           <span className="kpi-sub">{activeRidersCount} Active Riders</span>
-        </div>
-
-        <div
-          className={`kpi-card ${statusFilter === 'ACTIVE' ? 'kpi-card-active' : 'kpi-card-interactive'}`}
-          onClick={() => setStatusFilter('ACTIVE')}
-          title="Click to filter to active delivery partners"
-        >
-          <div className="kpi-header-row">
-            <span className="kpi-label">Active Delivery Partners</span>
-            <span className="badge badge-success" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
-              Roster
-            </span>
-          </div>
-          <strong className="kpi-value text-green">{activeRidersCount}</strong>
-          <span className="kpi-sub">Ready for order assignments</span>
         </div>
 
         <div className="kpi-card">
@@ -698,13 +681,6 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
                 onClick={() => setStatusFilter('ALL')}
               >
                 All ({totalRidersCount})
-              </button>
-              <button
-                type="button"
-                className={`segmented-btn ${statusFilter === 'ACTIVE' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('ACTIVE')}
-              >
-                Active ({activeRidersCount})
               </button>
               <button
                 type="button"
