@@ -832,3 +832,70 @@ export function buildUnder6HoursReportRows(rows: RiderPivotRow[]): Under6HoursRe
       totalOrders: row.totalOrders,
     }));
 }
+
+export interface DelayedOrdersReportRow {
+  riderName: string;
+  delayedOrders: number;
+  delayedDays: number;
+}
+
+const FULL_MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function parseIsoParts(dateStr: string): { year: number; monthName: string; day: number } | null {
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    return null;
+  }
+  const [year, month, day] = parts;
+  const monthName = FULL_MONTH_NAMES[month - 1];
+  if (!monthName || day < 1 || day > 31) {
+    return null;
+  }
+  return { year, monthName, day };
+}
+
+/**
+ * Formats an ISO date range for display headers (e.g. "20 November – 26 November 2026" or "26 November 2026").
+ */
+export function formatHumanReportPeriod(startDate: string, endDate: string): string {
+  const start = parseIsoParts(startDate);
+  const end = parseIsoParts(endDate);
+  if (!start || !end) {
+    return startDate === endDate ? startDate : `${startDate} – ${endDate}`;
+  }
+  if (startDate === endDate) {
+    return `${start.day} ${start.monthName} ${start.year}`;
+  }
+  if (start.year === end.year) {
+    return `${start.day} ${start.monthName} – ${end.day} ${end.monthName} ${end.year}`;
+  }
+  return `${start.day} ${start.monthName} ${start.year} – ${end.day} ${end.monthName} ${end.year}`;
+}
+
+/**
+ * Filters Rider Performance rows to riders with >= 1 delayed (OTP breached) order,
+ * sorted highest-to-lowest by delayed orders (then breached days descending, then rider name).
+ */
+export function buildDelayedOrdersReportRows(rows: RiderPivotRow[]): DelayedOrdersReportRow[] {
+  return rows
+    .filter((row) => (row.otpBreachedCount ?? 0) >= 1)
+    .map((row) => {
+      const delayedOrders = row.otpBreachedCount ?? 0;
+      const delayedDays = row.otpBreachedDays ?? (delayedOrders > 0 ? 1 : 0);
+      return {
+        riderName: row.riderName,
+        delayedOrders,
+        delayedDays,
+      };
+    })
+    .sort((a, b) => {
+      const ordersDiff = b.delayedOrders - a.delayedOrders;
+      if (ordersDiff !== 0) return ordersDiff;
+      const daysDiff = b.delayedDays - a.delayedDays;
+      if (daysDiff !== 0) return daysDiff;
+      return a.riderName.localeCompare(b.riderName);
+    });
+}

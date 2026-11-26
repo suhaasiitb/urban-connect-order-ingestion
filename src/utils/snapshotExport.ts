@@ -284,6 +284,67 @@ export interface Under6HoursReportExportRow {
   totalOrders: number;
 }
 
+export interface DelayedOrdersReportExportRow {
+  riderName: string;
+  delayedOrders: number;
+  delayedDays: number;
+}
+
+async function runStandaloneReportDownload(params: {
+  rootContainer: HTMLElement;
+  minWidth: number;
+  bgColor: string;
+  padding: string;
+  gap: string;
+  fileName: string;
+  buildContent: (captureTarget: HTMLDivElement) => void;
+}): Promise<void> {
+  const { rootContainer, minWidth, bgColor, padding, gap, fileName, buildContent } = params;
+  const { offscreenHost, captureTarget } = createSnapshotEnvironment(minWidth, '');
+
+  captureTarget.style.backgroundColor = bgColor;
+  captureTarget.style.color = '#1e293b';
+  captureTarget.style.padding = padding;
+  captureTarget.style.gap = gap;
+  captureTarget.style.fontFamily = "'Inter', 'DejaVu Sans', 'Segoe UI', Arial, sans-serif";
+
+  try {
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+
+    buildContent(captureTarget);
+
+    await renderAndDownloadSnapshot({
+      rootContainer,
+      offscreenHost,
+      captureTarget,
+      bgColor,
+      minWidth,
+      fileName,
+    });
+  } finally {
+    offscreenHost.remove();
+  }
+}
+
+function appendEmptyReportRow(tbody: HTMLElement, colSpan: number, message: string, borderBottom?: string): void {
+  const emptyTr = document.createElement('tr');
+  emptyTr.style.backgroundColor = '#ffffff';
+  const emptyTd = document.createElement('td');
+  emptyTd.colSpan = colSpan;
+  emptyTd.textContent = message;
+  emptyTd.style.padding = '16px';
+  emptyTd.style.textAlign = 'center';
+  emptyTd.style.fontSize = '14px';
+  emptyTd.style.color = '#64748b';
+  if (borderBottom) {
+    emptyTd.style.border = borderBottom;
+  }
+  emptyTr.appendChild(emptyTd);
+  tbody.appendChild(emptyTr);
+}
+
 /**
  * Renders and downloads the "AMAZON NOW – RIDER PERFORMANCE LIST" PNG image report
  * showing riders with <= 6 hrs login time (Rider Name, Login Time, Orders).
@@ -296,128 +357,274 @@ export async function downloadUnder6HoursPerformanceReport(params: {
   endDate: string;
 }): Promise<void> {
   const { rootContainer, rows, storeCode, startDate, endDate } = params;
-  const minWidth = 860;
-  const { offscreenHost, captureTarget } = createSnapshotEnvironment(minWidth, '');
-  const reportBg = '#ffffff';
   const borderColor = '#cbd5e1';
+  const dateSlug = startDate === endDate ? startDate : `${startDate}_to_${endDate}`;
 
-  captureTarget.style.backgroundColor = reportBg;
-  captureTarget.style.color = '#1e293b';
-  captureTarget.style.padding = '28px 20px 26px';
-  captureTarget.style.gap = '24px';
-  captureTarget.style.fontFamily = "'Inter', 'DejaVu Sans', 'Segoe UI', Arial, sans-serif";
+  await runStandaloneReportDownload({
+    rootContainer,
+    minWidth: 860,
+    bgColor: '#ffffff',
+    padding: '28px 20px 26px',
+    gap: '24px',
+    fileName: `Rider-Performance-Under6h-${storeCode}-${dateSlug}.png`,
+    buildContent: (captureTarget) => {
+      const titleEl = document.createElement('div');
+      titleEl.textContent = 'AMAZON NOW – RIDER PERFORMANCE LIST';
+      titleEl.style.width = '100%';
+      titleEl.style.textAlign = 'center';
+      titleEl.style.fontSize = '21px';
+      titleEl.style.fontWeight = '800';
+      titleEl.style.letterSpacing = '0.015em';
+      titleEl.style.color = '#0f172a';
+      titleEl.style.lineHeight = '1.25';
+      captureTarget.appendChild(titleEl);
 
-  try {
-    if (document.fonts?.ready) {
-      await document.fonts.ready;
-    }
+      const table = document.createElement('table');
+      table.style.width = '100%';
+      table.style.tableLayout = 'fixed';
+      table.style.borderCollapse = 'collapse';
+      table.style.border = `1px solid ${borderColor}`;
+      table.style.backgroundColor = '#ffffff';
 
-    const titleEl = document.createElement('div');
-    titleEl.textContent = 'AMAZON NOW – RIDER PERFORMANCE LIST';
-    titleEl.style.width = '100%';
-    titleEl.style.textAlign = 'center';
-    titleEl.style.fontSize = '21px';
-    titleEl.style.fontWeight = '800';
-    titleEl.style.letterSpacing = '0.015em';
-    titleEl.style.color = '#0f172a';
-    titleEl.style.lineHeight = '1.25';
-    captureTarget.appendChild(titleEl);
+      const colGroup = document.createElement('colgroup');
+      for (const widthPct of ['62%', '21%', '17%']) {
+        const col = document.createElement('col');
+        col.style.width = widthPct;
+        colGroup.appendChild(col);
+      }
+      table.appendChild(colGroup);
 
-    const table = document.createElement('table');
-    table.style.width = '100%';
-    table.style.tableLayout = 'fixed';
-    table.style.borderCollapse = 'collapse';
-    table.style.border = `1px solid ${borderColor}`;
-    table.style.backgroundColor = reportBg;
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      headRow.style.backgroundColor = '#14284b';
 
-    const colGroup = document.createElement('colgroup');
-    for (const widthPct of ['62%', '21%', '17%']) {
-      const col = document.createElement('col');
-      col.style.width = widthPct;
-      colGroup.appendChild(col);
-    }
-    table.appendChild(colGroup);
+      const headers: Array<{ label: string; paddingLeft: string }> = [
+        { label: 'Rider Name', paddingLeft: '48px' },
+        { label: 'Login Time', paddingLeft: '14px' },
+        { label: 'Orders', paddingLeft: '14px' },
+      ];
+      for (const col of headers) {
+        const th = document.createElement('th');
+        th.textContent = col.label;
+        th.style.padding = `9px 14px 9px ${col.paddingLeft}`;
+        th.style.color = '#ffffff';
+        th.style.fontSize = '14px';
+        th.style.fontWeight = '700';
+        th.style.textAlign = 'left';
+        th.style.border = `1px solid ${borderColor}`;
+        th.style.backgroundColor = '#14284b';
+        headRow.appendChild(th);
+      }
+      thead.appendChild(headRow);
+      table.appendChild(thead);
 
-    const thead = document.createElement('thead');
-    const headRow = document.createElement('tr');
-    headRow.style.backgroundColor = '#14284b';
+      const tbody = document.createElement('tbody');
+      if (rows.length === 0) {
+        appendEmptyReportRow(tbody, 3, 'No riders with <= 6 hrs login time in selected period.', `1px solid ${borderColor}`);
+      } else {
+        rows.forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          const rowBg = idx % 2 === 0 ? '#ffffff' : '#f2f6fb';
+          tr.style.backgroundColor = rowBg;
 
-    const headers: Array<{ label: string; paddingLeft: string }> = [
-      { label: 'Rider Name', paddingLeft: '48px' },
-      { label: 'Login Time', paddingLeft: '14px' },
-      { label: 'Orders', paddingLeft: '14px' },
-    ];
-    for (const col of headers) {
-      const th = document.createElement('th');
-      th.textContent = col.label;
-      th.style.padding = `9px 14px 9px ${col.paddingLeft}`;
-      th.style.color = '#ffffff';
-      th.style.fontSize = '14px';
-      th.style.fontWeight = '700';
-      th.style.textAlign = 'left';
-      th.style.border = `1px solid ${borderColor}`;
-      th.style.backgroundColor = '#14284b';
-      headRow.appendChild(th);
-    }
-    thead.appendChild(headRow);
-    table.appendChild(thead);
+          const cells: Array<{ text: string; paddingLeft: string }> = [
+            { text: row.riderName, paddingLeft: '48px' },
+            { text: row.loginTimeLabel, paddingLeft: '14px' },
+            { text: String(row.totalOrders), paddingLeft: '14px' },
+          ];
+          for (const cell of cells) {
+            const td = document.createElement('td');
+            td.textContent = cell.text;
+            td.style.padding = `8px 14px 8px ${cell.paddingLeft}`;
+            td.style.fontSize = '14px';
+            td.style.fontWeight = '400';
+            td.style.color = '#1e293b';
+            td.style.textAlign = 'left';
+            td.style.border = `1px solid ${borderColor}`;
+            td.style.backgroundColor = rowBg;
+            td.style.whiteSpace = 'nowrap';
+            td.style.overflow = 'hidden';
+            td.style.textOverflow = 'ellipsis';
+            tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        });
+      }
+      table.appendChild(tbody);
+      captureTarget.appendChild(table);
+    },
+  });
+}
 
-    const tbody = document.createElement('tbody');
-    if (rows.length === 0) {
-      const emptyTr = document.createElement('tr');
-      emptyTr.style.backgroundColor = '#ffffff';
-      const emptyTd = document.createElement('td');
-      emptyTd.colSpan = 3;
-      emptyTd.textContent = 'No riders with <= 6 hrs login time in selected period.';
-      emptyTd.style.padding = '16px';
-      emptyTd.style.textAlign = 'center';
-      emptyTd.style.fontSize = '14px';
-      emptyTd.style.color = '#64748b';
-      emptyTd.style.border = `1px solid ${borderColor}`;
-      emptyTr.appendChild(emptyTd);
-      tbody.appendChild(emptyTr);
-    } else {
-      rows.forEach((row, idx) => {
-        const tr = document.createElement('tr');
-        const rowBg = idx % 2 === 0 ? '#ffffff' : '#f2f6fb';
-        tr.style.backgroundColor = rowBg;
+/**
+ * Renders and downloads the "AMAZON NOW — DELAYED ORDERS REPORT" PNG image report
+ * showing OTP breached order counts and breached days per rider.
+ */
+export async function downloadDelayedOrdersReport(params: {
+  rootContainer: HTMLElement;
+  rows: DelayedOrdersReportExportRow[];
+  storeCode: string;
+  startDate: string;
+  endDate: string;
+  periodLabel: string;
+}): Promise<void> {
+  const { rootContainer, rows, storeCode, startDate, endDate, periodLabel } = params;
+  const dateSlug = startDate === endDate ? startDate : `${startDate}_to_${endDate}`;
 
-        const cells: Array<{ text: string; paddingLeft: string }> = [
-          { text: row.riderName, paddingLeft: '48px' },
-          { text: row.loginTimeLabel, paddingLeft: '14px' },
-          { text: String(row.totalOrders), paddingLeft: '14px' },
-        ];
-        for (const cell of cells) {
-          const td = document.createElement('td');
-          td.textContent = cell.text;
-          td.style.padding = `8px 14px 8px ${cell.paddingLeft}`;
-          td.style.fontSize = '14px';
-          td.style.fontWeight = '400';
-          td.style.color = '#1e293b';
-          td.style.textAlign = 'left';
-          td.style.border = `1px solid ${borderColor}`;
-          td.style.backgroundColor = rowBg;
-          td.style.whiteSpace = 'nowrap';
-          td.style.overflow = 'hidden';
-          td.style.textOverflow = 'ellipsis';
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      });
-    }
-    table.appendChild(tbody);
-    captureTarget.appendChild(table);
+  await runStandaloneReportDownload({
+    rootContainer,
+    minWidth: 860,
+    bgColor: '#f8fafc',
+    padding: '24px 24px 22px',
+    gap: '16px',
+    fileName: `Delayed-Orders-Report-${storeCode}-${dateSlug}.png`,
+    buildContent: (captureTarget) => {
+      const banner = document.createElement('div');
+      banner.style.width = '100%';
+      banner.style.boxSizing = 'border-box';
+      banner.style.backgroundColor = '#14284b';
+      banner.style.borderRadius = '12px';
+      banner.style.padding = '20px 26px';
+      banner.style.display = 'flex';
+      banner.style.flexDirection = 'column';
+      banner.style.gap = '4px';
 
-    const dateSlug = startDate === endDate ? startDate : `${startDate}_to_${endDate}`;
-    await renderAndDownloadSnapshot({
-      rootContainer,
-      offscreenHost,
-      captureTarget,
-      bgColor: reportBg,
-      minWidth,
-      fileName: `Rider-Performance-Under6h-${storeCode}-${dateSlug}.png`,
-    });
-  } finally {
-    offscreenHost.remove();
-  }
+      const kicker = document.createElement('div');
+      kicker.textContent = 'AMAZON NOW';
+      kicker.style.fontSize = '12px';
+      kicker.style.fontWeight = '700';
+      kicker.style.letterSpacing = '0.07em';
+      kicker.style.color = '#cbd5e1';
+
+      const heading = document.createElement('div');
+      heading.textContent = 'DELAYED ORDERS REPORT';
+      heading.style.fontSize = '25px';
+      heading.style.fontWeight = '800';
+      heading.style.letterSpacing = '0.015em';
+      heading.style.color = '#ffffff';
+      heading.style.lineHeight = '1.15';
+
+      const periodEl = document.createElement('div');
+      periodEl.textContent = `Report period: ${periodLabel}`;
+      periodEl.style.fontSize = '13px';
+      periodEl.style.fontWeight = '500';
+      periodEl.style.color = '#cbd5e1';
+      periodEl.style.marginTop = '2px';
+
+      banner.append(kicker, heading, periodEl);
+      captureTarget.appendChild(banner);
+
+      const card = document.createElement('div');
+      card.style.width = '100%';
+      card.style.boxSizing = 'border-box';
+      card.style.backgroundColor = '#ffffff';
+      card.style.border = '1px solid #e2e8f0';
+      card.style.borderRadius = '10px';
+      card.style.overflow = 'hidden';
+
+      const table = document.createElement('table');
+      table.style.width = '100%';
+      table.style.tableLayout = 'fixed';
+      table.style.borderCollapse = 'collapse';
+      table.style.backgroundColor = '#ffffff';
+
+      const colGroup = document.createElement('colgroup');
+      for (const widthPct of ['62%', '22%', '16%']) {
+        const col = document.createElement('col');
+        col.style.width = widthPct;
+        colGroup.appendChild(col);
+      }
+      table.appendChild(colGroup);
+
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      headRow.style.backgroundColor = '#eaf0fa';
+
+      const headers: Array<{ label: string; align: 'left' | 'center' }> = [
+        { label: 'RIDER NAME', align: 'left' },
+        { label: 'DELAYED ORDERS', align: 'center' },
+        { label: 'DAYS', align: 'center' },
+      ];
+      for (const col of headers) {
+        const th = document.createElement('th');
+        th.textContent = col.label;
+        th.style.padding = '12px 22px';
+        th.style.fontSize = '12.5px';
+        th.style.fontWeight = '700';
+        th.style.letterSpacing = '0.04em';
+        th.style.color = '#0f2744';
+        th.style.textAlign = col.align;
+        th.style.backgroundColor = '#eaf0fa';
+        th.style.borderBottom = '1px solid #dce5f2';
+        headRow.appendChild(th);
+      }
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      if (rows.length === 0) {
+        appendEmptyReportRow(tbody, 3, 'No OTP breached (delayed) orders in selected period.');
+      } else {
+        rows.forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+          const isLast = idx === rows.length - 1;
+          tr.style.backgroundColor = rowBg;
+
+          const cells: Array<{
+            text: string;
+            align: 'left' | 'center';
+            color: string;
+            fontWeight: string;
+            fontSize: string;
+          }> = [
+            { text: row.riderName, align: 'left', color: '#1e293b', fontWeight: '500', fontSize: '13.5px' },
+            { text: String(row.delayedOrders), align: 'center', color: '#b91c1c', fontWeight: '700', fontSize: '14px' },
+            { text: String(row.delayedDays), align: 'center', color: '#0f172a', fontWeight: '700', fontSize: '14px' },
+          ];
+          for (const cell of cells) {
+            const td = document.createElement('td');
+            td.textContent = cell.text;
+            td.style.padding = '11px 22px';
+            td.style.textAlign = cell.align;
+            td.style.color = cell.color;
+            td.style.fontWeight = cell.fontWeight;
+            td.style.fontSize = cell.fontSize;
+            td.style.backgroundColor = rowBg;
+            td.style.borderBottom = isLast ? 'none' : '1px solid #f1f5f9';
+            td.style.whiteSpace = 'nowrap';
+            td.style.overflow = 'hidden';
+            td.style.textOverflow = 'ellipsis';
+            tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        });
+      }
+      table.appendChild(tbody);
+      card.appendChild(table);
+      captureTarget.appendChild(card);
+
+      const warningBox = document.createElement('div');
+      warningBox.style.width = '100%';
+      warningBox.style.boxSizing = 'border-box';
+      warningBox.style.padding = '4px 6px 2px';
+
+      const warningTitle = document.createElement('div');
+      warningTitle.textContent = 'STRICT PERFORMANCE WARNING';
+      warningTitle.style.fontSize = '12px';
+      warningTitle.style.fontWeight = '700';
+      warningTitle.style.letterSpacing = '0.03em';
+      warningTitle.style.color = '#b91c1c';
+
+      const warningText = document.createElement('div');
+      warningText.textContent = 'All riders must improve delivery performance and avoid repeated delays.';
+      warningText.style.fontSize = '12px';
+      warningText.style.fontWeight = '400';
+      warningText.style.color = '#334155';
+      warningText.style.marginTop = '3px';
+
+      warningBox.append(warningTitle, warningText);
+      captureTarget.appendChild(warningBox);
+    },
+  });
 }

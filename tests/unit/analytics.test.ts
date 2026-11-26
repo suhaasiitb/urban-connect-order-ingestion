@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   type RiderPerformancePivotResult,
   type RiderPivotRow,
+  buildDelayedOrdersReportRows,
   buildRiderPerformanceExportSheet,
   buildUnder6HoursReportRows,
   formatDateToHeader,
+  formatHumanReportPeriod,
   formatUnder6HoursLoginTime,
   getAllDatesInRange,
   getDateRangeForDays,
@@ -486,6 +488,53 @@ describe('Rider Performance Analytics Unit Tests', () => {
       { riderName: 'Anil Pawar', avgHours: 3, loginTimeLabel: '3 hrs', totalOrders: 4 },
       { riderName: 'Rahul Walhekar', avgHours: 5, loginTimeLabel: '5 hrs', totalOrders: 7 },
       { riderName: 'Borderline Six', avgHours: 6, loginTimeLabel: '6 hrs', totalOrders: 9 },
+    ]);
+  });
+
+  it('formats human-readable report periods cleanly for single-day, same-year, and cross-year ranges', () => {
+    expect(formatHumanReportPeriod('2026-11-20', '2026-11-26')).toBe('20 November – 26 November 2026');
+    expect(formatHumanReportPeriod('2026-11-26', '2026-11-26')).toBe('26 November 2026');
+    expect(formatHumanReportPeriod('2026-10-28', '2026-11-03')).toBe('28 October – 3 November 2026');
+    expect(formatHumanReportPeriod('2026-12-28', '2027-01-03')).toBe('28 December 2026 – 3 January 2027');
+  });
+
+  it('builds Delayed Orders Report rows with >=1 OTP breach sorted by delayed orders and breached days descending', () => {
+    const makeRow = (
+      riderName: string,
+      otpBreachedCount: number,
+      otpBreachedDays?: number
+    ): RiderPivotRow => ({
+      riderName,
+      dailyMetrics: {},
+      workingDays: 6,
+      totalHours: 48,
+      totalOrders: 100,
+      totalDistanceKm: 0,
+      otpBreachedCount,
+      otpBreachedDays,
+      avgHours: 8,
+      avgOrders: 16.7,
+      avgDistanceKm: 0,
+      activeAvgHours: 8,
+      activeAvgOrders: 16.7,
+      activeAvgDistanceKm: 0,
+    });
+
+    const input: RiderPivotRow[] = [
+      makeRow('Clean Rider', 0, 0),
+      makeRow('Deepak Kumar Bhagat', 13, 6),
+      makeRow('Ajit Kumar', 18, 6),
+      makeRow('Dipak Santosh Ghogare', 13, 5),
+      makeRow('Kamlesh Kumar Chandane', 13, 5),
+      makeRow('Rahul Uttam Phadtare', 16, 5),
+    ];
+
+    expect(buildDelayedOrdersReportRows(input)).toEqual([
+      { riderName: 'Ajit Kumar', delayedOrders: 18, delayedDays: 6 },
+      { riderName: 'Rahul Uttam Phadtare', delayedOrders: 16, delayedDays: 5 },
+      { riderName: 'Deepak Kumar Bhagat', delayedOrders: 13, delayedDays: 6 },
+      { riderName: 'Dipak Santosh Ghogare', delayedOrders: 13, delayedDays: 5 },
+      { riderName: 'Kamlesh Kumar Chandane', delayedOrders: 13, delayedDays: 5 },
     ]);
   });
 });

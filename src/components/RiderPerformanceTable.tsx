@@ -4,8 +4,10 @@ import {
   type RiderExportShiftMeta,
   type RiderPerformancePivotResult,
   type RiderPivotRow,
+  buildDelayedOrdersReportRows,
   buildUnder6HoursReportRows,
   exportRiderPerformanceToExcel,
+  formatHumanReportPeriod,
   isHighBtoRider,
 } from '../services/analyticsService';
 import { normalizeRiderName } from '../services/activeRiderService';
@@ -18,7 +20,10 @@ import {
   deleteSingleRiderShift,
 } from '../services/riderShiftService';
 import { type RiderDnrSummary, type StoreDnrSummary } from '../services/dnrService';
-import { downloadUnder6HoursPerformanceReport } from '../utils/snapshotExport';
+import {
+  downloadDelayedOrdersReport,
+  downloadUnder6HoursPerformanceReport,
+} from '../utils/snapshotExport';
 import { RiderDnrResolutionModal } from './RiderDnrResolutionModal';
 import { IndividualRiderShiftModal } from './IndividualRiderShiftModal';
 import { OtpBreachedRidersModal } from './OtpBreachedRidersModal';
@@ -78,6 +83,8 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [takingUnder6Report, setTakingUnder6Report] = useState(false);
   const [under6ReportStatus, setUnder6ReportStatus] = useState<SnapshotStatus>('idle');
+  const [takingDelayedReport, setTakingDelayedReport] = useState(false);
+  const [delayedReportStatus, setDelayedReportStatus] = useState<SnapshotStatus>('idle');
   const [activeStatusFilter, setActiveStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [internalShiftFilter, setInternalShiftFilter] = useState<string>('ALL');
   const activeShiftFilter = shiftFilterProp !== undefined ? shiftFilterProp : internalShiftFilter;
@@ -555,31 +562,74 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
     [filteredRows]
   );
 
-  const handleDownloadUnder6Report = async () => {
+  const delayedReportRows = useMemo(
+    () => buildDelayedOrdersReportRows(filteredRows),
+    [filteredRows]
+  );
+
+  const runPngReportExport = async (
+    setBusy: React.Dispatch<React.SetStateAction<boolean>>,
+    setStatus: React.Dispatch<React.SetStateAction<SnapshotStatus>>,
+    task: (rootContainer: HTMLDivElement) => Promise<void>,
+    errorLabel: string
+  ) => {
     const rootContainer = sectionRef.current;
-    if (!rootContainer || takingUnder6Report || under6HoursReportRows.length === 0) {
+    if (!rootContainer) {
       return;
     }
 
-    setTakingUnder6Report(true);
-    setUnder6ReportStatus('idle');
+    setBusy(true);
+    setStatus('idle');
     try {
-      await downloadUnder6HoursPerformanceReport({
-        rootContainer,
-        rows: under6HoursReportRows,
-        storeCode,
-        startDate,
-        endDate,
-      });
-      setUnder6ReportStatus('saved');
-      window.setTimeout(() => setUnder6ReportStatus('idle'), 2200);
+      await task(rootContainer);
+      setStatus('saved');
+      window.setTimeout(() => setStatus('idle'), 2200);
     } catch (err) {
-      console.error('Failed to download <=6h Rider Performance report:', err);
-      setUnder6ReportStatus('error');
-      window.setTimeout(() => setUnder6ReportStatus('idle'), 3000);
+      console.error(`${errorLabel}:`, err);
+      setStatus('error');
+      window.setTimeout(() => setStatus('idle'), 3000);
     } finally {
-      setTakingUnder6Report(false);
+      setBusy(false);
     }
+  };
+
+  const handleDownloadUnder6Report = () => {
+    if (takingUnder6Report || under6HoursReportRows.length === 0) {
+      return;
+    }
+    return runPngReportExport(
+      setTakingUnder6Report,
+      setUnder6ReportStatus,
+      (rootContainer) =>
+        downloadUnder6HoursPerformanceReport({
+          rootContainer,
+          rows: under6HoursReportRows,
+          storeCode,
+          startDate,
+          endDate,
+        }),
+      'Failed to download <=6h Rider Performance report'
+    );
+  };
+
+  const handleDownloadDelayedReport = () => {
+    if (takingDelayedReport || delayedReportRows.length === 0) {
+      return;
+    }
+    return runPngReportExport(
+      setTakingDelayedReport,
+      setDelayedReportStatus,
+      (rootContainer) =>
+        downloadDelayedOrdersReport({
+          rootContainer,
+          rows: delayedReportRows,
+          storeCode,
+          startDate,
+          endDate,
+          periodLabel: formatHumanReportPeriod(startDate, endDate),
+        }),
+      'Failed to download Delayed Orders report'
+    );
   };
 
   return (
@@ -994,6 +1044,21 @@ export const RiderPerformanceTable: React.FC<RiderPerformanceTableProps> = ({
               title={`Download PNG Performance List report for ${under6HoursReportRows.length} rider(s) with ≤ 6 hrs login time`}
               labels={{
                 idle: `≤6h Report (${under6HoursReportRows.length})`,
+                loading: 'Generating...',
+                saved: 'Report Saved',
+                error: 'Export Failed',
+              }}
+            />
+
+            <SnapshotButton
+              icon="clipboard"
+              loading={takingDelayedReport}
+              status={delayedReportStatus}
+              disabled={loading || delayedReportRows.length === 0}
+              onClick={() => void handleDownloadDelayedReport()}
+              title={`Download PNG Delayed Orders Report for ${delayedReportRows.length} rider(s) with OTP breached orders`}
+              labels={{
+                idle: `Delayed Report (${delayedReportRows.length})`,
                 loading: 'Generating...',
                 saved: 'Report Saved',
                 error: 'Export Failed',
