@@ -6,7 +6,11 @@
 
 import * as XLSX from 'xlsx';
 import { supabase } from '../config/supabaseClient';
-import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService';
+import {
+  type ActiveRosterSummary,
+  cleanRiderDisplayName,
+  normalizeRiderName,
+} from './activeRiderService';
 
 export type ShiftType = 'Morning Shift' | '2nd Shift' | 'Split Shift' | 'Custom' | 'UNASSIGNED';
 
@@ -1323,4 +1327,69 @@ export function subscribeToStoreRiderShifts(
       void supabase.removeChannel(channel);
     }
   };
+}
+
+export interface ManagementRiderProfile {
+  normalizedName: string;
+  riderName: string;
+  phone?: string;
+  isActive: boolean;
+}
+
+/**
+ * Builds the Rider Management roster. When an Active Riders roster is present
+ * (riders.length > 0), excludes inactive/historical riders so only active riders
+ * appear; otherwise falls back to configured shifts and recent order riders.
+ */
+export function buildManagementRidersList(params: {
+  activeRoster: ActiveRosterSummary | null;
+  riderShiftsMap?: Map<string, RiderShiftConfig>;
+  pivotRiderNames?: string[];
+}): ManagementRiderProfile[] {
+  const { activeRoster, riderShiftsMap, pivotRiderNames = [] } = params;
+  const map = new Map<string, { riderName: string; phone?: string; isActive: boolean }>();
+  const hasActiveRoster = Boolean(activeRoster?.riders && activeRoster.riders.length > 0);
+
+  if (hasActiveRoster && activeRoster?.riders) {
+    for (const r of activeRoster.riders) {
+      const cleanName = cleanRiderDisplayName(r.name);
+      const norm = normalizeRiderName(cleanName);
+      if (!norm || map.has(norm)) continue;
+      map.set(norm, {
+        riderName: cleanName,
+        phone: r.phone || activeRoster.phoneByNameMap?.get(norm),
+        isActive: true,
+      });
+    }
+  } else {
+    if (riderShiftsMap) {
+      for (const [norm, shift] of riderShiftsMap.entries()) {
+        const cleanName = cleanRiderDisplayName(shift.riderName);
+        if (!cleanName || map.has(norm)) continue;
+        map.set(norm, {
+          riderName: cleanName,
+          phone: activeRoster?.phoneByNameMap?.get(norm),
+          isActive: activeRoster?.activeNamesSet?.has(norm) ?? false,
+        });
+      }
+    }
+
+    for (const rawName of pivotRiderNames) {
+      const cleanName = cleanRiderDisplayName(rawName);
+      const norm = normalizeRiderName(cleanName);
+      if (!norm || map.has(norm)) continue;
+      map.set(norm, {
+        riderName: cleanName,
+        phone: activeRoster?.phoneByNameMap?.get(norm),
+        isActive: activeRoster?.activeNamesSet?.has(norm) ?? false,
+      });
+    }
+  }
+
+  return Array.from(map.entries()).map(([normalizedName, val]) => ({
+    normalizedName,
+    riderName: val.riderName,
+    phone: val.phone,
+    isActive: val.isActive,
+  }));
 }

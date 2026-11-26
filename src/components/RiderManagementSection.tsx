@@ -5,13 +5,14 @@ import {
   type ShiftType,
   ONBOARDED_BY_OPTIONS,
   SHIFT_PRESETS,
+  buildManagementRidersList,
   calculatePlannedHours,
   classifyShiftType,
   formatShiftTimings,
   exportRiderManagementToExcel,
   cacheSingleRiderShiftLocally,
 } from '../services/riderShiftService';
-import { cleanRiderDisplayName, normalizeRiderName } from '../services/activeRiderService';
+import { normalizeRiderName } from '../services/activeRiderService';
 import { IndividualRiderShiftModal } from './IndividualRiderShiftModal';
 
 export interface RiderManagementRow {
@@ -63,7 +64,7 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
 }) => {
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'MISSING_SHIFT' | 'WITH_REFERRAL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'MISSING_SHIFT' | 'WITH_REFERRAL'>('ALL');
   const [shiftFilter, setShiftFilter] = useState<string>('ALL');
   const [onboardedByFilter, setOnboardedByFilter] = useState<string>('ALL');
 
@@ -79,62 +80,16 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
   // Editable draft rows state
   const [draftRows, setDraftRows] = useState<Map<string, RiderManagementRow>>(new Map());
 
-  // Aggregate ALL distinct store delivery partners
-  const combinedRiders = useMemo(() => {
-    const map = new Map<string, { riderName: string; phone?: string; isActive: boolean }>();
-
-    // 1. Active roster riders
-    if (activeRoster?.riders) {
-      for (const r of activeRoster.riders) {
-        const cleanName = cleanRiderDisplayName(r.name);
-        const norm = normalizeRiderName(cleanName);
-        if (!norm) continue;
-        const isActive = activeRoster.activeNamesSet?.has(norm) ?? true;
-        map.set(norm, {
-          riderName: cleanName,
-          phone: r.phone || activeRoster.phoneByNameMap?.get(norm),
-          isActive,
-        });
-      }
-    }
-
-    // 2. Rider shifts configured
-    if (riderShiftsMap) {
-      for (const [norm, shift] of riderShiftsMap.entries()) {
-        const cleanName = cleanRiderDisplayName(shift.riderName);
-        const isActive = activeRoster?.activeNamesSet?.has(norm) ?? false;
-        if (!map.has(norm)) {
-          map.set(norm, {
-            riderName: cleanName,
-            phone: activeRoster?.phoneByNameMap?.get(norm),
-            isActive,
-          });
-        }
-      }
-    }
-
-    // 3. Historical riders from pivot
-    for (const rawName of pivotRiderNames) {
-      const cleanName = cleanRiderDisplayName(rawName);
-      const norm = normalizeRiderName(cleanName);
-      if (!norm) continue;
-      const isActive = activeRoster?.activeNamesSet?.has(norm) ?? false;
-      if (!map.has(norm)) {
-        map.set(norm, {
-          riderName: cleanName,
-          phone: activeRoster?.phoneByNameMap?.get(norm),
-          isActive,
-        });
-      }
-    }
-
-    return Array.from(map.entries()).map(([norm, val]) => ({
-      normalizedName: norm,
-      riderName: val.riderName,
-      phone: val.phone,
-      isActive: val.isActive,
-    }));
-  }, [activeRoster, riderShiftsMap, pivotRiderNames]);
+  // Build active-only management roster (falls back to shifts/pivot only if no active roster exists)
+  const combinedRiders = useMemo(
+    () =>
+      buildManagementRidersList({
+        activeRoster,
+        riderShiftsMap,
+        pivotRiderNames,
+      }),
+    [activeRoster, riderShiftsMap, pivotRiderNames]
+  );
 
   // Sync draft state from source whenever source data updates, preserving local unsaved modifications
   useEffect(() => {
@@ -522,8 +477,6 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
     // Status filter
     if (statusFilter === 'ACTIVE') {
       rows = rows.filter((r) => r.isActive);
-    } else if (statusFilter === 'INACTIVE') {
-      rows = rows.filter((r) => !r.isActive);
     } else if (statusFilter === 'MISSING_SHIFT') {
       rows = rows.filter((r) => r.isActive && (!r.shiftConfig || r.draftShiftType === 'UNASSIGNED'));
     } else if (statusFilter === 'WITH_REFERRAL') {
@@ -561,7 +514,6 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
     () => Array.from(draftRows.values()).filter((r) => r.isActive).length,
     [draftRows]
   );
-  const inactiveRidersCount = totalRidersCount - activeRidersCount;
   const missingShiftsCount = useMemo(
     () =>
       Array.from(draftRows.values()).filter(
@@ -591,16 +543,16 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
         <div
           className={`kpi-card ${statusFilter === 'ALL' ? 'kpi-card-active' : 'kpi-card-interactive'}`}
           onClick={() => setStatusFilter('ALL')}
-          title="Click to view all riders"
+          title="Click to view all active riders"
         >
           <div className="kpi-header-row">
             <span className="kpi-label">Total Store Riders</span>
             <span className="badge badge-secondary" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
-              All Profiles
+              Active Roster
             </span>
           </div>
           <strong className="kpi-value text-blue">{totalRidersCount}</strong>
-          <span className="kpi-sub">{activeRidersCount} Active • {inactiveRidersCount} Inactive</span>
+          <span className="kpi-sub">{activeRidersCount} Active Riders</span>
         </div>
 
         <div
@@ -753,13 +705,6 @@ export const RiderManagementSection: React.FC<RiderManagementSectionProps> = ({
                 onClick={() => setStatusFilter('ACTIVE')}
               >
                 Active ({activeRidersCount})
-              </button>
-              <button
-                type="button"
-                className={`segmented-btn ${statusFilter === 'INACTIVE' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('INACTIVE')}
-              >
-                Inactive ({inactiveRidersCount})
               </button>
               <button
                 type="button"

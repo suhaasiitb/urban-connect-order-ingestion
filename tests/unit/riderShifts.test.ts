@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ONBOARDED_BY_OPTIONS,
   SHIFT_PRESETS,
+  buildManagementRidersList,
   calculatePlannedHours,
   classifyShiftType,
   formatHour,
@@ -540,6 +541,84 @@ describe('Rider Shift & 8-Hour Mandatory Compliance Unit Tests', () => {
       expect(referralRiders).toEqual(['Sagar Patil', 'Kiran Sharma']);
       expect(isReferralTagged('Abhay Gore')).toBe(false);
       expect(isReferralTagged('Unknown Rider')).toBe(false);
+    });
+
+    it('buildManagementRidersList shows only active riders when activeRoster is present and excludes inactive riders', () => {
+      const mockShiftsMap = new Map<string, RiderShiftConfig>([
+        [
+          'abhay gore',
+          {
+            riderName: 'ABHAY GORE',
+            normalizedName: 'abhay gore',
+            shiftType: 'Split Shift',
+            slot1StartHour: 8,
+            slot1EndHour: 15,
+            slot2StartHour: 16,
+            slot2EndHour: 24,
+            totalPlannedHours: 15,
+          },
+        ],
+        [
+          'inactive shift rider',
+          {
+            riderName: 'Inactive Shift Rider',
+            normalizedName: 'inactive shift rider',
+            shiftType: 'Morning Shift',
+            slot1StartHour: 6,
+            slot1EndHour: 15,
+            totalPlannedHours: 9,
+          },
+        ],
+      ]);
+
+      const activeOnly = buildManagementRidersList({
+        activeRoster: {
+          storeId: 'store-tpe2',
+          storeCode: 'TPE2',
+          totalRiders: 2,
+          lastUpdated: null,
+          lastUpdatedFormatted: null,
+          filename: null,
+          activeNamesSet: new Set(['abhay gore', 'abdul raheem salmani']),
+          phoneByNameMap: new Map([
+            ['abhay gore', '8530615177'],
+            ['abdul raheem salmani', '8429891727'],
+          ]),
+          riders: [
+            { name: 'ABHAY GORE', normalizedName: 'abhay gore', phone: '8530615177' },
+            { name: 'Abdul Raheem salmani', normalizedName: 'abdul raheem salmani' },
+          ],
+        },
+        riderShiftsMap: mockShiftsMap,
+        pivotRiderNames: ['Historical Inactive Order Rider', 'ABHAY GORE*'],
+      });
+
+      expect(activeOnly).toEqual([
+        {
+          normalizedName: 'abhay gore',
+          riderName: 'ABHAY GORE',
+          phone: '8530615177',
+          isActive: true,
+        },
+        {
+          normalizedName: 'abdul raheem salmani',
+          riderName: 'Abdul Raheem salmani',
+          phone: '8429891727',
+          isActive: true,
+        },
+      ]);
+
+      // Falls back to shifts and pivot riders when no active roster has been uploaded yet
+      const fallbackOnly = buildManagementRidersList({
+        activeRoster: null,
+        riderShiftsMap: mockShiftsMap,
+        pivotRiderNames: ['Recent Order Rider'],
+      });
+      expect(fallbackOnly.map((r) => r.normalizedName)).toEqual([
+        'abhay gore',
+        'inactive shift rider',
+        'recent order rider',
+      ]);
     });
   });
 });
