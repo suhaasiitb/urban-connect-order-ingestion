@@ -36,7 +36,7 @@ export const App: React.FC = () => {
   // Sub-section states synchronized with the auto-retractable side panel
   const [planningSubView, setPlanningSubView] = useState<'FORWARD_PLAN' | 'PLAN_VS_ACTUAL_AUDIT'>('FORWARD_PLAN');
   const [analyticsSubView, setAnalyticsSubView] = useState<'performance' | 'management' | 'new-riders'>('performance');
-  const [uploadSubView, setUploadSubView] = useState<'orders' | 'riders' | 'dnr' | 'snop'>('orders');
+  const [uploadSubView, setUploadSubView] = useState<'dnr' | 'snop'>('dnr');
 
   // Auto-retractable Side Navigation Panel pin state (false = auto-expand on hover, true = pinned open)
   const [isSidebarPinned, setIsSidebarPinned] = useState<boolean>(false);
@@ -525,34 +525,6 @@ export const App: React.FC = () => {
               </button>
 
               <div className="side-subnav-list">
-                <button
-                  type="button"
-                  className={`side-subnav-item ${
-                    activeView === 'upload' && uploadSubView === 'orders' ? 'active' : ''
-                  }`}
-                  onClick={() => {
-                    setActiveView('upload');
-                    setUploadSubView('orders');
-                    setIsMobileNavOpen(false);
-                  }}
-                >
-                  <span className="subnav-dot" />
-                  <span className="side-subnav-label">Daily Orders</span>
-                </button>
-                <button
-                  type="button"
-                  className={`side-subnav-item ${
-                    activeView === 'upload' && uploadSubView === 'riders' ? 'active' : ''
-                  }`}
-                  onClick={() => {
-                    setActiveView('upload');
-                    setUploadSubView('riders');
-                    setIsMobileNavOpen(false);
-                  }}
-                >
-                  <span className="subnav-dot" />
-                  <span className="side-subnav-label">Active Riders Roster</span>
-                </button>
                 <button
                   type="button"
                   className={`side-subnav-item ${

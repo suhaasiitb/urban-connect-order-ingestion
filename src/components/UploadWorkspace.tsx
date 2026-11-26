@@ -1,23 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { parseAndValidateOrderWorkbook } from '../domain/excelParser';
-import type { StoreMaster, WorkbookValidationResult } from '../domain/types';
+import type { StoreMaster } from '../domain/types';
 import type { UserProfile } from '../services/authService';
-import {
-  type CommittedBatchResult,
-  submitConfirmedOrderBatch,
-} from '../services/ingestionService';
-import {
-  type StoreCoverageSummary,
-  fetchStoreDateCoverage,
-} from '../services/storeService';
-import { invalidateS2POtpCache } from '../services/s2pOtpService';
-import {
-  type ActiveRosterParseResult,
-  type ActiveRosterSummary,
-  getActiveRidersRoster,
-  parseActiveRidersFile,
-  saveActiveRidersRoster,
-} from '../services/activeRiderService';
 import {
   type DnrParseResult,
   type StoreDnrSummary,
@@ -33,17 +16,12 @@ import {
   parseSnopFile,
   saveSnopRecords,
 } from '../services/planningService';
-import { StoreCalendarView } from './StoreCalendarView';
 import {
   DnrConfirmModal,
   DnrSuccessModal,
-  RosterConfirmModal,
-  RosterSuccessModal,
   SnopConfirmModal,
   SnopSuccessModal,
-  UploadConfirmModal,
   UploadErrorModal,
-  UploadSuccessModal,
 } from './UploadModals';
 
 export interface UploadWorkspaceProps {
@@ -53,8 +31,8 @@ export interface UploadWorkspaceProps {
   onBatchCommitted?: () => void;
   onNavigateToPlanning?: () => void;
   currentUser?: UserProfile | null;
-  uploadType?: 'orders' | 'riders' | 'dnr' | 'snop';
-  onChangeUploadType?: (type: 'orders' | 'riders' | 'dnr' | 'snop') => void;
+  uploadType?: 'dnr' | 'snop';
+  onChangeUploadType?: (type: 'dnr' | 'snop') => void;
 }
 
 export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
@@ -69,23 +47,9 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [parsingFile, setParsingFile] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
 
-  // Upload Mode: 'orders' (Daily Store Orders) vs 'riders' (Active Riders Roster) vs 'dnr' (DNR Reports) vs 'snop' (SNOP Forecast)
-  const uploadType = controlledUploadType ?? 'orders';
-
-  // 30-Day Ingestion Coverage
-  const [coverage, setCoverage] = useState<StoreCoverageSummary | null>(null);
-  const [loadingCoverage, setLoadingCoverage] = useState(false);
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
-
-  // Active Riders Roster state
-  const [activeRoster, setActiveRoster] = useState<ActiveRosterSummary | null>(null);
-  const [loadingRoster, setLoadingRoster] = useState(false);
-  const [rosterParseResult, setRosterParseResult] = useState<ActiveRosterParseResult | null>(null);
-  const [showRosterConfirm, setShowRosterConfirm] = useState(false);
-  const [showRosterSuccess, setShowRosterSuccess] = useState(false);
-  const [isSavingRoster, setIsSavingRoster] = useState(false);
+  // Upload Mode: 'dnr' (DNR Reports) vs 'snop' (SNOP Forecast)
+  const uploadType = controlledUploadType ?? 'dnr';
 
   // DNR Reports state
   const [dnrSummary, setDnrSummary] = useState<StoreDnrSummary | null>(null);
@@ -105,14 +69,6 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   const [showSnopSuccess, setShowSnopSuccess] = useState(false);
   const [isSavingSnop, setIsSavingSnop] = useState(false);
 
-  // Validation & Modal states for Orders
-  const [validationResult, setValidationResult] =
-    useState<WorkbookValidationResult | null>(null);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [committedResult, setCommittedResult] =
-    useState<CommittedBatchResult | null>(null);
-
   // Error modal state
   const [errorModalData, setErrorModalData] = useState<{
     filename: string;
@@ -122,33 +78,6 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
 
   const selectedStore =
     stores.find((s) => s.id === selectedStoreId) ?? stores[0] ?? null;
-
-  // Load 30-day coverage when selected store changes
-  const loadCoverage = useCallback(async () => {
-    if (!selectedStore) return;
-    setLoadingCoverage(true);
-    try {
-      const res = await fetchStoreDateCoverage(
-        selectedStore.id,
-        selectedStore.timezone || 'Asia/Kolkata'
-      );
-      setCoverage(res.summary);
-    } finally {
-      setLoadingCoverage(false);
-    }
-  }, [selectedStore]);
-
-  // Load active riders roster when selected store changes
-  const loadRoster = useCallback(async () => {
-    if (!selectedStore) return;
-    setLoadingRoster(true);
-    try {
-      const summary = await getActiveRidersRoster(selectedStore.id, selectedStore.store_code);
-      setActiveRoster(summary);
-    } finally {
-      setLoadingRoster(false);
-    }
-  }, [selectedStore]);
 
   // Load DNR cases summary when selected store changes
   const loadDnr = useCallback(async () => {
@@ -178,18 +107,14 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
   }, [selectedStore]);
 
   useEffect(() => {
-    void loadCoverage();
-    void loadRoster();
     void loadDnr();
     void loadSnop();
-  }, [loadCoverage, loadRoster, loadDnr, loadSnop]);
+  }, [loadDnr, loadSnop]);
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    setValidationResult(null);
-    setRosterParseResult(null);
     setDnrParseResult(null);
     setSnopParseResult(null);
   };
@@ -198,7 +123,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     resetFileInput();
   }, [uploadType]);
 
-  // Handle file selection and parsing for either Orders or Riders
+  // Handle file selection and parsing for DNR or SNOP
   const processSelectedFile = async (file: File) => {
     if (!selectedStore) return;
 
@@ -220,42 +145,6 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
 
     setParsingFile(true);
 
-    // 1. Process Active Riders Roster file
-    if (uploadType === 'riders') {
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const parsed = parseActiveRidersFile({
-          fileBytes: arrayBuffer,
-          filename: file.name,
-          targetStoreCode: selectedStore.store_code,
-        });
-
-        setParsingFile(false);
-
-        if (!parsed.is_valid) {
-          setErrorModalData({
-            filename: file.name,
-            errors: parsed.errors,
-          });
-          resetFileInput();
-          return;
-        }
-
-        setRosterParseResult(parsed);
-        setShowRosterConfirm(true);
-      } catch (err) {
-        setParsingFile(false);
-        const msg = err instanceof Error ? err.message : String(err);
-        setErrorModalData({
-          filename: file.name,
-          errors: [`Failed to parse active riders file: ${msg}`],
-        });
-        resetFileInput();
-      }
-      return;
-    }
-
-    // 2. Process DNR (Delivery Not Received) Reports file
     if (uploadType === 'dnr') {
       try {
         const arrayBuffer = await file.arrayBuffer();
@@ -290,92 +179,33 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
       return;
     }
 
-    // 3. Process SNOP Orders Forecast file
-    if (uploadType === 'snop') {
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const parsed = await parseSnopFile({
-          fileBytes: arrayBuffer,
-          filename: file.name,
-          targetSiteCode: selectedStore.store_code,
-        });
-
-        setParsingFile(false);
-
-        if (!parsed.is_valid) {
-          setErrorModalData({
-            filename: file.name,
-            errors: parsed.errors,
-          });
-          resetFileInput();
-          return;
-        }
-
-        setSnopParseResult(parsed);
-        setShowSnopConfirm(true);
-      } catch (err) {
-        setParsingFile(false);
-        const msg = err instanceof Error ? err.message : String(err);
-        setErrorModalData({
-          filename: file.name,
-          errors: [`Failed to parse SNOP forecast file: ${msg}`],
-        });
-        resetFileInput();
-      }
-      return;
-    }
-
-    // 4. Process Daily Orders report file
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const result = parseAndValidateOrderWorkbook({
+      const parsed = await parseSnopFile({
         fileBytes: arrayBuffer,
         filename: file.name,
-        store: selectedStore,
+        targetSiteCode: selectedStore.store_code,
       });
 
       setParsingFile(false);
 
-      if (!result.is_valid) {
-        // Collect clear, plain-language error messages
-        const topErrors = [...result.file_errors];
-
-        if (result.missing_headers.length > 0) {
-          topErrors.push(
-            `Missing mandatory columns (${result.missing_headers.length}): ${result.missing_headers.join(', ')}`
-          );
-        }
-
-        const invalidRows = result.rows
-          .filter((r) => !r.is_valid)
-          .map((r) => ({
-            row: r.source_row_number,
-            message:
-              r.issues.find((i) => i.severity === 'error')?.message ??
-              'Row validation failed',
-          }));
-
+      if (!parsed.is_valid) {
         setErrorModalData({
           filename: file.name,
-          errors:
-            topErrors.length > 0
-              ? topErrors
-              : [`${invalidRows.length} row(s) failed business validation checks.`],
-          rowErrors: invalidRows,
+          errors: parsed.errors,
         });
         resetFileInput();
         return;
       }
 
-      // Valid: open the clean confirmation prompt
-      setValidationResult(result);
-      setShowConfirmModal(true);
+      setSnopParseResult(parsed);
+      setShowSnopConfirm(true);
     } catch (err) {
       setParsingFile(false);
       const msg = err instanceof Error ? err.message : String(err);
       setErrorModalData({
         filename: file.name,
-        errors: [`Failed to read file: ${msg}`],
+        errors: [`Failed to parse SNOP forecast file: ${msg}`],
       });
       resetFileInput();
     }
@@ -394,95 +224,6 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     const file = e.dataTransfer.files?.[0];
     if (file) {
       void processSelectedFile(file);
-    }
-  };
-
-  // Confirm and upload daily orders batch
-  const handleConfirmUpload = async () => {
-    if (!selectedStore || !validationResult) return;
-
-    setIsUploading(true);
-
-    try {
-      const result = await submitConfirmedOrderBatch({
-        storeId: selectedStore.id,
-        storeCode: selectedStore.store_code,
-        validation: validationResult,
-        forceReprocess: true,
-      });
-
-      setIsUploading(false);
-      setShowConfirmModal(false);
-
-      if (!result.ok) {
-        setErrorModalData({
-          filename: validationResult.filename,
-          errors: [
-            result.error_message ||
-              'Upload rejected under strict all-or-nothing validation.',
-          ],
-        });
-        resetFileInput();
-        return;
-      }
-
-      // Succeeded: show success popup!
-      invalidateS2POtpCache(selectedStoreId);
-      setCommittedResult(result);
-      setShowSuccessModal(true);
-      resetFileInput();
-      onBatchCommitted?.();
-    } catch (err) {
-      setIsUploading(false);
-      setShowConfirmModal(false);
-      const msg = err instanceof Error ? err.message : 'Upload failed';
-      setErrorModalData({
-        filename: validationResult.filename,
-        errors: [`Ingestion request failed: ${msg}`],
-      });
-      resetFileInput();
-    }
-  };
-
-  // Confirm and save active riders roster
-  const handleConfirmRosterUpload = async () => {
-    if (!selectedStore || !rosterParseResult) return;
-
-    setIsSavingRoster(true);
-
-    try {
-      const result = await saveActiveRidersRoster({
-        storeId: selectedStore.id,
-        storeCode: selectedStore.store_code,
-        filename: rosterParseResult.filename,
-        riders: rosterParseResult.valid_riders,
-      });
-
-      setIsSavingRoster(false);
-      setShowRosterConfirm(false);
-
-      if (!result.ok) {
-        setErrorModalData({
-          filename: rosterParseResult.filename,
-          errors: [result.error || 'Failed to save active riders roster.'],
-        });
-        resetFileInput();
-        return;
-      }
-
-      await loadRoster();
-      setShowRosterSuccess(true);
-      resetFileInput();
-      onBatchCommitted?.();
-    } catch (err) {
-      setIsSavingRoster(false);
-      setShowRosterConfirm(false);
-      const msg = err instanceof Error ? err.message : String(err);
-      setErrorModalData({
-        filename: rosterParseResult.filename,
-        errors: [`Could not save roster: ${msg}`],
-      });
-      resetFileInput();
     }
   };
 
@@ -605,20 +346,8 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
     document.body.removeChild(link);
   };
 
-  const handleDismissSuccess = () => {
-    setShowSuccessModal(false);
-    setCommittedResult(null);
-    void loadCoverage(); // Re-fetch 30-day status so the date turns green!
-  };
-
-  const isCurrentBusinessDateUploaded = Boolean(
-    validationResult?.min_order_date &&
-      coverage?.days.find(
-        (d) => d.dateStr === validationResult.min_order_date && d.isUploaded
-      )
-  );
-
   const isStoreUser = currentUser?.role === 'store_user';
+  const isBusy = parsingFile || isSavingDnr || isSavingSnop;
 
   return (
     <div className="upload-portal-container">
@@ -651,7 +380,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                 className="store-dropdown"
                 value={selectedStoreId}
                 onChange={(e) => onSelectStoreId(e.target.value)}
-                disabled={parsingFile || isUploading || isSavingRoster}
+                disabled={isBusy}
               >
                 {stores.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -664,41 +393,19 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* 2. 30-Day Coverage Calendar (shown in Orders mode) */}
-      {selectedStore && uploadType === 'orders' && (
-        <StoreCalendarView
-          storeCode={selectedStore.store_code}
-          storeName={selectedStore.store_name}
-          coverage={coverage}
-          loading={loadingCoverage}
-          onRefresh={() => void loadCoverage()}
-          onSelectDate={(d) => setSelectedCalendarDate(d)}
-          selectedDate={selectedCalendarDate}
-        />
-      )}
-
-      {/* 3. File Upload Section */}
+      {/* 2. File Upload Section */}
       <div className="section-card upload-dropzone-card">
-        {/* Step 2 Header */}
         <div className="upload-header-row">
           <div className="upload-header">
             <span className="section-step">Step 2</span>
             <div>
               <h2 className="section-title editorial-serif-heading">
-                {uploadType === 'orders'
-                  ? 'Upload Daily Orders'
-                  : uploadType === 'riders'
-                  ? 'Upload Active Riders Roster'
-                  : uploadType === 'dnr'
+                {uploadType === 'dnr'
                   ? 'Upload DNR (Delivery Not Received) Reports'
                   : 'Upload SNOP Orders Forecast'}
               </h2>
               <p className="section-subtitle">
-                {uploadType === 'orders'
-                  ? `Upload the daily orders file (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}.`
-                  : uploadType === 'riders'
-                  ? `Upload active riders list (.csv) for ${selectedStore?.store_code ?? 'store'} to mark Active (Yes/No).`
-                  : uploadType === 'dnr'
+                {uploadType === 'dnr'
                   ? `Upload DNR incident report (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'} to track Non_abusive and Potential_abuse cases.`
                   : `Upload future orders forecast (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}. New upload rewrites existing store forecast.`}
               </p>
@@ -746,36 +453,6 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                     ⬇ Download Template
                   </button>
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Active Riders Status Banner (shown when in Riders mode) */}
-        {uploadType === 'riders' && (
-          <div className="roster-status-banner">
-            <div className="roster-status-main">
-              <span className="roster-status-icon-box">🚴</span>
-              <div className="roster-status-content">
-                <div className="roster-status-heading-row">
-                  <h4 className="roster-status-heading">
-                    Active Roster for {selectedStore?.store_code} ({selectedStore?.store_name})
-                  </h4>
-                  {loadingRoster && <span className="roster-loading-tag">Checking roster...</span>}
-                </div>
-                <p className="roster-status-info">
-                  {activeRoster && activeRoster.totalRiders > 0 ? (
-                    <>
-                      Currently <strong>{activeRoster.totalRiders} active riders</strong> registered.{' '}
-                      Last updated: <strong>{activeRoster.lastUpdatedFormatted}</strong>
-                      {activeRoster.filename && (
-                        <> (file: <span className="mono">{activeRoster.filename}</span>)</>
-                      )}.
-                    </>
-                  ) : (
-                    'No active riders roster has been uploaded yet for this store. Riders in Store Analytics will show Active as "No" until a roster is uploaded.'
-                  )}
-                </p>
               </div>
             </div>
           </div>
@@ -831,7 +508,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           onClick={() => {
-            if (!parsingFile && !isUploading && !isSavingRoster && !isSavingDnr) {
+            if (!isBusy) {
               fileInputRef.current?.click();
             }
           }}
@@ -842,7 +519,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             onChange={handleFileChange}
             style={{ display: 'none' }}
-            disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr}
+            disabled={isBusy}
           />
 
           <div className="dropzone-inner">
@@ -870,45 +547,26 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             <div className="dropzone-text">
               <strong>
                 {parsingFile
-                  ? uploadType === 'riders'
-                    ? 'Validating active riders roster...'
-                    : uploadType === 'dnr'
+                  ? uploadType === 'dnr'
                     ? 'Analyzing and validating DNR incident report...'
-                    : uploadType === 'snop'
-                    ? 'Analyzing and validating SNOP orders forecast...'
-                    : 'Analyzing and validating order file...'
-                  : uploadType === 'riders'
-                  ? 'Click to select or drag and drop Active Riders CSV'
+                    : 'Analyzing and validating SNOP orders forecast...'
                   : uploadType === 'dnr'
                   ? 'Click to select or drag and drop DNR Report (.csv or .xlsx)'
-                  : uploadType === 'snop'
-                  ? 'Click to select or drag and drop SNOP Orders Forecast (.csv or .xlsx)'
-                  : 'Click to select or drag and drop store order file (.csv or .xlsx)'}
+                  : 'Click to select or drag and drop SNOP Orders Forecast (.csv or .xlsx)'}
               </strong>
               <p>
-                {uploadType === 'riders' ? (
-                  <>
-                    Target Store: <strong>{selectedStore?.store_code}</strong> • Expected Columns:{' '}
-                    <code>Name, Phone, Online Status, Eligibility, Attendance, Store</code>
-                  </>
-                ) : uploadType === 'dnr' ? (
+                {uploadType === 'dnr' ? (
                   <>
                     Target Store: <strong>{selectedStore?.store_code}</strong>{' '}
                     <span className="badge badge-secondary ml-xs">Supports All-Store Bulk Upload</span> •
                     Expected Columns: <code>week, order_date, site_code, dp_id, order_id, Ride Name, abuse_flag, delivery_time, scan_data_delivered</code>
                   </>
-                ) : uploadType === 'snop' ? (
+                ) : (
                   <>
                     Target Store: <strong>{selectedStore?.store_code}</strong>{' '}
                     <span className="badge badge-secondary ml-xs">Supports All-Store Bulk Upload</span> •
                     Expected Columns: <code>City, Warehouse Id, Date, Hour, Order</code> (Rewrites existing forecast)
                   </>
-                ) : selectedStore ? (
-                  <>
-                    Target Store: <strong>{selectedStore.store_code}</strong> • Supports daily order exports
-                  </>
-                ) : (
-                  'Please select a store first'
                 )}
               </p>
             </div>
@@ -916,7 +574,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
             <button
               type="button"
               className="btn btn-secondary btn-sm dropzone-btn"
-              disabled={parsingFile || isUploading || isSavingRoster || isSavingDnr || isSavingSnop}
+              disabled={isBusy}
               onClick={(e) => {
                 e.stopPropagation();
                 fileInputRef.current?.click();
@@ -928,7 +586,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* 4. Popups & Modals */}
+      {/* 3. Popups & Modals */}
       {/* Error Popup Modal */}
       {errorModalData && (
         <UploadErrorModal
@@ -936,58 +594,6 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
           errors={errorModalData.errors}
           rowErrors={errorModalData.rowErrors}
           onClose={() => setErrorModalData(null)}
-        />
-      )}
-
-      {/* Orders Confirmation & Ingestion Prompt Modal */}
-      {showConfirmModal && validationResult && selectedStore && (
-        <UploadConfirmModal
-          store={selectedStore}
-          validation={validationResult}
-          isDateAlreadyUploaded={isCurrentBusinessDateUploaded}
-          isUploading={isUploading}
-          onCancel={() => {
-            setShowConfirmModal(false);
-            resetFileInput();
-          }}
-          onConfirm={() => void handleConfirmUpload()}
-        />
-      )}
-
-      {/* Orders Success Modal */}
-      {showSuccessModal && committedResult && (
-        <UploadSuccessModal
-          result={committedResult}
-          onDone={handleDismissSuccess}
-        />
-      )}
-
-      {/* Active Riders Roster Confirmation Modal */}
-      {showRosterConfirm && rosterParseResult && selectedStore && (
-        <RosterConfirmModal
-          store={selectedStore}
-          filename={rosterParseResult.filename}
-          totalRiders={rosterParseResult.valid_riders.length}
-          sampleRiders={rosterParseResult.valid_riders.map((r) => r.name)}
-          warnings={rosterParseResult.warnings}
-          isSaving={isSavingRoster}
-          onCancel={() => {
-            setShowRosterConfirm(false);
-            resetFileInput();
-          }}
-          onConfirm={() => void handleConfirmRosterUpload()}
-        />
-      )}
-
-      {/* Active Riders Roster Success Modal */}
-      {showRosterSuccess && activeRoster && selectedStore && (
-        <RosterSuccessModal
-          storeCode={selectedStore.store_code}
-          totalRiders={activeRoster.totalRiders}
-          lastUpdatedFormatted={activeRoster.lastUpdatedFormatted || 'Just now'}
-          onDone={() => {
-            setShowRosterSuccess(false);
-          }}
         />
       )}
 
