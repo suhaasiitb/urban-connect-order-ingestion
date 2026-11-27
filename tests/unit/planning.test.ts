@@ -14,6 +14,7 @@ import {
   getStoreTargetDphForDateSync,
   getStoreTargetDphSync,
   getStoredSnopRecords,
+  mergeSnopRecordsWithHistoricalLock,
   parseSnopDateField,
   parseSnopFile,
   recalculatePlanningWithDph,
@@ -406,31 +407,61 @@ describe('Store Planning & SNOP Forecast Suite', () => {
       expect(tpe2[0].projectedOrders).toBe(90);
     });
 
-    it('preserves older uploaded SNOP dates when a newer forecast upload covers later dates', async () => {
+    it('enforces Historical SNOP Lock: freezes existing <= today dates, backfills missing <= today dates, and updates > today dates', async () => {
+      const todayRef = '2026-11-27';
+
+      // Initial upload covers past (Nov 25), today (Nov 27), and future (Nov 28)
       await saveSnopRecords({
         warehouseId: 'TMK7',
         records: [
-          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-10', hour: 6, projectedOrders: 20 },
-          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-11', hour: 6, projectedOrders: 30 },
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-25', hour: 6, projectedOrders: 20 },
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-27', hour: 6, projectedOrders: 30 },
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-28', hour: 6, projectedOrders: 40 },
         ],
-        filename: 'SNOP_Week1.xlsx',
+        filename: 'SNOP_Initial.xlsx',
+        referenceDate: todayRef,
       });
 
+      // Subsequent upload overlaps past (Nov 25), backfills missing past (Nov 26), overlaps today (Nov 27),
+      // updates future (Nov 28), and adds future (Nov 29)
       await saveSnopRecords({
         warehouseId: 'TMK7',
         records: [
-          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-11', hour: 6, projectedOrders: 45 },
-          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-12', hour: 6, projectedOrders: 50 },
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-25', hour: 6, projectedOrders: 999 }, // frozen (< today)
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-26', hour: 6, projectedOrders: 25 },  // missing past -> backfill
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-27', hour: 6, projectedOrders: 888 }, // frozen (== today)
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-28', hour: 6, projectedOrders: 55 },  // future -> overwrite
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-29', hour: 6, projectedOrders: 60 },  // new future -> insert
         ],
-        filename: 'SNOP_Week2.xlsx',
+        filename: 'SNOP_Revised.xlsx',
+        referenceDate: todayRef,
       });
 
       const merged = getStoredSnopRecords('TMK7');
       expect(merged.map((r) => ({ d: r.dateStr, o: r.projectedOrders }))).toEqual([
-        { d: '2026-11-10', o: 20 }, // preserved historical date
-        { d: '2026-11-11', o: 45 }, // updated overlapping date
-        { d: '2026-11-12', o: 50 }, // newly added date
+        { d: '2026-11-25', o: 20 }, // frozen historical (< today)
+        { d: '2026-11-26', o: 25 }, // backfilled missing past date
+        { d: '2026-11-27', o: 30 }, // frozen today (<= today)
+        { d: '2026-11-28', o: 55 }, // updated future (> today)
+        { d: '2026-11-29', o: 60 }, // newly added future (> today)
       ]);
+
+      // Verify pure helper directly reports lockedPastDates, futureDatesToReplace, and backfillRecordsToWrite
+      const check = mergeSnopRecordsWithHistoricalLock({
+        existingRecords: [
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-27', hour: 6, projectedOrders: 30 },
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-28', hour: 6, projectedOrders: 40 },
+        ],
+        incomingRecords: [
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-26', hour: 6, projectedOrders: 25 },
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-27', hour: 6, projectedOrders: 99 },
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-28', hour: 6, projectedOrders: 55 },
+        ],
+        todayStr: todayRef,
+      });
+      expect(check.lockedPastDates).toEqual(['2026-11-27']);
+      expect(check.futureDatesToReplace).toEqual(['2026-11-28']);
+      expect(check.backfillRecordsToWrite.map((r) => r.dateStr)).toEqual(['2026-11-26']);
     });
   });
 

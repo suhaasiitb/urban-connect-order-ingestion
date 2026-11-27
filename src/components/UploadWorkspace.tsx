@@ -407,7 +407,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
               <p className="section-subtitle">
                 {uploadType === 'dnr'
                   ? `Upload DNR incident report (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'} to track Non_abusive and Potential_abuse cases.`
-                  : `Upload orders forecast (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}. Updates uploaded dates while preserving older historical SNOP dates.`}
+                  : `Upload orders forecast (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}. Updates future dates (> today) while locking existing past & today dates (<= today).`}
               </p>
             </div>
           </div>
@@ -441,9 +441,9 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                   )}
                 </p>
                 <div className="snop-banner-meta mt-xs flex-row items-center gap-sm">
-                  <span className="badge badge-info">📅 Date-Scoped History</span>
+                  <span className="badge badge-info">🔒 Historical SNOP Lock</span>
                   <span className="text-secondary text-sm">
-                    Updates only the dates in the uploaded file while preserving older historical forecast dates.
+                    Updates future dates (&gt; today); existing past &amp; today dates (&le; today) remain frozen so historical SNOP breaches never change.
                   </span>
                   <button
                     type="button"

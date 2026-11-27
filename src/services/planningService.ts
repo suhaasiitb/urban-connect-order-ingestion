@@ -888,25 +888,127 @@ function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F)
 }
 
 /**
+ * Pure merge helper implementing Historical SNOP Lock:
+ * - Future dates (> today): always overwrite with incoming SNOP forecast.
+ * - Past & today dates (<= today) that ALREADY exist: frozen / never overwritten.
+ * - Past & today dates (<= today) that are MISSING: inserted cleanly (backfill).
+ */
+export function mergeSnopRecordsWithHistoricalLock(params: {
+  existingRecords: SnopForecastRecord[];
+  incomingRecords: SnopForecastRecord[];
+  todayStr?: string;
+  timeZone?: string;
+}): {
+  mergedRecords: SnopForecastRecord[];
+  futureDatesToReplace: string[];
+  futureRecordsToWrite: SnopForecastRecord[];
+  backfillRecordsToWrite: SnopForecastRecord[];
+  lockedPastDates: string[];
+} {
+  const { existingRecords, incomingRecords, timeZone = 'Asia/Kolkata' } = params;
+  const cutoffToday =
+    params.todayStr && /^\d{4}-\d{2}-\d{2}$/.test(params.todayStr)
+      ? params.todayStr
+      : getStoreTodayIsoDate(timeZone);
+
+  const existingDateSet = new Set(existingRecords.map((r) => r.dateStr));
+  const futureDateSet = new Set<string>();
+  const lockedDateSet = new Set<string>();
+  const futureRecordsToWrite: SnopForecastRecord[] = [];
+  const backfillRecordsToWrite: SnopForecastRecord[] = [];
+
+  for (const rec of incomingRecords) {
+    if (rec.dateStr > cutoffToday) {
+      futureDateSet.add(rec.dateStr);
+      futureRecordsToWrite.push(rec);
+    } else if (existingDateSet.has(rec.dateStr)) {
+      lockedDateSet.add(rec.dateStr);
+    } else {
+      backfillRecordsToWrite.push(rec);
+    }
+  }
+
+  const writableDateSet = new Set<string>([
+    ...futureDateSet,
+    ...backfillRecordsToWrite.map((r) => r.dateStr),
+  ]);
+
+  const preservedExisting = existingRecords.filter((r) => !writableDateSet.has(r.dateStr));
+  const mergedRecords = [...preservedExisting, ...futureRecordsToWrite, ...backfillRecordsToWrite].sort(
+    (a, b) => {
+      const dateCmp = a.dateStr.localeCompare(b.dateStr);
+      return dateCmp !== 0 ? dateCmp : a.hour - b.hour;
+    }
+  );
+
+  return {
+    mergedRecords,
+    futureDatesToReplace: Array.from(futureDateSet).sort(),
+    futureRecordsToWrite,
+    backfillRecordsToWrite,
+    lockedPastDates: Array.from(lockedDateSet).sort(),
+  };
+}
+
+/**
  * Pushes SNOP forecast records and metadata to Supabase tables `store_snop_forecast` and `store_snop_uploads`.
- * Uses date-scoped replacement: replaces only the dates present in the uploaded file so all
- * older historical SNOP forecast dates remain preserved for historical planning review.
+ * Enforces Historical SNOP Lock:
+ *  - Future dates (> today): delete existing slots for those dates and upsert latest forecast.
+ *  - Past & today dates (<= today): never delete or overwrite existing rows in DB; only insert
+ *    dates that are currently missing (with ON CONFLICT DO NOTHING protection).
  */
 export async function pushSnopRecordsToSupabase(
   warehouseId: string,
   records: SnopForecastRecord[],
-  meta?: Partial<SnopUploadMeta>
-): Promise<{ ok: boolean; error?: string }> {
+  meta?: Partial<SnopUploadMeta>,
+  options?: { referenceDate?: string; timeZone?: string }
+): Promise<{ ok: boolean; error?: string; lockedPastDates?: string[] }> {
   const norm = (warehouseId || 'TMK7').toUpperCase().trim();
-  if (!records || records.length === 0) return { ok: true };
+  if (!records || records.length === 0) return { ok: true, lockedPastDates: [] };
 
   try {
-    const sortedDates = Array.from(new Set(records.map((r) => r.dateStr))).sort();
+    const cutoffToday =
+      options?.referenceDate && /^\d{4}-\d{2}-\d{2}$/.test(options.referenceDate)
+        ? options.referenceDate
+        : getStoreTodayIsoDate(options?.timeZone || 'Asia/Kolkata');
 
-    // Delete only existing rows for the dates covered by this upload (preserving older historical dates)
+    const sortedDates = Array.from(new Set(records.map((r) => r.dateStr))).sort();
+    const futureDates = sortedDates.filter((d) => d > cutoffToday);
+    const pastOrTodayDates = sortedDates.filter((d) => d <= cutoffToday);
+
+    // 1. Check which past/today dates ALREADY exist in Supabase (chunk <= 40 dates so 40*24=960 < PostgREST 1,000-row cap)
+    const existingPastDates = new Set<string>();
+    const lookupChunkSize = 40;
+    for (let i = 0; i < pastOrTodayDates.length; i += lookupChunkSize) {
+      const dateChunk = pastOrTodayDates.slice(i, i + lookupChunkSize);
+      const { data, error } = await supabase
+        .from('store_snop_forecast')
+        .select('forecast_date')
+        .eq('warehouse_id', norm)
+        .in('forecast_date', dateChunk);
+
+      if (error) {
+        console.warn(`Supabase existing past SNOP check warning for ${norm}:`, error.message);
+        return { ok: false, error: error.message };
+      } else if (Array.isArray(data)) {
+        for (const row of data) {
+          if (row.forecast_date) {
+            existingPastDates.add(String(row.forecast_date).slice(0, 10));
+          }
+        }
+      }
+    }
+
+    const futureRecords = records.filter((r) => r.dateStr > cutoffToday);
+    const backfillPastRecords = records.filter(
+      (r) => r.dateStr <= cutoffToday && !existingPastDates.has(r.dateStr)
+    );
+    const lockedPastDates = pastOrTodayDates.filter((d) => existingPastDates.has(d));
+
+    // 2. Delete ONLY existing rows for FUTURE dates (> today) present in this upload
     const dateChunkSize = 100;
-    for (let i = 0; i < sortedDates.length; i += dateChunkSize) {
-      const dateChunk = sortedDates.slice(i, i + dateChunkSize);
+    for (let i = 0; i < futureDates.length; i += dateChunkSize) {
+      const dateChunk = futureDates.slice(i, i + dateChunkSize);
       const { error: delErr } = await supabase
         .from('store_snop_forecast')
         .delete()
@@ -915,31 +1017,49 @@ export async function pushSnopRecordsToSupabase(
 
       if (delErr) {
         console.warn(`Supabase delete old forecast warning for ${norm}:`, delErr.message);
+        return { ok: false, error: delErr.message, lockedPastDates };
       }
     }
 
-    // Upsert in batches of 200
-    const chunkSize = 200;
-    for (let i = 0; i < records.length; i += chunkSize) {
-      const chunk = records.slice(i, i + chunkSize).map((r) => ({
-        city: r.city || '',
-        warehouse_id: norm,
-        forecast_date: r.dateStr,
-        slot_hour: r.hour,
-        projected_orders: r.projectedOrders,
-      }));
+    const toDbRow = (r: SnopForecastRecord) => ({
+      city: r.city || '',
+      warehouse_id: norm,
+      forecast_date: r.dateStr,
+      slot_hour: r.hour,
+      projected_orders: r.projectedOrders,
+    });
 
+    // 3. Upsert FUTURE records (> today) with latest forecast values
+    const chunkSize = 200;
+    for (let i = 0; i < futureRecords.length; i += chunkSize) {
+      const chunk = futureRecords.slice(i, i + chunkSize).map(toDbRow);
       const { error: insErr } = await supabase
         .from('store_snop_forecast')
         .upsert(chunk, { onConflict: 'warehouse_id,forecast_date,slot_hour' });
 
       if (insErr) {
         console.warn(`Supabase store_snop_forecast upsert warning for ${norm}:`, insErr.message);
-        return { ok: false, error: insErr.message };
+        return { ok: false, error: insErr.message, lockedPastDates };
       }
     }
 
-    // Insert upload history
+    // 4. Insert MISSING past/today backfill records (<= today) with ignoreDuplicates so DB never overwrites existing rows
+    for (let i = 0; i < backfillPastRecords.length; i += chunkSize) {
+      const chunk = backfillPastRecords.slice(i, i + chunkSize).map(toDbRow);
+      const { error: insErr } = await supabase
+        .from('store_snop_forecast')
+        .upsert(chunk, {
+          onConflict: 'warehouse_id,forecast_date,slot_hour',
+          ignoreDuplicates: true,
+        });
+
+      if (insErr) {
+        console.warn(`Supabase store_snop_forecast backfill warning for ${norm}:`, insErr.message);
+        return { ok: false, error: insErr.message, lockedPastDates };
+      }
+    }
+
+    // 5. Insert upload history
     await supabase.from('store_snop_uploads').insert({
       warehouse_id: norm,
       filename: meta?.filename || 'Forecast Import',
@@ -949,7 +1069,7 @@ export async function pushSnopRecordsToSupabase(
       uploaded_by: meta?.uploadedBy || 'User',
     });
 
-    return { ok: true };
+    return { ok: true, lockedPastDates };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`Supabase pushSnopRecordsToSupabase note for ${norm}:`, err);
@@ -1156,8 +1276,10 @@ export async function saveSnopRecords(params: {
   records: SnopForecastRecord[];
   filename: string;
   uploadedBy?: string;
+  referenceDate?: string;
+  timeZone?: string;
 }): Promise<{ ok: boolean; count: number; warehousesUpdated?: string[]; error?: string }> {
-  const { warehouseId, records, filename, uploadedBy = 'User' } = params;
+  const { warehouseId, records, filename, uploadedBy = 'User', referenceDate, timeZone } = params;
 
   if (!records || records.length === 0) {
     return { ok: false, count: 0, error: 'Cannot save empty forecast.' };
@@ -1184,6 +1306,7 @@ export async function saveSnopRecords(params: {
 
   const nowIso = new Date().toISOString();
   const warehousesUpdated: string[] = [];
+  const supabasePushPromises: Array<Promise<{ ok: boolean; error?: string; lockedPastDates?: string[] }>> = [];
 
   for (const [wh, whRecords] of byWarehouse.entries()) {
     warehousesUpdated.push(wh);
@@ -1203,22 +1326,25 @@ export async function saveSnopRecords(params: {
       uploadedBy,
     };
 
-    // 1. Date-scoped localStorage merge (preserves prior uploaded dates outside this upload)
+    // 1. Historical-locked localStorage merge:
+    //    - Future dates (> today): always overwrite
+    //    - Past & today dates (<= today): freeze if already stored, backfill if missing
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        const uploadedDateSet = new Set(sortedDates);
-        let mergedRecords = whRecords;
+        let existingLocal: SnopForecastRecord[] = [];
         const existingRaw = window.localStorage.getItem(LOCAL_STORAGE_SNOP_PREFIX + wh);
         if (existingRaw) {
-          const existingParsed = JSON.parse(existingRaw) as SnopForecastRecord[];
-          if (Array.isArray(existingParsed) && existingParsed.length > 0) {
-            const preserved = existingParsed.filter((r) => !uploadedDateSet.has(r.dateStr));
-            mergedRecords = [...preserved, ...whRecords].sort((a, b) => {
-              const dateCmp = a.dateStr.localeCompare(b.dateStr);
-              return dateCmp !== 0 ? dateCmp : a.hour - b.hour;
-            });
+          const parsed = JSON.parse(existingRaw) as SnopForecastRecord[];
+          if (Array.isArray(parsed)) {
+            existingLocal = parsed;
           }
         }
+        const { mergedRecords } = mergeSnopRecordsWithHistoricalLock({
+          existingRecords: existingLocal,
+          incomingRecords: whRecords,
+          todayStr: referenceDate,
+          timeZone,
+        });
         window.localStorage.setItem(LOCAL_STORAGE_SNOP_PREFIX + wh, JSON.stringify(mergedRecords));
         window.localStorage.setItem(LOCAL_STORAGE_SNOP_META_PREFIX + wh, JSON.stringify(meta));
         window.dispatchEvent(
@@ -1229,9 +1355,13 @@ export async function saveSnopRecords(params: {
       console.warn(`LocalStorage saveSnopRecords error for ${wh}:`, err);
     }
 
-    // 2. Persist to Supabase database (date-scoped upsert preserving older historical dates)
-    await pushSnopRecordsToSupabase(wh, whRecords, meta);
+    // 2. Queue Supabase database persistence with Historical SNOP Lock (pushed in parallel across stores)
+    supabasePushPromises.push(
+      pushSnopRecordsToSupabase(wh, whRecords, meta, { referenceDate, timeZone })
+    );
   }
+
+  await Promise.all(supabasePushPromises);
 
   return { ok: true, count: records.length, warehousesUpdated };
 }
