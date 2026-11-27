@@ -12,11 +12,18 @@ import { cleanRiderDisplayName, normalizeRiderName } from './activeRiderService'
 import {
   type RiderAttendanceRecord,
   type AttendanceStatus,
+  fetchStoreAttendanceDates,
   fetchStoreRiderAttendance,
-  isRiderWorkingInSlot,
+  getStoreTodayIsoDate,
   LOCAL_STORAGE_ATTENDANCE_PREFIX,
 } from './riderAttendanceService';
-import { getRiderShiftsForStore, type RiderShiftConfig } from './riderShiftService';
+import {
+  formatShiftTimings,
+  getRiderShiftsForStore,
+  type RiderShiftConfig,
+} from './riderShiftService';
+
+export const LOCAL_STORAGE_AUDIT_SNAPSHOT_PREFIX = 'urban_connect_audit_snapshot_';
 
 export type AdherenceCategory =
   | 'NO_SHOW'           // Marked Present, 0 orders delivered
@@ -33,6 +40,7 @@ export interface RiderSlotAdherence {
   phone: string | null;
   onboardedBy: string | null;
   shiftType: string;
+  shiftTimingsLabel?: string; // e.g. "8 AM – 2 PM & 5 PM – 11 PM" or "Unassigned"
   scheduledStartHour: number;
   scheduledEndHour: number;
   scheduledSlots: number[]; // e.g. [6, 7, 8, 9, 10, 11, 12, 13, 14]
@@ -77,6 +85,7 @@ export interface PlanVsActualAuditSummary {
   totalOrdersCount: number; // total actual orders on this date
   totalRosterCount: number;
   plannedPresentCount: number;
+  plannedWorkedCount?: number; // Marked Present riders who delivered >= 1 order
   actualWorkedCount: number;
   turnUpRatePct: number;
   noShowCount: number;
@@ -88,6 +97,8 @@ export interface PlanVsActualAuditSummary {
   compliantCount: number;
   hourlySlots: HourlySlotReconciliation[];
   riders: RiderSlotAdherence[];
+  isFromSnapshot?: boolean;
+  snapshotCapturedAt?: string;
 }
 
 /**
@@ -236,35 +247,45 @@ export async function fetchAvailableAuditDates(
       }
     }
 
-    // 4. Check store_rider_attendance dates
+    // 4. Fetch ALL distinct attendance dates via RPC (avoids PostgREST row-limit truncation)
     const normWh = (warehouseId || '').toUpperCase().trim();
     if (normWh) {
-      const { data: attDates } = await withTimeout(
-        supabase
-          .from('store_rider_attendance')
-          .select('attendance_date')
-          .eq('warehouse_id', normWh)
-          .order('attendance_date', { ascending: false })
-          .limit(60),
-        12000,
-        { data: null, error: null }
-      );
+      const attDates = await fetchStoreAttendanceDates(normWh);
+      for (const d of attDates) {
+        discoveredDates.add(d);
+      }
+    }
 
-      if (attDates) {
-        for (const row of attDates) {
-          if (row.attendance_date) {
-            discoveredDates.add(String(row.attendance_date).slice(0, 10));
-          }
+    // 5. Fetch archived >30-day Plan vs Actual Audit snapshot dates
+    const { data: snapshotDates } = await withTimeout(
+      supabase
+        .from('plan_vs_actual_audit_snapshots')
+        .select('audit_date')
+        .eq('store_id', storeId)
+        .order('audit_date', { ascending: false })
+        .limit(1000),
+      12000,
+      { data: null, error: null }
+    );
+
+    if (Array.isArray(snapshotDates)) {
+      for (const row of snapshotDates) {
+        if (row.audit_date) {
+          discoveredDates.add(String(row.audit_date).slice(0, 10));
         }
       }
     }
 
-    // 5. Check localStorage keys for cached attendance dates
+    // 6. Check localStorage keys for cached attendance or audit snapshots for this store
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         for (let i = 0; i < window.localStorage.length; i++) {
           const key = window.localStorage.key(i);
-          if (key && key.startsWith(LOCAL_STORAGE_ATTENDANCE_PREFIX)) {
+          if (
+            key &&
+            (key.startsWith(LOCAL_STORAGE_ATTENDANCE_PREFIX) ||
+              key.startsWith(LOCAL_STORAGE_AUDIT_SNAPSHOT_PREFIX))
+          ) {
             const parts = key.split('_');
             const datePart = parts[parts.length - 1];
             if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
@@ -314,19 +335,550 @@ function getFallbackAuditDates(timeZone: string = 'Asia/Kolkata'): string[] {
   return dates;
 }
 
+function getAuditSnapshotStorageKey(storeId: string, dateStr: string): string {
+  return `${LOCAL_STORAGE_AUDIT_SNAPSHOT_PREFIX}${storeId}_${dateStr}`;
+}
+
+/**
+ * Pure audit computation engine reconciling saved attendance/shifts against actual order rows.
+ * Correctly handles Split Shift break hours (via scheduledSlots membership), UNASSIGNED shifts,
+ * and computes Planned Turn-Up Rate strictly as plannedWorkedCount / plannedPresentCount.
+ */
+export function computePlanVsActualAudit(params: {
+  storeId: string;
+  warehouseId: string;
+  dateStr: string;
+  attendanceRecords: RiderAttendanceRecord[];
+  shiftsMap?: Map<string, RiderShiftConfig> | null;
+  orderRows: Array<{
+    rider_name: string | null;
+    slot_hour: number;
+    order_id: string;
+  }>;
+}): PlanVsActualAuditSummary {
+  const { storeId, warehouseId, dateStr, attendanceRecords, shiftsMap, orderRows } = params;
+  const normWh = (warehouseId || 'TMK7').toUpperCase().trim();
+
+  // 1. Aggregate orders by normalized rider name
+  const actualRiderSlots = new Map<string, Set<number>>();
+  const actualRiderOrders = new Map<string, number>();
+  const canonicalRiderDisplayName = new Map<string, string>();
+
+  for (const row of orderRows) {
+    const rawName = row.rider_name;
+    if (!rawName || typeof rawName !== 'string') continue;
+    const cleanName = cleanRiderDisplayName(rawName);
+    if (!cleanName || cleanName === '-' || cleanName.toLowerCase() === 'null') continue;
+    const normName = normalizeRiderName(cleanName);
+    if (!normName) continue;
+
+    if (!canonicalRiderDisplayName.has(normName) || !rawName.includes('*')) {
+      canonicalRiderDisplayName.set(normName, cleanName);
+    }
+
+    if (!actualRiderSlots.has(normName)) {
+      actualRiderSlots.set(normName, new Set<number>());
+    }
+
+    const slot = Number(row.slot_hour);
+    if (Number.isFinite(slot) && slot >= 0 && slot <= 23) {
+      actualRiderSlots.get(normName)!.add(slot);
+    }
+
+    actualRiderOrders.set(normName, (actualRiderOrders.get(normName) ?? 0) + 1);
+  }
+
+  // 2. Build unified map of riders across Attendance + Actual Orders
+  const attendanceRecordsMap = new Map<string, RiderAttendanceRecord>();
+  for (const rec of attendanceRecords) {
+    const norm = rec.normalizedName || normalizeRiderName(rec.riderName);
+    if (norm) {
+      attendanceRecordsMap.set(norm, rec);
+    }
+  }
+
+  const allRiderNorms = new Set<string>([
+    ...attendanceRecordsMap.keys(),
+    ...actualRiderSlots.keys(),
+  ]);
+
+  const riders: RiderSlotAdherence[] = [];
+
+  let noShowCount = 0;
+  let lateArrivalCount = 0;
+  let totalLateHoursSum = 0;
+  let earlyDepartureCount = 0;
+  let totalMissedSlotHoursSum = 0;
+  let unplannedTurnUpCount = 0;
+  let compliantCount = 0;
+  let plannedPresentCount = 0;
+  let plannedWorkedCount = 0;
+  let actualWorkedCount = 0;
+
+  for (const norm of allRiderNorms) {
+    const attRecord = attendanceRecordsMap.get(norm);
+    const shiftConfig = shiftsMap?.get(norm);
+    const actualSlotsSet = actualRiderSlots.get(norm) ?? new Set<number>();
+    const totalOrders = actualRiderOrders.get(norm) ?? 0;
+    const hasActualOrders = actualSlotsSet.size > 0 || totalOrders > 0;
+
+    const riderName =
+      canonicalRiderDisplayName.get(norm) ||
+      attRecord?.riderName ||
+      shiftConfig?.riderName ||
+      norm;
+
+    const phone = attRecord?.phone || null;
+    const onboardedBy = attRecord?.onboardedBy || shiftConfig?.onboardedBy || null;
+    const shiftType = attRecord?.shiftType || shiftConfig?.shiftType || 'UNASSIGNED';
+    const isUnassigned = shiftType.trim().toUpperCase() === 'UNASSIGNED';
+
+    // Scheduled start and end hours
+    const s1Start = Number(attRecord?.slot1StartHour ?? shiftConfig?.slot1StartHour ?? 6);
+    const s1End = Number(attRecord?.slot1EndHour ?? shiftConfig?.slot1EndHour ?? 15);
+    const s2Start = attRecord?.slot2StartHour ?? shiftConfig?.slot2StartHour ?? null;
+    const s2End = attRecord?.slot2EndHour ?? shiftConfig?.slot2EndHour ?? null;
+
+    // Determine exact scheduled slot hours (skipping UNASSIGNED shifts to stay consistent with Forward Plan)
+    const scheduledSlots: number[] = [];
+    if (!isUnassigned) {
+      for (let h = s1Start; h < s1End; h++) {
+        scheduledSlots.push(h);
+      }
+      if (s2Start != null && s2End != null && s2Start < s2End) {
+        for (let h = s2Start; h < s2End; h++) {
+          if (!scheduledSlots.includes(h)) {
+            scheduledSlots.push(h);
+          }
+        }
+      }
+      scheduledSlots.sort((a, b) => a - b);
+    }
+
+    const scheduledStartHour = scheduledSlots.length > 0 ? scheduledSlots[0] : s1Start;
+    const scheduledEndHour =
+      scheduledSlots.length > 0 ? scheduledSlots[scheduledSlots.length - 1] + 1 : s1End;
+    const shiftTimingsLabel = isUnassigned
+      ? 'No shift assigned'
+      : formatShiftTimings({
+          slot1StartHour: s1Start,
+          slot1EndHour: s1End,
+          slot2StartHour: s2Start ?? undefined,
+          slot2EndHour: s2End ?? undefined,
+        });
+
+    const attendanceStatus: AttendanceStatus = attRecord ? attRecord.status : 'unmarked';
+    const isPresentMarked = attendanceStatus === 'present';
+
+    if (isPresentMarked) {
+      plannedPresentCount++;
+    }
+    if (hasActualOrders) {
+      actualWorkedCount++;
+    }
+
+    const actualSlots = Array.from(actualSlotsSet).sort((a, b) => a - b);
+    const firstOrderHour = actualSlots.length > 0 ? actualSlots[0] : null;
+    const lastOrderHour = actualSlots.length > 0 ? actualSlots[actualSlots.length - 1] : null;
+    const totalHoursClocked = actualSlots.length;
+
+    let lateArrivalHours = 0;
+    let earlyDepartureHours = 0;
+    const missedStartingSlots: number[] = [];
+    const missedEndingSlots: number[] = [];
+    const allMissedSlots: number[] = [];
+
+    let adherenceCategory: AdherenceCategory = 'INACTIVE_UNMARKED';
+    let adherenceBadgeText = '⚪ Unmarked';
+    let adherenceSeverity: 'danger' | 'warning' | 'success' | 'info' | 'neutral' = 'neutral';
+
+    if (isPresentMarked) {
+      if (!hasActualOrders) {
+        adherenceCategory = 'NO_SHOW';
+        adherenceBadgeText = '🔴 No-Show';
+        adherenceSeverity = 'danger';
+        noShowCount++;
+        allMissedSlots.push(...scheduledSlots);
+        totalMissedSlotHoursSum += scheduledSlots.length;
+      } else {
+        plannedWorkedCount++;
+        if (scheduledSlots.length === 0) {
+          adherenceCategory = 'COMPLIANT';
+          adherenceBadgeText = '🟢 Worked (Shift Unassigned)';
+          adherenceSeverity = 'info';
+          compliantCount++;
+        } else {
+          if (firstOrderHour !== null && firstOrderHour > scheduledStartHour) {
+            lateArrivalHours = firstOrderHour - scheduledStartHour;
+            lateArrivalCount++;
+            totalLateHoursSum += lateArrivalHours;
+            for (const h of scheduledSlots) {
+              if (h < firstOrderHour) {
+                missedStartingSlots.push(h);
+                allMissedSlots.push(h);
+              }
+            }
+          }
+
+          const scheduledLastSlot = scheduledSlots[scheduledSlots.length - 1];
+          if (lastOrderHour !== null && lastOrderHour < scheduledLastSlot) {
+            earlyDepartureHours = scheduledLastSlot - lastOrderHour;
+            earlyDepartureCount++;
+            for (const h of scheduledSlots) {
+              if (h > lastOrderHour && !allMissedSlots.includes(h)) {
+                missedEndingSlots.push(h);
+                allMissedSlots.push(h);
+              }
+            }
+          }
+
+          for (const h of scheduledSlots) {
+            if (!actualSlotsSet.has(h) && !allMissedSlots.includes(h)) {
+              allMissedSlots.push(h);
+            }
+          }
+          allMissedSlots.sort((a, b) => a - b);
+          totalMissedSlotHoursSum += allMissedSlots.length;
+
+          if (lateArrivalHours > 0 && earlyDepartureHours > 0) {
+            adherenceCategory = 'LATE_ARRIVAL';
+            adherenceBadgeText = `🟡 Late (${lateArrivalHours}h) & Left Early`;
+            adherenceSeverity = 'warning';
+          } else if (lateArrivalHours > 0) {
+            adherenceCategory = 'LATE_ARRIVAL';
+            adherenceBadgeText = `🟡 Late by ${lateArrivalHours}h`;
+            adherenceSeverity = 'warning';
+          } else if (earlyDepartureHours > 0) {
+            adherenceCategory = 'EARLY_DEPARTURE';
+            adherenceBadgeText = `🟠 Left Early (${earlyDepartureHours}h)`;
+            adherenceSeverity = 'warning';
+          } else if (allMissedSlots.length > 0) {
+            adherenceCategory = 'EARLY_DEPARTURE';
+            adherenceBadgeText = `⚪ Missed ${allMissedSlots.length} Slots`;
+            adherenceSeverity = 'neutral';
+          } else {
+            adherenceCategory = 'COMPLIANT';
+            adherenceBadgeText = '🟢 On-Time & Compliant';
+            adherenceSeverity = 'success';
+            compliantCount++;
+          }
+        }
+      }
+    } else {
+      if (hasActualOrders) {
+        adherenceCategory = 'UNPLANNED_TURNUP';
+        adherenceBadgeText = '🟣 Unplanned Turn-Up';
+        adherenceSeverity = 'info';
+        unplannedTurnUpCount++;
+      } else if (attendanceStatus === 'absent') {
+        adherenceCategory = 'ABSENT_CONFIRMED';
+        adherenceBadgeText = '⚫ Absent (Confirmed)';
+        adherenceSeverity = 'neutral';
+      } else {
+        adherenceCategory = 'INACTIVE_UNMARKED';
+        adherenceBadgeText = '⚪ Unmarked';
+        adherenceSeverity = 'neutral';
+      }
+    }
+
+    riders.push({
+      riderName,
+      normalizedName: norm,
+      phone,
+      onboardedBy,
+      shiftType,
+      shiftTimingsLabel,
+      scheduledStartHour,
+      scheduledEndHour,
+      scheduledSlots,
+      attendanceStatus,
+      isPresentMarked,
+      actualSlots,
+      firstOrderHour,
+      lastOrderHour,
+      totalOrders,
+      totalHoursClocked,
+      lateArrivalHours,
+      earlyDepartureHours,
+      missedStartingSlots,
+      missedEndingSlots,
+      allMissedSlots,
+      adherenceCategory,
+      adherenceBadgeText,
+      adherenceSeverity,
+    });
+  }
+
+  const categorySortRank: Record<AdherenceCategory, number> = {
+    NO_SHOW: 1,
+    LATE_ARRIVAL: 2,
+    EARLY_DEPARTURE: 3,
+    UNPLANNED_TURNUP: 4,
+    COMPLIANT: 5,
+    ABSENT_CONFIRMED: 6,
+    INACTIVE_UNMARKED: 7,
+  };
+
+  riders.sort((a, b) => {
+    const rankDiff = categorySortRank[a.adherenceCategory] - categorySortRank[b.adherenceCategory];
+    if (rankDiff !== 0) return rankDiff;
+    if (b.lateArrivalHours !== a.lateArrivalHours) {
+      return b.lateArrivalHours - a.lateArrivalHours;
+    }
+    return a.riderName.localeCompare(b.riderName);
+  });
+
+  // 3. Hourly Slot Reconciliation (Slots 6 AM to 11 PM) — strictly respects Split Shift scheduledSlots
+  const hourlySlots: HourlySlotReconciliation[] = [];
+  for (let h = 6; h <= 23; h++) {
+    const plannedRiders: string[] = [];
+    const actualRiders: string[] = [];
+
+    for (const r of riders) {
+      if (r.isPresentMarked && r.scheduledSlots.includes(h)) {
+        plannedRiders.push(r.riderName);
+      }
+      if (r.actualSlots.includes(h)) {
+        actualRiders.push(r.riderName);
+      }
+    }
+
+    const missingRiders = plannedRiders.filter((name) => !actualRiders.includes(name));
+    const unplannedRiders = actualRiders.filter((name) => !plannedRiders.includes(name));
+
+    const plannedTurnUp = plannedRiders.length;
+    const actualTurnUp = actualRiders.length;
+    const variance = actualTurnUp - plannedTurnUp;
+    const status: 'deficit' | 'balanced' | 'surplus' =
+      variance < 0 ? 'deficit' : variance > 0 ? 'surplus' : 'balanced';
+
+    hourlySlots.push({
+      hour: h,
+      slotLabel: formatAuditSlotLabel(h),
+      plannedTurnUp,
+      actualTurnUp,
+      variance,
+      status,
+      plannedRiders,
+      actualRiders,
+      missingRiders,
+      unplannedRiders,
+    });
+  }
+
+  const dObj = new Date(`${dateStr}T00:00:00`);
+  const formattedDate = dObj.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  const turnUpRatePct =
+    plannedPresentCount > 0
+      ? Math.round((plannedWorkedCount / plannedPresentCount) * 100)
+      : 0;
+
+  const avgLateArrivalHours =
+    lateArrivalCount > 0
+      ? Math.round((totalLateHoursSum / lateArrivalCount) * 10) / 10
+      : 0;
+
+  const hasOrderData = orderRows.length > 0;
+  const hasAttendanceData = attendanceRecords.some(
+    (r) => r.status === 'present' || r.status === 'absent'
+  );
+  const hasData = hasOrderData || hasAttendanceData;
+
+  return {
+    storeId,
+    warehouseId: normWh,
+    auditDate: dateStr,
+    formattedDate,
+    hasData,
+    hasOrderData,
+    hasAttendanceData,
+    totalOrdersCount: orderRows.length,
+    totalRosterCount: riders.length,
+    plannedPresentCount,
+    plannedWorkedCount,
+    actualWorkedCount,
+    turnUpRatePct,
+    noShowCount,
+    lateArrivalCount,
+    avgLateArrivalHours,
+    earlyDepartureCount,
+    totalMissedSlotHours: totalMissedSlotHoursSum,
+    unplannedTurnUpCount,
+    compliantCount,
+    hourlySlots,
+    riders,
+  };
+}
+
+/**
+ * Persists a computed historical Plan vs Actual Audit summary to Supabase `plan_vs_actual_audit_snapshots`
+ * (and localStorage) so audits remain reviewable after 30-day order retention pruning.
+ */
+export async function savePlanVsActualAuditSnapshot(
+  summary: PlanVsActualAuditSummary
+): Promise<void> {
+  if (!summary.hasOrderData || !summary.storeId || summary.storeId.startsWith('test-')) {
+    return;
+  }
+
+  const nowIso = new Date().toISOString();
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(
+        getAuditSnapshotStorageKey(summary.storeId, summary.auditDate),
+        JSON.stringify({ ...summary, snapshotCapturedAt: nowIso })
+      );
+    }
+  } catch {
+    // Ignore storage quota errors
+  }
+
+  try {
+    const { error } = await withTimeout(
+      supabase.from('plan_vs_actual_audit_snapshots').upsert(
+        {
+          store_id: summary.storeId,
+          warehouse_id: summary.warehouseId,
+          audit_date: summary.auditDate,
+          total_orders_count: summary.totalOrdersCount,
+          total_roster_count: summary.totalRosterCount,
+          planned_present_count: summary.plannedPresentCount,
+          planned_worked_count: summary.plannedWorkedCount ?? Math.max(0, summary.plannedPresentCount - summary.noShowCount),
+          actual_worked_count: summary.actualWorkedCount,
+          turn_up_rate_pct: summary.turnUpRatePct,
+          no_show_count: summary.noShowCount,
+          late_arrival_count: summary.lateArrivalCount,
+          avg_late_arrival_hours: summary.avgLateArrivalHours,
+          early_departure_count: summary.earlyDepartureCount,
+          total_missed_slot_hours: summary.totalMissedSlotHours,
+          unplanned_turn_up_count: summary.unplannedTurnUpCount,
+          compliant_count: summary.compliantCount,
+          has_order_data: summary.hasOrderData,
+          has_attendance_data: summary.hasAttendanceData,
+          hourly_slots: summary.hourlySlots,
+          riders: summary.riders,
+          snapshot_version: 1,
+          captured_at: nowIso,
+          updated_at: nowIso,
+        },
+        { onConflict: 'store_id,audit_date' }
+      ),
+      8000,
+      { error: null }
+    );
+    if (error) {
+      console.warn(`Supabase plan_vs_actual_audit_snapshots upsert warning:`, error.message);
+    }
+  } catch (err) {
+    console.warn(`Supabase plan_vs_actual_audit_snapshots save note:`, err);
+  }
+}
+
+/**
+ * Loads a previously persisted Plan vs Actual Audit snapshot from Supabase (or localStorage cache).
+ */
+export async function fetchPlanVsActualAuditSnapshot(
+  storeId: string,
+  dateStr: string
+): Promise<PlanVsActualAuditSummary | null> {
+  if (!storeId || storeId.startsWith('test-')) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await withTimeout(
+      supabase
+        .from('plan_vs_actual_audit_snapshots')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('audit_date', dateStr)
+        .maybeSingle(),
+      8000,
+      { data: null, error: null }
+    );
+
+    if (!error && data && data.has_order_data) {
+      const dObj = new Date(`${dateStr}T00:00:00`);
+      const formattedDate = dObj.toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+      const plannedPresent = Number(data.planned_present_count ?? 0);
+      const noShows = Number(data.no_show_count ?? 0);
+      const snapshot: PlanVsActualAuditSummary = {
+        storeId: data.store_id,
+        warehouseId: data.warehouse_id,
+        auditDate: String(data.audit_date).slice(0, 10),
+        formattedDate,
+        hasData: Boolean(data.has_order_data || data.has_attendance_data),
+        hasOrderData: Boolean(data.has_order_data),
+        hasAttendanceData: Boolean(data.has_attendance_data),
+        totalOrdersCount: Number(data.total_orders_count ?? 0),
+        totalRosterCount: Number(data.total_roster_count ?? 0),
+        plannedPresentCount: plannedPresent,
+        plannedWorkedCount: Number(data.planned_worked_count ?? Math.max(0, plannedPresent - noShows)),
+        actualWorkedCount: Number(data.actual_worked_count ?? 0),
+        turnUpRatePct: Number(data.turn_up_rate_pct ?? 0),
+        noShowCount: noShows,
+        lateArrivalCount: Number(data.late_arrival_count ?? 0),
+        avgLateArrivalHours: Number(data.avg_late_arrival_hours ?? 0),
+        earlyDepartureCount: Number(data.early_departure_count ?? 0),
+        totalMissedSlotHours: Number(data.total_missed_slot_hours ?? 0),
+        unplannedTurnUpCount: Number(data.unplanned_turn_up_count ?? 0),
+        compliantCount: Number(data.compliant_count ?? 0),
+        hourlySlots: Array.isArray(data.hourly_slots) ? (data.hourly_slots as HourlySlotReconciliation[]) : [],
+        riders: Array.isArray(data.riders) ? (data.riders as RiderSlotAdherence[]) : [],
+        isFromSnapshot: true,
+        snapshotCapturedAt: data.captured_at || data.updated_at,
+      };
+      return snapshot;
+    }
+  } catch (err) {
+    console.warn(`fetchPlanVsActualAuditSnapshot fallback for ${dateStr}:`, err);
+  }
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem(getAuditSnapshotStorageKey(storeId, dateStr));
+      if (raw) {
+        const parsed = JSON.parse(raw) as PlanVsActualAuditSummary;
+        if (parsed && parsed.hasOrderData) {
+          return { ...parsed, isFromSnapshot: true };
+        }
+      }
+    }
+  } catch {
+    // Ignore parse errors
+  }
+
+  return null;
+}
+
 /**
  * Core Reconciliation Engine:
  * Evaluates marked attendance & shifts vs actual order records for a single date.
+ * Automatically persists snapshots for completed historical dates and falls back to
+ * archived snapshots when raw orders older than 30 days have been pruned.
  */
 export async function fetchPlanVsActualAudit(params: {
   storeId: string;
   warehouseId: string;
   dateStr: string;
+  timeZone?: string;
 }): Promise<{
   data: PlanVsActualAuditSummary | null;
   error?: string;
 }> {
-  const { storeId, warehouseId, dateStr } = params;
+  const { storeId, warehouseId, dateStr, timeZone = 'Asia/Kolkata' } = params;
   const normWh = (warehouseId || 'TMK7').toUpperCase().trim();
 
   // Short-circuit in test environments or dummy store IDs
@@ -350,6 +902,7 @@ export async function fetchPlanVsActualAudit(params: {
         totalOrdersCount: 0,
         totalRosterCount: 0,
         plannedPresentCount: 0,
+        plannedWorkedCount: 0,
         actualWorkedCount: 0,
         turnUpRatePct: 0,
         noShowCount: 0,
@@ -366,12 +919,13 @@ export async function fetchPlanVsActualAudit(params: {
   }
 
   try {
-    // 1. Fetch attendance records and rider shifts for the store
+    // 1. Fetch attendance records (frozen for historical dates) and rider shifts for the store
     const [attendanceSummary, shiftsMap] = await Promise.all([
       fetchStoreRiderAttendance({
         storeId,
         warehouseId: normWh,
         attendanceDate: dateStr,
+        timeZone,
       }),
       getRiderShiftsForStore(storeId).catch(() => new Map<string, RiderShiftConfig>()),
     ]);
@@ -417,361 +971,31 @@ export async function fetchPlanVsActualAudit(params: {
       }
     }
 
-    // 3. Aggregate orders by normalized rider name
-    const actualRiderSlots = new Map<string, Set<number>>();
-    const actualRiderOrders = new Map<string, number>();
-    const canonicalRiderDisplayName = new Map<string, string>();
-
-    for (const row of orderRows) {
-      const rawName = row.rider_name;
-      if (!rawName || typeof rawName !== 'string') continue;
-      const cleanName = cleanRiderDisplayName(rawName);
-      if (!cleanName || cleanName === '-' || cleanName.toLowerCase() === 'null') continue;
-      const normName = normalizeRiderName(cleanName);
-      if (!normName) continue;
-
-      if (!canonicalRiderDisplayName.has(normName) || !rawName.includes('*')) {
-        canonicalRiderDisplayName.set(normName, cleanName);
+    // 3. If raw orders are unavailable (e.g., >30 days old & pruned), fall back to archived snapshot
+    if (orderRows.length === 0) {
+      const archived = await fetchPlanVsActualAuditSnapshot(storeId, dateStr);
+      if (archived) {
+        return { data: archived };
       }
-
-      if (!actualRiderSlots.has(normName)) {
-        actualRiderSlots.set(normName, new Set<number>());
-      }
-
-      const slot = Number(row.slot_hour);
-      if (Number.isFinite(slot) && slot >= 0 && slot <= 23) {
-        actualRiderSlots.get(normName)!.add(slot);
-      }
-
-      actualRiderOrders.set(normName, (actualRiderOrders.get(normName) ?? 0) + 1);
     }
 
-    // 4. Build unified map of riders across Attendance + Actual Orders
-    const attendanceRecordsMap = new Map<string, RiderAttendanceRecord>();
-    for (const rec of attendanceSummary.records) {
-      const norm = rec.normalizedName || normalizeRiderName(rec.riderName);
-      attendanceRecordsMap.set(norm, rec);
-    }
-
-    const allRiderNorms = new Set<string>([
-      ...attendanceRecordsMap.keys(),
-      ...actualRiderSlots.keys(),
-    ]);
-
-    const riders: RiderSlotAdherence[] = [];
-
-    let noShowCount = 0;
-    let lateArrivalCount = 0;
-    let totalLateHoursSum = 0;
-    let earlyDepartureCount = 0;
-    let totalMissedSlotHoursSum = 0;
-    let unplannedTurnUpCount = 0;
-    let compliantCount = 0;
-    let plannedPresentCount = 0;
-    let actualWorkedCount = 0;
-
-    for (const norm of allRiderNorms) {
-      const attRecord = attendanceRecordsMap.get(norm);
-      const shiftConfig = shiftsMap?.get(norm);
-      const actualSlotsSet = actualRiderSlots.get(norm) ?? new Set<number>();
-      const totalOrders = actualRiderOrders.get(norm) ?? 0;
-      const hasActualOrders = actualSlotsSet.size > 0 || totalOrders > 0;
-
-      const riderName =
-        canonicalRiderDisplayName.get(norm) ||
-        attRecord?.riderName ||
-        shiftConfig?.riderName ||
-        norm;
-
-      const phone = attRecord?.phone || null;
-      const onboardedBy = attRecord?.onboardedBy || shiftConfig?.onboardedBy || null;
-      const shiftType = attRecord?.shiftType || shiftConfig?.shiftType || 'Morning Shift';
-
-      // Scheduled start and end hours
-      const s1Start = Number(attRecord?.slot1StartHour ?? shiftConfig?.slot1StartHour ?? 6);
-      const s1End = Number(attRecord?.slot1EndHour ?? shiftConfig?.slot1EndHour ?? 15);
-      const s2Start = attRecord?.slot2StartHour ?? shiftConfig?.slot2StartHour ?? null;
-      const s2End = attRecord?.slot2EndHour ?? shiftConfig?.slot2EndHour ?? null;
-
-      // Determine all scheduled slot hours
-      const scheduledSlots: number[] = [];
-      for (let h = s1Start; h < s1End; h++) {
-        scheduledSlots.push(h);
-      }
-      if (s2Start != null && s2End != null && s2Start < s2End) {
-        for (let h = s2Start; h < s2End; h++) {
-          if (!scheduledSlots.includes(h)) {
-            scheduledSlots.push(h);
-          }
-        }
-      }
-      scheduledSlots.sort((a, b) => a - b);
-
-      const scheduledStartHour = scheduledSlots.length > 0 ? scheduledSlots[0] : s1Start;
-      const scheduledEndHour =
-        scheduledSlots.length > 0 ? scheduledSlots[scheduledSlots.length - 1] + 1 : s1End;
-
-      const attendanceStatus: AttendanceStatus = attRecord
-        ? attRecord.status
-        : 'unmarked';
-      const isPresentMarked = attendanceStatus === 'present';
-
-      if (isPresentMarked) {
-        plannedPresentCount++;
-      }
-      if (hasActualOrders) {
-        actualWorkedCount++;
-      }
-
-      const actualSlots = Array.from(actualSlotsSet).sort((a, b) => a - b);
-      const firstOrderHour = actualSlots.length > 0 ? actualSlots[0] : null;
-      const lastOrderHour = actualSlots.length > 0 ? actualSlots[actualSlots.length - 1] : null;
-      const totalHoursClocked = actualSlots.length;
-
-      // Calculate Missed Slots and Delays
-      let lateArrivalHours = 0;
-      let earlyDepartureHours = 0;
-      const missedStartingSlots: number[] = [];
-      const missedEndingSlots: number[] = [];
-      const allMissedSlots: number[] = [];
-
-      let adherenceCategory: AdherenceCategory = 'INACTIVE_UNMARKED';
-      let adherenceBadgeText = '⚪ Unmarked';
-      let adherenceSeverity: 'danger' | 'warning' | 'success' | 'info' | 'neutral' = 'neutral';
-
-      if (isPresentMarked) {
-        if (!hasActualOrders) {
-          // Case 1: No-Show (False Present)
-          adherenceCategory = 'NO_SHOW';
-          adherenceBadgeText = '🔴 No-Show';
-          adherenceSeverity = 'danger';
-          noShowCount++;
-          allMissedSlots.push(...scheduledSlots);
-          totalMissedSlotHoursSum += scheduledSlots.length;
-        } else {
-          // Has orders: evaluate arrival and departure
-          if (firstOrderHour !== null && firstOrderHour > scheduledStartHour) {
-            // Late arrival
-            lateArrivalHours = firstOrderHour - scheduledStartHour;
-            lateArrivalCount++;
-            totalLateHoursSum += lateArrivalHours;
-            for (const h of scheduledSlots) {
-              if (h < firstOrderHour) {
-                missedStartingSlots.push(h);
-                allMissedSlots.push(h);
-              }
-            }
-          }
-
-          const scheduledLastSlot = scheduledSlots[scheduledSlots.length - 1];
-          if (lastOrderHour !== null && lastOrderHour < scheduledLastSlot) {
-            // Early departure
-            earlyDepartureHours = scheduledLastSlot - lastOrderHour;
-            earlyDepartureCount++;
-            for (const h of scheduledSlots) {
-              if (h > lastOrderHour && !allMissedSlots.includes(h)) {
-                missedEndingSlots.push(h);
-                allMissedSlots.push(h);
-              }
-            }
-          }
-
-          // Check any intermediate scheduled slot missed
-          for (const h of scheduledSlots) {
-            if (!actualSlotsSet.has(h) && !allMissedSlots.includes(h)) {
-              allMissedSlots.push(h);
-            }
-          }
-          allMissedSlots.sort((a, b) => a - b);
-          totalMissedSlotHoursSum += allMissedSlots.length;
-
-          if (lateArrivalHours > 0 && earlyDepartureHours > 0) {
-            adherenceCategory = 'LATE_ARRIVAL';
-            adherenceBadgeText = `🟡 Late (${lateArrivalHours}h) & Left Early`;
-            adherenceSeverity = 'warning';
-          } else if (lateArrivalHours > 0) {
-            adherenceCategory = 'LATE_ARRIVAL';
-            adherenceBadgeText = `🟡 Late by ${lateArrivalHours}h`;
-            adherenceSeverity = 'warning';
-          } else if (earlyDepartureHours > 0) {
-            adherenceCategory = 'EARLY_DEPARTURE';
-            adherenceBadgeText = `🟠 Left Early (${earlyDepartureHours}h)`;
-            adherenceSeverity = 'warning';
-          } else if (allMissedSlots.length > 0) {
-            adherenceCategory = 'EARLY_DEPARTURE';
-            adherenceBadgeText = `⚪ Missed ${allMissedSlots.length} Slots`;
-            adherenceSeverity = 'neutral';
-          } else {
-            adherenceCategory = 'COMPLIANT';
-            adherenceBadgeText = '🟢 On-Time & Compliant';
-            adherenceSeverity = 'success';
-            compliantCount++;
-          }
-        }
-      } else {
-        // Not marked present
-        if (hasActualOrders) {
-          adherenceCategory = 'UNPLANNED_TURNUP';
-          adherenceBadgeText = '🟣 Unplanned Turn-Up';
-          adherenceSeverity = 'info';
-          unplannedTurnUpCount++;
-        } else if (attendanceStatus === 'absent') {
-          adherenceCategory = 'ABSENT_CONFIRMED';
-          adherenceBadgeText = '⚫ Absent (Confirmed)';
-          adherenceSeverity = 'neutral';
-        } else {
-          adherenceCategory = 'INACTIVE_UNMARKED';
-          adherenceBadgeText = '⚪ Unmarked';
-          adherenceSeverity = 'neutral';
-        }
-      }
-
-      riders.push({
-        riderName,
-        normalizedName: norm,
-        phone,
-        onboardedBy,
-        shiftType,
-        scheduledStartHour,
-        scheduledEndHour,
-        scheduledSlots,
-        attendanceStatus,
-        isPresentMarked,
-        actualSlots,
-        firstOrderHour,
-        lastOrderHour,
-        totalOrders,
-        totalHoursClocked,
-        lateArrivalHours,
-        earlyDepartureHours,
-        missedStartingSlots,
-        missedEndingSlots,
-        allMissedSlots,
-        adherenceCategory,
-        adherenceBadgeText,
-        adherenceSeverity,
-      });
-    }
-
-    // Sort riders: No-shows first, then Late Arrivals, then Early Departures, then Unplanned, then Compliant, then Inactive
-    const categorySortRank: Record<AdherenceCategory, number> = {
-      NO_SHOW: 1,
-      LATE_ARRIVAL: 2,
-      EARLY_DEPARTURE: 3,
-      UNPLANNED_TURNUP: 4,
-      COMPLIANT: 5,
-      ABSENT_CONFIRMED: 6,
-      INACTIVE_UNMARKED: 7,
-    };
-
-    riders.sort((a, b) => {
-      const rankDiff = categorySortRank[a.adherenceCategory] - categorySortRank[b.adherenceCategory];
-      if (rankDiff !== 0) return rankDiff;
-      if (b.lateArrivalHours !== a.lateArrivalHours) {
-        return b.lateArrivalHours - a.lateArrivalHours;
-      }
-      return a.riderName.localeCompare(b.riderName);
+    // 4. Compute live audit reconciliation
+    const summary = computePlanVsActualAudit({
+      storeId,
+      warehouseId: normWh,
+      dateStr,
+      attendanceRecords: attendanceSummary.records,
+      shiftsMap,
+      orderRows,
     });
 
-    // 5. Hourly Slot Reconciliation (Slots 6 AM to 11 PM)
-    const hourlySlots: HourlySlotReconciliation[] = [];
-    for (let h = 6; h <= 23; h++) {
-      const plannedRiders: string[] = [];
-      const actualRiders: string[] = [];
-
-      for (const r of riders) {
-        // Was rider planned for this slot?
-        if (
-          r.isPresentMarked &&
-          isRiderWorkingInSlot(
-            {
-              slot1StartHour: r.scheduledStartHour,
-              slot1EndHour: r.scheduledEndHour,
-            },
-            h
-          )
-        ) {
-          plannedRiders.push(r.riderName);
-        }
-
-        // Did rider actually work in this slot?
-        if (r.actualSlots.includes(h)) {
-          actualRiders.push(r.riderName);
-        }
-      }
-
-      const missingRiders = plannedRiders.filter((name) => !actualRiders.includes(name));
-      const unplannedRiders = actualRiders.filter((name) => !plannedRiders.includes(name));
-
-      const plannedTurnUp = plannedRiders.length;
-      const actualTurnUp = actualRiders.length;
-      const variance = actualTurnUp - plannedTurnUp;
-      const status: 'deficit' | 'balanced' | 'surplus' =
-        variance < 0 ? 'deficit' : variance > 0 ? 'surplus' : 'balanced';
-
-      hourlySlots.push({
-        hour: h,
-        slotLabel: formatAuditSlotLabel(h),
-        plannedTurnUp,
-        actualTurnUp,
-        variance,
-        status,
-        plannedRiders,
-        actualRiders,
-        missingRiders,
-        unplannedRiders,
-      });
+    // 5. Persist snapshot for completed historical dates so it survives 30-day order cleanup
+    const todayStr = getStoreTodayIsoDate(timeZone);
+    if (summary.hasOrderData && dateStr < todayStr) {
+      void savePlanVsActualAuditSnapshot(summary);
     }
 
-    const dObj = new Date(`${dateStr}T00:00:00`);
-    const formattedDate = dObj.toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
-
-    const turnUpRatePct =
-      plannedPresentCount > 0
-        ? Math.round((actualWorkedCount / plannedPresentCount) * 100)
-        : 0;
-
-    const avgLateArrivalHours =
-      lateArrivalCount > 0
-        ? Math.round((totalLateHoursSum / lateArrivalCount) * 10) / 10
-        : 0;
-
-    const hasOrderData = orderRows.length > 0;
-    const hasAttendanceData = attendanceSummary.records.some(
-      (r) => r.status === 'present' || r.status === 'absent'
-    );
-    const hasData = hasOrderData || hasAttendanceData;
-
-    return {
-      data: {
-        storeId,
-        warehouseId: normWh,
-        auditDate: dateStr,
-        formattedDate,
-        hasData,
-        hasOrderData,
-        hasAttendanceData,
-        totalOrdersCount: orderRows.length,
-        totalRosterCount: riders.length,
-        plannedPresentCount,
-        actualWorkedCount,
-        turnUpRatePct,
-        noShowCount,
-        lateArrivalCount,
-        avgLateArrivalHours,
-        earlyDepartureCount,
-        totalMissedSlotHours: totalMissedSlotHoursSum,
-        unplannedTurnUpCount,
-        compliantCount,
-        hourlySlots,
-        riders,
-      },
-    };
+    return { data: summary };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return {
@@ -796,6 +1020,7 @@ export function exportPlanVsActualAuditToExcel(
     'Phone',
     'Onboarded By',
     'Shift Type',
+    'Shift Timings',
     'Scheduled Start',
     'Scheduled End',
     'Marked Status',
@@ -816,8 +1041,9 @@ export function exportPlanVsActualAuditToExcel(
       r.phone || '',
       r.onboardedBy || '',
       r.shiftType,
-      formatAuditSlotLabel(r.scheduledStartHour),
-      formatAuditSlotLabel(r.scheduledEndHour),
+      r.shiftTimingsLabel || `${formatAuditSlotLabel(r.scheduledStartHour)} – ${formatAuditSlotLabel(r.scheduledEndHour)}`,
+      r.scheduledSlots.length > 0 ? formatAuditSlotLabel(r.scheduledStartHour) : '—',
+      r.scheduledSlots.length > 0 ? formatAuditSlotLabel(r.scheduledEndHour) : '—',
       r.attendanceStatus.toUpperCase(),
       r.firstOrderHour !== null ? formatAuditSlotLabel(r.firstOrderHour) : '—',
       r.lastOrderHour !== null ? formatAuditSlotLabel(r.lastOrderHour) : '—',

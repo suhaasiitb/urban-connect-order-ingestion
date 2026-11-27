@@ -407,7 +407,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
               <p className="section-subtitle">
                 {uploadType === 'dnr'
                   ? `Upload DNR incident report (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'} to track Non_abusive and Potential_abuse cases.`
-                  : `Upload future orders forecast (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}. New upload rewrites existing store forecast.`}
+                  : `Upload orders forecast (.csv or .xlsx) for ${selectedStore?.store_code ?? 'store'}. Updates uploaded dates while preserving older historical SNOP dates.`}
               </p>
             </div>
           </div>
@@ -441,9 +441,9 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                   )}
                 </p>
                 <div className="snop-banner-meta mt-xs flex-row items-center gap-sm">
-                  <span className="badge badge-warning">⚠️ Full Rewrite Policy</span>
+                  <span className="badge badge-info">📅 Date-Scoped History</span>
                   <span className="text-secondary text-sm">
-                    New uploads overwrite and replace existing forecast data for this store.
+                    Updates only the dates in the uploaded file while preserving older historical forecast dates.
                   </span>
                   <button
                     type="button"
@@ -565,7 +565,7 @@ export const UploadWorkspace: React.FC<UploadWorkspaceProps> = ({
                   <>
                     Target Store: <strong>{selectedStore?.store_code}</strong>{' '}
                     <span className="badge badge-secondary ml-xs">Supports All-Store Bulk Upload</span> •
-                    Expected Columns: <code>City, Warehouse Id, Date, Hour, Order</code> (Rewrites existing forecast)
+                    Expected Columns: <code>City, Warehouse Id, Date, Hour, Order</code> (Updates uploaded dates, preserves history)
                   </>
                 )}
               </p>

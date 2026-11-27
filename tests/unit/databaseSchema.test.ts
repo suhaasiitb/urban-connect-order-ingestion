@@ -100,6 +100,62 @@ describe('PostgreSQL Schema, RLS, Grants & Atomic RPC Verification (PGlite)', ()
     );
     expect(countRes.rows[0].count).toBe('504');
 
+    // Apply Attendance & Planning History / Audit Snapshots migrations on real PostgreSQL (PGlite)
+    const mAttendance = fs.readFileSync(
+      path.join(MIGRATIONS_DIR, '20261031000002_rider_attendance_schema.sql'),
+      'utf8'
+    );
+    await db.exec(mAttendance);
+
+    // Insert 2 historical attendance dates for TMK7 before applying backfill migration
+    await db.exec(`
+      INSERT INTO public.store_rider_attendance (warehouse_id, attendance_date, rider_name, normalized_name, attendance_status, is_present)
+      VALUES
+        ('TMK7', '2026-11-04', 'Rider A', 'rider a', 'present', true),
+        ('TMK7', '2026-11-04', 'Rider B', 'rider b', 'absent', false),
+        ('TMK7', '2026-11-10', 'Rider A', 'rider a', 'present', true);
+    `);
+
+    const mHistory = fs.readFileSync(
+      path.join(MIGRATIONS_DIR, '20261127000001_planning_history_and_audit_snapshots.sql'),
+      'utf8'
+    );
+    await db.exec(mHistory);
+
+    // Verify per-date Target DPH backfill populated both historical dates
+    const dailyDphRes = await db.query<{ planning_date: string; target_dph: string }>(
+      `SELECT planning_date::text, target_dph::text FROM public.store_planning_daily_config WHERE site_code = 'TMK7' ORDER BY planning_date ASC`
+    );
+    expect(dailyDphRes.rows).toEqual([
+      { planning_date: '2026-11-04', target_dph: '2.10' },
+      { planning_date: '2026-11-10', target_dph: '2.10' },
+    ]);
+
+    // Verify get_store_attendance_dates RPC returns distinct dates descending
+    const datesRpcRes = await db.query<{ attendance_date: string }>(
+      `SELECT attendance_date::text FROM public.get_store_attendance_dates('TMK7')`
+    );
+    expect(datesRpcRes.rows.map((r) => r.attendance_date)).toEqual(['2026-11-10', '2026-11-04']);
+
+    // Verify plan_vs_actual_audit_snapshots accepts and returns snapshot payloads
+    const tmk7IdRes = await db.query<{ id: string }>(
+      `SELECT id::text FROM public.stores WHERE store_code = 'TMK7'`
+    );
+    const tmk7Id = tmk7IdRes.rows[0].id;
+    await db.query(
+      `INSERT INTO public.plan_vs_actual_audit_snapshots (
+        store_id, warehouse_id, audit_date, total_orders_count, planned_present_count,
+        planned_worked_count, actual_worked_count, turn_up_rate_pct, has_order_data, has_attendance_data,
+        hourly_slots, riders
+      ) VALUES ($1, 'TMK7', '2026-11-04', 420, 40, 36, 41, 90, true, true, '[]'::jsonb, '[]'::jsonb)`,
+      [tmk7Id]
+    );
+    const snapRes = await db.query<{ turn_up_rate_pct: number; planned_worked_count: number }>(
+      `SELECT turn_up_rate_pct, planned_worked_count FROM public.plan_vs_actual_audit_snapshots WHERE store_id = $1 AND audit_date = '2026-11-04'`,
+      [tmk7Id]
+    );
+    expect(snapRes.rows).toEqual([{ turn_up_rate_pct: 90, planned_worked_count: 36 }]);
+
     await db.close();
   });
 });

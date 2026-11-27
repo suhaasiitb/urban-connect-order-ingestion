@@ -56,6 +56,158 @@ export const LOCAL_STORAGE_ATTENDANCE_PREFIX = 'urban_connect_rider_attendance_'
 export const STORE_ATTENDANCE_CHANGE_EVENT = 'store_rider_attendance_changed';
 
 /**
+ * Returns today's ISO calendar date ("YYYY-MM-DD") in the given store timezone.
+ */
+export function getStoreTodayIsoDate(timeZone: string = 'Asia/Kolkata'): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+/**
+ * Returns true when attendanceDate is strictly earlier than today (or referenceDate),
+ * meaning saved records represent a historical snapshot that must not be mutated by
+ * today's active roster or later shift changes.
+ */
+export function isHistoricalAttendanceDate(
+  attendanceDate: string,
+  timeZone: string = 'Asia/Kolkata',
+  referenceDate?: string
+): boolean {
+  if (!attendanceDate || !/^\d{4}-\d{2}-\d{2}$/.test(attendanceDate)) {
+    return false;
+  }
+  const ref =
+    referenceDate && /^\d{4}-\d{2}-\d{2}$/.test(referenceDate)
+      ? referenceDate
+      : getStoreTodayIsoDate(timeZone);
+  return attendanceDate < ref;
+}
+
+/**
+ * Non-destructively enriches historical records with missing phone / onboardedBy metadata
+ * without removing inactive former riders, adding new riders, or altering saved shift timings.
+ */
+function enrichHistoricalAttendanceRecords(
+  records: RiderAttendanceRecord[],
+  activeRiders?: Array<{ name: string; phone?: string }>,
+  shiftsMap?: Map<string, RiderShiftConfig> | null
+): RiderAttendanceRecord[] {
+  const phoneByNorm = new Map<string, string>();
+  if (activeRiders && activeRiders.length > 0) {
+    for (const r of activeRiders) {
+      const norm = normalizeRiderName(r.name);
+      if (norm && r.phone && !phoneByNorm.has(norm)) {
+        phoneByNorm.set(norm, r.phone);
+      }
+    }
+  }
+
+  return records
+    .map((rec) => {
+      const norm = rec.normalizedName || normalizeRiderName(rec.riderName);
+      const phone = rec.phone || phoneByNorm.get(norm) || null;
+      const shift = shiftsMap?.get(norm);
+      const onboardedBy = rec.onboardedBy || shift?.onboardedBy || null;
+      return {
+        ...rec,
+        normalizedName: norm,
+        phone,
+        onboardedBy,
+      };
+    })
+    .sort((a, b) => a.riderName.localeCompare(b.riderName));
+}
+
+/**
+ * Fetches all distinct saved attendance dates ("YYYY-MM-DD", sorted ascending) for a warehouse
+ * using the `get_store_attendance_dates` RPC (with paginated fallback and localStorage merge).
+ */
+export async function fetchStoreAttendanceDates(warehouseId: string): Promise<string[]> {
+  const normWh = (warehouseId || 'TMK7').toUpperCase().trim();
+  const dateSet = new Set<string>();
+
+  // 1. Merge any cached localStorage attendance dates for this warehouse
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const prefix = `${LOCAL_STORAGE_ATTENDANCE_PREFIX}${normWh}_`;
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          const datePart = key.slice(prefix.length);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+            dateSet.add(datePart);
+          }
+        }
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  // 2. Query Supabase via distinct RPC (avoids PostgREST 1,000-row cap)
+  try {
+    const rpcRes = await withTimeout(
+      supabase.rpc('get_store_attendance_dates', { p_warehouse_id: normWh }),
+      8000,
+      { data: null, error: { message: 'RPC timeout' } }
+    );
+
+    if (!rpcRes.error && Array.isArray(rpcRes.data)) {
+      for (const row of rpcRes.data as Array<{ attendance_date?: string }>) {
+        const d = row?.attendance_date ? String(row.attendance_date).slice(0, 10) : '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+          dateSet.add(d);
+        }
+      }
+      return Array.from(dateSet).sort();
+    }
+
+    // Fallback if RPC is not deployed yet: paginate attendance_date column
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let hasMore = true;
+    while (hasMore && from < 20000) {
+      const pageRes = await withTimeout(
+        supabase
+          .from('store_rider_attendance')
+          .select('attendance_date')
+          .eq('warehouse_id', normWh)
+          .order('attendance_date', { ascending: false })
+          .range(from, from + PAGE_SIZE - 1),
+        8000,
+        { data: null, error: { message: 'Timeout' } }
+      );
+      if (pageRes.error || !Array.isArray(pageRes.data) || pageRes.data.length === 0) {
+        break;
+      }
+      for (const row of pageRes.data) {
+        const d = row.attendance_date ? String(row.attendance_date).slice(0, 10) : '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+          dateSet.add(d);
+        }
+      }
+      if (pageRes.data.length < PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        from += PAGE_SIZE;
+      }
+    }
+  } catch (err) {
+    console.warn(`fetchStoreAttendanceDates warning for ${normWh}:`, err);
+  }
+
+  return Array.from(dateSet).sort();
+}
+
+/**
  * Wraps an async promise or thenable with a timeout so network hangs never block UI or tests.
  */
 function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F): Promise<T | F> {
@@ -405,9 +557,12 @@ export async function fetchStoreRiderAttendance(params: {
   attendanceDate: string;
   activeRiders?: Array<{ name: string; phone?: string }>;
   shiftsMap?: Map<string, RiderShiftConfig>;
+  timeZone?: string;
+  referenceDate?: string;
 }): Promise<StoreAttendanceSummary> {
-  const { storeId, warehouseId, attendanceDate } = params;
+  const { storeId, warehouseId, attendanceDate, timeZone = 'Asia/Kolkata', referenceDate } = params;
   const normWh = (warehouseId || 'TMK7').toUpperCase().trim();
+  const isHistorical = isHistoricalAttendanceDate(attendanceDate, timeZone, referenceDate);
 
   // 1. Read localStorage cache
   const cached = getStoredAttendanceSync(normWh, attendanceDate);
@@ -415,6 +570,14 @@ export async function fetchStoreRiderAttendance(params: {
   // Short-circuit in test environments or dummy store IDs
   if (storeId && storeId.startsWith('test-')) {
     if (cached && cached.length > 0) {
+      if (isHistorical) {
+        const preserved = enrichHistoricalAttendanceRecords(
+          cached,
+          params.activeRiders,
+          params.shiftsMap
+        );
+        return buildAttendanceSummary(normWh, attendanceDate, preserved, storeId);
+      }
       const synced = params.shiftsMap ? syncAttendanceWithLatestShifts(cached, params.shiftsMap) : cached;
       const activeFiltered = filterRecordsByActiveRoster(synced, params.activeRiders);
       return buildAttendanceSummary(normWh, attendanceDate, activeFiltered, storeId);
@@ -507,8 +670,30 @@ export async function fetchStoreRiderAttendance(params: {
     mergedBaseRecords = cached;
   }
 
-  // If we have saved/cached records, restrict to active roster (when available) and merge newly added active riders
+  // If we have saved/cached records:
+  // - For historical past dates, preserve the saved snapshot verbatim (never prune former riders,
+  //   never inject newly hired active riders, and never overwrite saved shift timings with later edits).
+  // - For today/future dates, keep forward planning synced with the live active roster and latest shifts.
   if (mergedBaseRecords && mergedBaseRecords.length > 0) {
+    if (isHistorical) {
+      const historicalList = enrichHistoricalAttendanceRecords(
+        mergedBaseRecords,
+        resolvedActiveRiders,
+        shifts
+      );
+
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const key = getStoreAttendanceStorageKey(normWh, attendanceDate);
+          window.localStorage.setItem(key, JSON.stringify(historicalList));
+        }
+      } catch {
+        // Storage fail
+      }
+
+      return buildAttendanceSummary(normWh, attendanceDate, historicalList, storeId);
+    }
+
     const syncedBase = shifts
       ? syncAttendanceWithLatestShifts(mergedBaseRecords, shifts)
       : mergedBaseRecords;
@@ -746,14 +931,31 @@ export async function saveStoreRiderAttendance(params: {
             supabase
               .from('store_rider_attendance')
               .upsert(chunk, { onConflict: 'warehouse_id,attendance_date,normalized_name' }),
-            8000,
-            { error: null }
+            12000,
+            { error: { message: 'Request timed out while syncing attendance to database.' } }
           )
         );
       }
-      await Promise.all(upsertPromises);
+      const results = await Promise.all(upsertPromises);
+      const firstError = results.find((res) => res?.error)?.error;
+      if (firstError) {
+        console.error(`Supabase saveStoreRiderAttendance error for ${normWh}:`, firstError.message);
+        return {
+          ok: false,
+          count: normalizedRecords.length,
+          presentCount,
+          error: `Saved locally, but failed to sync attendance to database: ${firstError.message}. Please retry.`,
+        };
+      }
     } catch (err) {
-      console.warn(`Supabase saveStoreRiderAttendance note for ${normWh}:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Supabase saveStoreRiderAttendance exception for ${normWh}:`, err);
+      return {
+        ok: false,
+        count: normalizedRecords.length,
+        presentCount,
+        error: `Saved locally, but failed to sync attendance to database: ${msg}. Please retry.`,
+      };
     }
   }
 

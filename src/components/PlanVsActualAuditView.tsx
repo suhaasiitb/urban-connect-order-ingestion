@@ -94,6 +94,7 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
       storeId: selectedStore.id,
       warehouseId: selectedStore.store_code,
       dateStr: selectedDate,
+      timeZone: selectedStore.timezone || 'Asia/Kolkata',
     });
 
     setLoading(false);
@@ -409,7 +410,7 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
                   className="text-xs text-muted m-0 text-center"
                   style={{ textAlign: 'center', margin: '0 auto', width: '100%' }}
                 >
-                  The <strong>Hourly Slot Planning Table</strong> displays your forward schedule (attendance &amp; shifts), whereas <strong>Plan vs Actual Audit</strong> cross-checks scheduled shifts against completed customer orders. Once order data for this date is uploaded in Data Ingestion, actual turn-up and rider adherence will calculate here automatically.
+                  The <strong>Hourly Slot Planning Table</strong> displays your forward schedule (attendance &amp; shifts), whereas <strong>Plan vs Actual Audit</strong> cross-checks scheduled shifts against completed customer orders. Once order data for this date is synced from backend automation, actual turn-up and rider adherence will calculate here automatically.
                 </p>
               </>
             ) : (
@@ -458,8 +459,26 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
       )}
 
       {/* 4. Full Plan vs Actual Audit View */}
-      {!loading && summary && summary.hasOrderData && (
+      {!loading && summary && summary.hasOrderData && (() => {
+        const plannedWorked =
+          summary.plannedWorkedCount ?? Math.max(0, summary.plannedPresentCount - summary.noShowCount);
+        return (
         <>
+          {summary.isFromSnapshot && (
+            <div className="perf-view-callout callout-summary mb-sm">
+              <div className="callout-left">
+                <span className="callout-badge">Archived Snapshot</span>
+                <span className="callout-text">
+                  Displaying persisted historical audit snapshot for <strong>{summary.formattedDate}</strong>
+                  {summary.snapshotCapturedAt
+                    ? ` (captured ${new Date(summary.snapshotCapturedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })})`
+                    : ''}
+                  . Preserved beyond the 30-day raw order retention window.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Top Summary KPI Cards */}
           <div className="kpi-grid planning-compact-kpi mb-md">
             {/* Card 1: Turn-Up Rate */}
@@ -471,12 +490,17 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
               </span>
             </div>
             <strong className="kpi-value text-blue">
-              {summary.actualWorkedCount} / {summary.plannedPresentCount} Worked
+              {plannedWorked} / {summary.plannedPresentCount} Planned
             </strong>
             <span className="kpi-sub">
-              {summary.plannedPresentCount - summary.actualWorkedCount > 0
-                ? `${summary.plannedPresentCount - summary.actualWorkedCount} fewer riders than planned`
-                : 'Full planned workforce turned up'}
+              {summary.noShowCount > 0
+                ? `${summary.noShowCount} No-Show${summary.noShowCount === 1 ? '' : 's'}`
+                : summary.plannedPresentCount > 0
+                ? 'All planned riders turned up'
+                : 'No attendance marked'}
+              {summary.unplannedTurnUpCount > 0
+                ? ` • +${summary.unplannedTurnUpCount} Unplanned (${summary.actualWorkedCount} total)`
+                : ''}
             </span>
           </div>
 
@@ -780,11 +804,26 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
                       {/* Assigned Shift */}
                       <td className="td-active-shift text-center">
                         <div className="flex-col items-center justify-center gap-xs">
-                          <span className="badge-shift badge-morning">
-                            {row.shiftType.replace(' Shift', '')}
+                          <span
+                            className={`badge-shift ${
+                              row.shiftType === 'UNASSIGNED'
+                                ? 'badge-shift-unassigned'
+                                : row.shiftType === 'Split Shift'
+                                ? 'badge-split'
+                                : row.shiftType === '2nd Shift'
+                                ? 'badge-second'
+                                : 'badge-morning'
+                            }`}
+                          >
+                            {row.shiftType === 'UNASSIGNED'
+                              ? 'Unassigned'
+                              : row.shiftType.replace(' Shift', '')}
                           </span>
                           <span className="shift-timings-caption muted">
-                            {formatAuditSlotLabel(row.scheduledStartHour)} – {formatAuditSlotLabel(row.scheduledEndHour)}
+                            {row.shiftTimingsLabel ||
+                              (row.scheduledSlots.length > 0
+                                ? `${formatAuditSlotLabel(row.scheduledStartHour)} – ${formatAuditSlotLabel(row.scheduledEndHour)}`
+                                : 'No shift assigned')}
                           </span>
                         </div>
                       </td>
@@ -897,7 +936,8 @@ export const PlanVsActualAuditView: React.FC<PlanVsActualAuditViewProps> = ({
         </div>
       </div>
       </>
-      )}
+      );
+      })()}
 
       {/* 6. Slot Inspection Modal */}
       {inspectedSlot && (

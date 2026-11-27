@@ -5,18 +5,20 @@
 // and Modern Pivot Table wrapper.
 // ==============================================================================
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StoreMaster } from '../domain/types';
 import type { UserProfile } from '../services/authService';
 import {
   type DayPlanningSummary,
   type SlotPlanningRow,
+  ensurePlanningDailyDphSnapshot,
   exportPlanningToExcel,
   fetchPlanningForDate,
   fetchStoreSnopForecast,
-  fetchStoreTargetDph,
+  fetchStoreTargetDphForDate,
   getAvailableForecastDates,
   getDefaultPlanningDate,
+  getStoreTargetDphForDateSync,
   getStoreTargetDphSync,
   recalculatePlanningWithDph,
   saveStoreTargetDph,
@@ -26,7 +28,9 @@ import {
   type RiderAttendanceRecord,
   type StoreAttendanceSummary,
   buildAttendanceSummary,
+  fetchStoreAttendanceDates,
   fetchStoreRiderAttendance,
+  getStoreTodayIsoDate,
   subscribeStoreRiderAttendance,
 } from '../services/riderAttendanceService';
 import { STORE_RIDER_SHIFTS_CHANGED_EVENT } from '../services/riderShiftService';
@@ -57,9 +61,16 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
     stores.find((s) => s.id === selectedStoreId) ?? stores[0] ?? null;
   const isStoreUser = currentUser?.role === 'store_user';
 
-  // Available SNOP forecast dates for this store
+  // Available SNOP forecast + saved historical attendance dates for this store
   const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [savedAttendanceDates, setSavedAttendanceDates] = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate] = useState<string>('');
+  const selectedDateRef = useRef<string>('');
+  selectedDateRef.current = selectedDate;
+
+  const storeTimeZone = selectedStore?.timezone || 'Asia/Kolkata';
+  const todayStr = useMemo(() => getStoreTodayIsoDate(storeTimeZone), [storeTimeZone]);
+  const isHistoricalDate = Boolean(selectedDate && selectedDate < todayStr);
 
   // Target DPH state
   const [targetDph, setTargetDph] = useState<number>(() =>
@@ -94,10 +105,11 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
     onChangePlanningMode?.(mode);
   };
 
-  // Load available forecast dates whenever store changes
+  // Load available forecast + historical attendance dates whenever store changes
   useEffect(() => {
     if (!selectedStore) return;
     const storeCode = selectedStore.store_code;
+    const tz = selectedStore.timezone || 'Asia/Kolkata';
 
     // 1. Instant local read from cache / seed
     const localDates = getAvailableForecastDates(storeCode);
@@ -110,37 +122,38 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
     // Display next dates data from current date by default (e.g. tomorrow or nearest upcoming forecast date)
     setSelectedDate((prev) => {
       if (prev && localDates.includes(prev)) return prev;
-      return getDefaultPlanningDate(localDates, selectedStore.timezone || 'Asia/Kolkata');
+      return getDefaultPlanningDate(localDates, tz);
     });
 
-    // 2. Asynchronously fetch from Supabase to sync across devices / origins
+    // 2. Asynchronously fetch SNOP forecast + ALL saved historical attendance dates in parallel
     let isCancelled = false;
-    void fetchStoreSnopForecast(storeCode).then((records) => {
+    void Promise.all([
+      fetchStoreSnopForecast(storeCode),
+      fetchStoreAttendanceDates(storeCode),
+    ]).then(([records, attDates]) => {
       if (isCancelled) return;
-      const remoteDates = Array.from(new Set(records.map((r) => r.dateStr))).sort();
-      if (remoteDates.length > 0 && remoteDates.join(',') !== localDates.join(',')) {
-        setAvailableDates(remoteDates);
+      const snopDates = Array.from(new Set(records.map((r) => r.dateStr))).sort();
+      const mergedDates = Array.from(new Set([...snopDates, ...attDates])).sort();
+      setSavedAttendanceDates(new Set(attDates));
+      if (mergedDates.length > 0) {
+        setAvailableDates(mergedDates);
         setSelectedDate((prev) => {
-          if (prev && remoteDates.includes(prev)) return prev;
-          return getDefaultPlanningDate(remoteDates, selectedStore.timezone || 'Asia/Kolkata');
+          if (prev && mergedDates.includes(prev)) return prev;
+          return getDefaultPlanningDate(snopDates.length > 0 ? snopDates : mergedDates, tz);
         });
         setForecastRevision((v) => v + 1);
       }
     });
 
-    // Sync DPH for store
-    void fetchStoreTargetDph(storeCode).then((val) => {
-      if (isCancelled) return;
-      setTargetDph(val);
-      setDphInput(String(val));
-      setSummary((prev) => (prev ? recalculatePlanningWithDph(prev, val) : null));
-    });
-
-    // Realtime subscription for cross-session / multi-tab DPH updates
+    // Realtime subscription for cross-session / multi-tab global DPH updates
     const unsubscribe = subscribeStoreTargetDph(storeCode, (newDph) => {
-      setTargetDph(newDph);
-      setDphInput(String(newDph));
-      setSummary((prev) => (prev ? recalculatePlanningWithDph(prev, newDph) : null));
+      const currDate = selectedDateRef.current;
+      // Do not let global store DPH updates overwrite a past historical date's snapshotted DPH
+      if (!currDate || currDate >= getStoreTodayIsoDate(tz)) {
+        setTargetDph(newDph);
+        setDphInput(String(newDph));
+        setSummary((prev) => (prev ? recalculatePlanningWithDph(prev, newDph) : null));
+      }
     });
 
     // In-tab event listener for new SNOP uploads
@@ -151,7 +164,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
         custom.detail.warehouseId.toUpperCase().trim() === storeCode.toUpperCase().trim()
       ) {
         const freshDates = getAvailableForecastDates(storeCode);
-        setAvailableDates(freshDates);
+        setAvailableDates((prev) => Array.from(new Set([...prev, ...freshDates])).sort());
         setForecastRevision((v) => v + 1);
       }
     };
@@ -163,6 +176,30 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       window.removeEventListener('snop_forecast_saved', handleSnopSaved);
     };
   }, [selectedStore]);
+
+  // Sync per-date Target DPH whenever store or selectedDate changes
+  useEffect(() => {
+    if (!selectedStore || !selectedDate) return;
+    const storeCode = selectedStore.store_code;
+
+    const syncDph = getStoreTargetDphForDateSync(storeCode, selectedDate);
+    setTargetDph(syncDph);
+    setDphInput(String(syncDph));
+
+    let isCancelled = false;
+    void fetchStoreTargetDphForDate(storeCode, selectedDate).then((val) => {
+      if (isCancelled) return;
+      setTargetDph(val);
+      setDphInput(String(val));
+      setSummary((prev) =>
+        prev && prev.dateStr === selectedDate ? recalculatePlanningWithDph(prev, val) : prev
+      );
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedStore, selectedDate]);
 
   // Load planning calculation for selected date and target DPH
   const loadPlanningData = useCallback(async () => {
@@ -207,6 +244,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       storeId: selectedStore.id,
       warehouseId: storeCode,
       attendanceDate: selectedDate,
+      timeZone: storeTimeZone,
     }).then((att) => {
       setAttendanceSummary(att);
     });
@@ -221,15 +259,15 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       selectedStore.id
     );
 
-    // In-tab event listener for rider shifts updates (recalibrates PLANNED TURN-UP instantly)
+    // In-tab event listener for rider shifts updates (recalibrates PLANNED TURN-UP instantly for today/future dates)
     const handleShiftsUpdated = (e: Event) => {
       const custom = e as CustomEvent<{ storeId?: string }>;
       if (!custom.detail?.storeId || custom.detail.storeId === selectedStore.id) {
-        // Also refresh attendance summary in state
         void fetchStoreRiderAttendance({
           storeId: selectedStore.id,
           warehouseId: storeCode,
           attendanceDate: selectedDate,
+          timeZone: storeTimeZone,
         }).then((att) => {
           setAttendanceSummary(att);
         });
@@ -242,7 +280,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       unsubAttendance();
       window.removeEventListener(STORE_RIDER_SHIFTS_CHANGED_EVENT, handleShiftsUpdated);
     };
-  }, [selectedStore, selectedDate, loadPlanningData]);
+  }, [selectedStore, selectedDate, storeTimeZone, loadPlanningData]);
 
   // Keep open turn-up modal in sync when summary is recalibrated
   useEffect(() => {
@@ -255,13 +293,29 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
   }, [summary, isTurnUpModalOpen, selectedTurnUpSlot]);
 
   const handleAttendanceSaved = (updatedRecords: RiderAttendanceRecord[]) => {
+    const storeCode = selectedStore?.store_code || 'TMK7';
     const newSummary = buildAttendanceSummary(
-      selectedStore?.store_code || 'TMK7',
+      storeCode,
       selectedDate,
       updatedRecords,
       selectedStore?.id
     );
     setAttendanceSummary(newSummary);
+    setSavedAttendanceDates((prev) => {
+      const next = new Set(prev);
+      next.add(selectedDate);
+      return next;
+    });
+    setAvailableDates((prev) =>
+      prev.includes(selectedDate) ? prev : [...prev, selectedDate].sort()
+    );
+    // Freeze this date's Target DPH snapshot alongside the saved attendance
+    void ensurePlanningDailyDphSnapshot(
+      storeCode,
+      selectedDate,
+      targetDph,
+      currentUser?.email || 'User'
+    );
     void loadPlanningData();
   };
 
@@ -284,11 +338,13 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
     void saveStoreTargetDph(
       selectedStore?.store_code || 'TMK7',
       nextVal,
-      currentUser?.email || 'User'
+      currentUser?.email || 'User',
+      selectedDate,
+      storeTimeZone
     );
   };
 
-  // Save updated DPH to Supabase and persist
+  // Save updated DPH to Supabase and persist (per-date snapshot + global default for today/future)
   const handleSaveDph = async () => {
     const parsed = parseFloat(dphInput);
     if (isNaN(parsed) || parsed <= 0) {
@@ -307,13 +363,19 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
     const res = await saveStoreTargetDph(
       storeCode,
       parsed,
-      currentUser?.email || 'User'
+      currentUser?.email || 'User',
+      selectedDate,
+      storeTimeZone
     );
 
     setIsSavingDph(false);
     if (res.ok) {
       setIsEditingDph(false);
-      setDphSaveNotice(`✓ Target DPH saved (${parsed.toFixed(2)})`);
+      setDphSaveNotice(
+        isHistoricalDate
+          ? `✓ Saved ${parsed.toFixed(2)} DPH for ${selectedDate}`
+          : `✓ Target DPH saved (${parsed.toFixed(2)})`
+      );
       setTimeout(() => setDphSaveNotice(null), 3000);
     } else {
       setDphSaveNotice(res.error || 'Failed to save DPH.');
@@ -326,23 +388,33 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
     setDphSaveNotice(null);
   };
 
-  // Date navigation helpers
+  // Date navigation helpers (supports stepping across all available dates or any calendar day)
+  const shiftIsoDateByDays = (dateStr: string, delta: number): string => {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    dt.setUTCDate(dt.getUTCDate() + delta);
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  };
+
   const currentIndex = useMemo(
     () => availableDates.indexOf(selectedDate),
     [availableDates, selectedDate]
   );
-  const hasPreviousDate = currentIndex > 0;
-  const hasNextDate = currentIndex >= 0 && currentIndex < availableDates.length - 1;
 
   const handlePrevDate = () => {
-    if (hasPreviousDate) {
+    if (currentIndex > 0) {
       setSelectedDate(availableDates[currentIndex - 1]);
+    } else if (selectedDate) {
+      setSelectedDate(shiftIsoDateByDays(selectedDate, -1));
     }
   };
 
   const handleNextDate = () => {
-    if (hasNextDate) {
+    if (currentIndex >= 0 && currentIndex < availableDates.length - 1) {
       setSelectedDate(availableDates[currentIndex + 1]);
+    } else if (selectedDate) {
+      setSelectedDate(shiftIsoDateByDays(selectedDate, 1));
     }
   };
 
@@ -518,8 +590,17 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
       {/* SNOP Data Notice if missing */}
       {summary && !summary.hasSnopData && (
         <div className="alert-box alert-box-warning my-sm" role="alert">
-          <strong>No SNOP Forecast data for {formattedSelectedDate}.</strong>{' '}
-          Upload a forecast file for this date in Data Ingestion, or choose another date from the dropdown.
+          {isHistoricalDate && summary.hasAttendanceData ? (
+            <>
+              <strong>Historical Attendance Loaded for {formattedSelectedDate}</strong>{' '}
+              ({summary.attendancePresentCount ?? 0} Present riders preserved). SNOP forecast rows for this earlier date were overwritten prior to history retention; future SNOP uploads preserve all historical dates automatically.
+            </>
+          ) : (
+            <>
+              <strong>No SNOP Forecast data for {formattedSelectedDate}.</strong>{' '}
+              Upload a forecast file for this date in Data Ingestion, or choose another date from the dropdown or calendar.
+            </>
+          )}
         </div>
       )}
 
@@ -585,14 +666,15 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                       month: 'short',
                       year: 'numeric',
                     });
+                    const hasSavedAtt = savedAttendanceDates.has(dStr);
                     return (
                       <option key={dStr} value={dStr}>
-                        {label}
+                        {hasSavedAtt ? `${label} ✓` : label}
                       </option>
                     );
                   })}
                   {!availableDates.includes(selectedDate) && selectedDate && (
-                    <option value={selectedDate}>{selectedDate}</option>
+                    <option value={selectedDate}>{formattedSelectedDate || selectedDate}</option>
                   )}
                 </select>
                 <span className="select-chevron" aria-hidden="true">
@@ -614,13 +696,34 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
               </div>
             </div>
 
+            {/* Calendar Picker for Any Historical or Future Planning Date */}
+            <div className="perf-filter-group">
+              <label htmlFor="planning-date-picker" className="perf-control-label">
+                Calendar:
+              </label>
+              <input
+                type="date"
+                id="planning-date-picker"
+                className="perf-dropdown-select perf-date-picker-input"
+                value={selectedDate}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setSelectedDate(e.target.value);
+                  }
+                }}
+                disabled={loading}
+                title="Pick any historical or upcoming planning date"
+                aria-label="Pick any planning date"
+              />
+            </div>
+
             {/* Prev / Next Day navigation */}
             <div className="segmented-control">
               <button
                 type="button"
                 className="segmented-btn"
                 onClick={handlePrevDate}
-                disabled={!hasPreviousDate || loading}
+                disabled={!selectedDate || loading}
                 title="Previous Day"
               >
                 ‹ Prev
@@ -629,7 +732,7 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
                 type="button"
                 className="segmented-btn"
                 onClick={handleNextDate}
-                disabled={!hasNextDate || loading}
+                disabled={!selectedDate || loading}
                 title="Next Day"
               >
                 Next ›
@@ -816,13 +919,15 @@ export const PlanningSection: React.FC<PlanningSectionProps> = ({
         {summary && (
           <div className="perf-view-callout callout-summary">
             <div className="callout-left">
-              <span className="callout-badge">Operations Plan</span>
+              <span className="callout-badge">
+                {isHistoricalDate ? 'Historical Snapshot' : 'Operations Plan'}
+              </span>
               <span className="callout-text">
                 Displaying hourly order projections for <strong>{formattedSelectedDate}</strong> with required workforce sizing computed at <strong>{targetDph.toFixed(2)} DPH</strong> [<code>CEIL(Orders ÷ DPH)</code>] and turn-up from marked attendance ({attendanceSummary?.presentCount ?? summary?.attendancePresentCount ?? 0} Present).
               </span>
             </div>
             <span className="text-secondary text-xs">
-              Store: <strong>{selectedStore?.store_code}</strong> ({availableDates.length} forecast days available)
+              Store: <strong>{selectedStore?.store_code}</strong> ({availableDates.length} dates available)
             </span>
           </div>
         )}

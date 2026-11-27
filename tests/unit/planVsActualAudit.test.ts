@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  computePlanVsActualAudit,
   formatAuditSlotLabel,
   expandDateRange,
   fetchAvailableAuditDates,
@@ -7,6 +8,7 @@ import {
   type RiderSlotAdherence,
   type HourlySlotReconciliation,
 } from '../../src/services/planVsActualAuditService';
+import type { RiderAttendanceRecord } from '../../src/services/riderAttendanceService';
 
 describe('Plan vs Actual Attendance & Turn-Up Audit Unit Tests', () => {
   it('formats slot hours into clean 12-hour audit labels', () => {
@@ -213,6 +215,106 @@ describe('Plan vs Actual Attendance & Turn-Up Audit Unit Tests', () => {
         expect(res.data.hasOrderData).toBe(false);
         expect(res.data.totalOrdersCount).toBe(0);
       }
+    });
+
+    it('reconciles Split Shift break slots, UNASSIGNED shifts, and planned turn-up rate accurately', () => {
+      const attendanceRecords: RiderAttendanceRecord[] = [
+        // 1. Split Shift rider (8 AM - 2 PM & 5 PM - 11 PM, off during slots 14, 15, 16)
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-20',
+          riderName: 'Split Rider',
+          normalizedName: 'split rider',
+          shiftType: 'Split Shift',
+          slot1StartHour: 8,
+          slot1EndHour: 14,
+          slot2StartHour: 17,
+          slot2EndHour: 23,
+          status: 'present',
+          isPresent: true,
+        },
+        // 2. No-Show Morning rider (marked present, 0 orders)
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-20',
+          riderName: 'NoShow Rider',
+          normalizedName: 'noshow rider',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          status: 'present',
+          isPresent: true,
+        },
+        // 3. UNASSIGNED shift rider marked Present (must NOT generate fake 6-15 slots)
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-20',
+          riderName: 'Unassigned Present',
+          normalizedName: 'unassigned present',
+          shiftType: 'UNASSIGNED',
+          slot1StartHour: 6,
+          slot1EndHour: 14,
+          status: 'present',
+          isPresent: true,
+        },
+        // 4. Absent rider who actually worked (Unplanned Turn-Up)
+        {
+          warehouseId: 'TPE2',
+          attendanceDate: '2026-11-20',
+          riderName: 'Unplanned Worker',
+          normalizedName: 'unplanned worker',
+          shiftType: 'Morning Shift',
+          slot1StartHour: 6,
+          slot1EndHour: 15,
+          status: 'absent',
+          isPresent: false,
+        },
+      ];
+
+      const orderRows = [
+        // Split Rider works exact split slots: 8..13 and 17..22 (NOT 14, 15, 16)
+        ...[8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21, 22].map((h, i) => ({
+          rider_name: 'Split Rider',
+          slot_hour: h,
+          order_id: `split-${i}`,
+        })),
+        // Unassigned Present delivers in slot 10
+        { rider_name: 'Unassigned Present', slot_hour: 10, order_id: 'unassigned-1' },
+        // Unplanned Worker delivers in slot 9
+        { rider_name: 'Unplanned Worker', slot_hour: 9, order_id: 'unplanned-1' },
+      ];
+
+      const summary = computePlanVsActualAudit({
+        storeId: 'store-tpe2',
+        warehouseId: 'TPE2',
+        dateStr: '2026-11-20',
+        attendanceRecords,
+        orderRows,
+      });
+
+      // Planned Turn-Up Rate: 2 of 3 marked Present worked (Split Rider + Unassigned Present) = 67%, NOT 100%
+      expect(summary.plannedPresentCount).toBe(3);
+      expect(summary.plannedWorkedCount).toBe(2);
+      expect(summary.actualWorkedCount).toBe(3);
+      expect(summary.noShowCount).toBe(1);
+      expect(summary.unplannedTurnUpCount).toBe(1);
+      expect(summary.turnUpRatePct).toBe(67);
+
+      // Split Rider must be Compliant with 0 missed slots and accurate split timings label
+      const splitAudit = summary.riders.find((r) => r.normalizedName === 'split rider');
+      expect(splitAudit?.adherenceCategory).toBe('COMPLIANT');
+      expect(splitAudit?.allMissedSlots).toEqual([]);
+      expect(splitAudit?.shiftTimingsLabel).toContain('&');
+
+      // Mid-day break slot 15 must NOT count Split Rider or Unassigned Present as planned or missing!
+      const slot15 = summary.hourlySlots.find((s) => s.hour === 15);
+      expect(slot15?.plannedTurnUp).toBe(0);
+      expect(slot15?.missingRiders).toEqual([]);
+
+      // Slot 6 must ONLY count NoShow Rider (NOT Unassigned Present)
+      const slot6 = summary.hourlySlots.find((s) => s.hour === 6);
+      expect(slot6?.plannedRiders).toEqual(['NoShow Rider']);
+      expect(slot6?.missingRiders).toEqual(['NoShow Rider']);
     });
   });
 });

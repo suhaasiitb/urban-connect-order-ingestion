@@ -915,12 +915,83 @@ describe('Rider Attendance & Turn-Up Planning Suite', () => {
         storeId: 'test-store-id',
         warehouseId: 'TPE2',
         attendanceDate: '2026-11-27',
+        referenceDate: '2026-11-27',
         activeRiders,
         shiftsMap,
       });
       expect(cachedSummary.totalRiders).toBe(1);
       expect(cachedSummary.records[0].normalizedName).toBe('abhay gore');
       expect(cachedSummary.records[0].phone).toBe('8530615177');
+
+      // 3. Historical past date (< referenceDate) preserves frozen snapshot:
+      //    inactive former riders are NOT pruned and newer shift edits do NOT overwrite saved timings
+      const historicalShifts = new Map<string, RiderShiftConfig>([
+        [
+          'abhay gore',
+          {
+            riderName: 'ABHAY GORE',
+            normalizedName: 'abhay gore',
+            shiftType: '2nd Shift',
+            slot1StartHour: 15,
+            slot1EndHour: 24,
+            slot2StartHour: null,
+            slot2EndHour: null,
+            totalPlannedHours: 9,
+            updatedAt: '2026-12-01T10:00:00.000Z',
+          },
+        ],
+      ]);
+
+      await saveStoreRiderAttendance({
+        storeId: 'test-store-id',
+        warehouseId: 'TPE2',
+        attendanceDate: '2026-11-10',
+        records: [
+          {
+            warehouseId: 'TPE2',
+            attendanceDate: '2026-11-10',
+            riderName: 'ABHAY GORE',
+            normalizedName: 'abhay gore',
+            shiftType: 'Split Shift',
+            slot1StartHour: 8,
+            slot1EndHour: 14,
+            slot2StartHour: 17,
+            slot2EndHour: 23,
+            status: 'present',
+            isPresent: true,
+          },
+          {
+            warehouseId: 'TPE2',
+            attendanceDate: '2026-11-10',
+            riderName: 'Former Active Rider',
+            normalizedName: 'former active rider',
+            shiftType: 'Morning Shift',
+            slot1StartHour: 6,
+            slot1EndHour: 15,
+            status: 'present',
+            isPresent: true,
+          },
+        ],
+      });
+
+      const frozenHistorical = await fetchStoreRiderAttendance({
+        storeId: 'test-store-id',
+        warehouseId: 'TPE2',
+        attendanceDate: '2026-11-10',
+        referenceDate: '2026-11-27',
+        activeRiders,
+        shiftsMap: historicalShifts,
+      });
+
+      expect(frozenHistorical.totalRiders).toBe(2);
+      expect(frozenHistorical.presentCount).toBe(2);
+      const abhayPast = frozenHistorical.records.find((r) => r.normalizedName === 'abhay gore');
+      expect(abhayPast?.shiftType).toBe('Split Shift');
+      expect(abhayPast?.slot1StartHour).toBe(8);
+      expect(abhayPast?.slot2StartHour).toBe(17);
+      expect(
+        frozenHistorical.records.some((r) => r.normalizedName === 'former active rider')
+      ).toBe(true);
 
       // Direct helper preserves records unchanged when activeRiders is empty/omitted
       expect(filterRecordsByActiveRoster(cachedSummary.records, [])).toHaveLength(1);

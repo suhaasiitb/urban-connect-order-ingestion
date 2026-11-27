@@ -11,6 +11,7 @@ import {
   getAvailableForecastDates,
   getDefaultPlanningDate,
   getSnopUploadMeta,
+  getStoreTargetDphForDateSync,
   getStoreTargetDphSync,
   getStoredSnopRecords,
   parseSnopDateField,
@@ -404,6 +405,33 @@ describe('Store Planning & SNOP Forecast Suite', () => {
       expect(tpe2).toHaveLength(1);
       expect(tpe2[0].projectedOrders).toBe(90);
     });
+
+    it('preserves older uploaded SNOP dates when a newer forecast upload covers later dates', async () => {
+      await saveSnopRecords({
+        warehouseId: 'TMK7',
+        records: [
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-10', hour: 6, projectedOrders: 20 },
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-11', hour: 6, projectedOrders: 30 },
+        ],
+        filename: 'SNOP_Week1.xlsx',
+      });
+
+      await saveSnopRecords({
+        warehouseId: 'TMK7',
+        records: [
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-11', hour: 6, projectedOrders: 45 },
+          { city: 'Pune', warehouseId: 'TMK7', dateStr: '2026-11-12', hour: 6, projectedOrders: 50 },
+        ],
+        filename: 'SNOP_Week2.xlsx',
+      });
+
+      const merged = getStoredSnopRecords('TMK7');
+      expect(merged.map((r) => ({ d: r.dateStr, o: r.projectedOrders }))).toEqual([
+        { d: '2026-11-10', o: 20 }, // preserved historical date
+        { d: '2026-11-11', o: 45 }, // updated overlapping date
+        { d: '2026-11-12', o: 50 }, // newly added date
+      ]);
+    });
   });
 
   describe('6. Store Target DPH Configuration & Editing', () => {
@@ -441,6 +469,17 @@ describe('Store Planning & SNOP Forecast Suite', () => {
       expect(notifiedSite).toBe('TMK7');
 
       unsubscribe();
+    });
+
+    it('isolates historical per-date Target DPH edits from the global store default DPH', async () => {
+      await saveStoreTargetDph('TMK7', 2.1, 'Admin');
+      // Edit a past historical date to 1.85 -> must NOT overwrite the store default (2.1)
+      await saveStoreTargetDph('TMK7', 1.85, 'Admin', '2026-10-15');
+      expect(getStoreTargetDphForDateSync('TMK7', '2026-10-15')).toBe(1.85);
+      expect(getStoreTargetDphSync('TMK7')).toBe(2.1);
+
+      // Future/current date falls back to global store default (2.1) until explicitly overridden
+      expect(getStoreTargetDphForDateSync('TMK7', '2026-12-01')).toBe(2.1);
     });
   });
 

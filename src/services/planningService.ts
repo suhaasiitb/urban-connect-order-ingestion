@@ -100,6 +100,25 @@ export interface DayPlanningSummary {
 export const LOCAL_STORAGE_SNOP_PREFIX = 'urban_connect_snop_records_';
 export const LOCAL_STORAGE_SNOP_META_PREFIX = 'urban_connect_snop_meta_';
 export const LOCAL_STORAGE_DPH_PREFIX = 'urban_connect_planning_dph_';
+export const LOCAL_STORAGE_DAILY_DPH_PREFIX = 'urban_connect_planning_daily_dph_';
+
+function getStoreTodayIsoDate(timeZone: string = 'Asia/Kolkata'): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+export function getStoreDailyDphStorageKey(siteCode: string, planningDate: string): string {
+  const norm = (siteCode || 'TMK7').toUpperCase().trim();
+  return `${LOCAL_STORAGE_DAILY_DPH_PREFIX}${norm}_${planningDate}`;
+}
 
 export const DEFAULT_STORE_DPH: Record<string, number> = {
   TMK7: 2.1,
@@ -186,6 +205,128 @@ export async function fetchStoreTargetDph(siteCode: string): Promise<number> {
 }
 
 /**
+ * Synchronous read of per-date target DPH from localStorage, falling back to store default DPH.
+ */
+export function getStoreTargetDphForDateSync(siteCode: string, planningDate?: string): number {
+  const norm = (siteCode || 'TMK7').toUpperCase().trim();
+  if (planningDate && /^\d{4}-\d{2}-\d{2}$/.test(planningDate)) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const cached = window.localStorage.getItem(getStoreDailyDphStorageKey(norm, planningDate));
+        if (cached) {
+          const val = parseFloat(cached);
+          if (!isNaN(val) && val > 0) return val;
+        }
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+  return getStoreTargetDphSync(norm);
+}
+
+/**
+ * Asynchronously loads per-date Target DPH from Supabase `store_planning_daily_config`,
+ * falling back to store-wide `store_planning_config` when no date snapshot exists yet.
+ */
+export async function fetchStoreTargetDphForDate(
+  siteCode: string,
+  planningDate: string
+): Promise<number> {
+  const norm = (siteCode || 'TMK7').toUpperCase().trim();
+  const localDailyKey = getStoreDailyDphStorageKey(norm, planningDate);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(planningDate)) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase
+          .from('store_planning_daily_config')
+          .select('target_dph')
+          .eq('site_code', norm)
+          .eq('planning_date', planningDate)
+          .maybeSingle(),
+        6000,
+        { data: null, error: null }
+      );
+
+      if (!error && data && data.target_dph) {
+        const val = Number(data.target_dph);
+        if (!isNaN(val) && val > 0) {
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem(localDailyKey, String(val));
+            }
+          } catch {
+            // Ignore storage errors
+          }
+          return val;
+        }
+      }
+    } catch (err) {
+      console.warn(`Supabase fetchStoreTargetDphForDate fallback:`, err);
+    }
+
+    // Check cached per-date DPH before falling back to global store DPH
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const cached = window.localStorage.getItem(localDailyKey);
+        if (cached) {
+          const val = parseFloat(cached);
+          if (!isNaN(val) && val > 0) return val;
+        }
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  return fetchStoreTargetDph(norm);
+}
+
+/**
+ * Ensures a date-level Target DPH snapshot is persisted (e.g., when attendance is saved),
+ * so future store-wide DPH edits never retroactively alter this date's Required Riders.
+ */
+export async function ensurePlanningDailyDphSnapshot(
+  siteCode: string,
+  planningDate: string,
+  targetDph: number,
+  updatedBy: string = 'User'
+): Promise<void> {
+  const norm = (siteCode || 'TMK7').toUpperCase().trim();
+  if (!planningDate || !/^\d{4}-\d{2}-\d{2}$/.test(planningDate) || isNaN(targetDph) || targetDph <= 0) {
+    return;
+  }
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(getStoreDailyDphStorageKey(norm, planningDate), String(targetDph));
+    }
+  } catch {
+    // Ignore storage errors
+  }
+
+  try {
+    await withTimeout(
+      supabase.from('store_planning_daily_config').upsert(
+        {
+          site_code: norm,
+          planning_date: planningDate,
+          target_dph: targetDph,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedBy,
+        },
+        { onConflict: 'site_code,planning_date' }
+      ),
+      6000,
+      { error: null }
+    );
+  } catch {
+    // Best-effort snapshot
+  }
+}
+
+/**
  * Custom event name used for cross-component in-tab DPH updates
  */
 export const STORE_DPH_CHANGE_EVENT = 'store_target_dph_changed';
@@ -206,7 +347,7 @@ export function subscribeStoreTargetDph(
 
   // 1. In-tab custom event listener
   const handleInTabEvent = (e: Event) => {
-    const custom = e as CustomEvent<{ siteCode: string; targetDph: number }>;
+    const custom = e as CustomEvent<{ siteCode: string; targetDph: number; planningDate?: string }>;
     if (custom.detail && custom.detail.siteCode.toUpperCase().trim() === norm) {
       const val = Number(custom.detail.targetDph);
       if (!isNaN(val) && val > 0) {
@@ -280,27 +421,46 @@ export function subscribeStoreTargetDph(
 
 /**
  * Persists store target DPH to Supabase, localStorage, and dispatches in-tab broadcast.
+ * When `planningDate` is supplied:
+ *  - Always persists a per-date snapshot to `store_planning_daily_config`.
+ *  - Only updates the store-wide default (`store_planning_config`) when `planningDate` is today or future
+ *    (so editing a past historical date does not overwrite today/tomorrow's default Target DPH).
  */
 export async function saveStoreTargetDph(
   siteCode: string,
   targetDph: number,
-  updatedBy: string = 'User'
+  updatedBy: string = 'User',
+  planningDate?: string,
+  timeZone: string = 'Asia/Kolkata'
 ): Promise<{ ok: boolean; error?: string }> {
   const norm = (siteCode || 'TMK7').toUpperCase().trim();
   if (isNaN(targetDph) || targetDph <= 0) {
     return { ok: false, error: 'DPH must be a positive number greater than 0.' };
   }
 
+  const hasValidDate = Boolean(planningDate && /^\d{4}-\d{2}-\d{2}$/.test(planningDate));
+  const todayStr = getStoreTodayIsoDate(timeZone);
+  const shouldUpdateGlobalDefault = !hasValidDate || (planningDate as string) >= todayStr;
+  const nowIso = new Date().toISOString();
+
   // 1. Instant local cache update & in-tab broadcast
   try {
     if (typeof window !== 'undefined') {
       if (window.localStorage) {
-        window.localStorage.setItem(LOCAL_STORAGE_DPH_PREFIX + norm, String(targetDph));
+        if (hasValidDate) {
+          window.localStorage.setItem(
+            getStoreDailyDphStorageKey(norm, planningDate as string),
+            String(targetDph)
+          );
+        }
+        if (shouldUpdateGlobalDefault) {
+          window.localStorage.setItem(LOCAL_STORAGE_DPH_PREFIX + norm, String(targetDph));
+        }
       }
       if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
         window.dispatchEvent(
           new CustomEvent(STORE_DPH_CHANGE_EVENT, {
-            detail: { siteCode: norm, targetDph },
+            detail: { siteCode: norm, targetDph, planningDate: hasValidDate ? planningDate : undefined },
           })
         );
       }
@@ -309,22 +469,47 @@ export async function saveStoreTargetDph(
     // Ignore
   }
 
-  // 2. Persist to Supabase table
+  // 2. Persist to Supabase tables
   try {
-    const { error } = await supabase.from('store_planning_config').upsert(
-      {
-        site_code: norm,
-        target_dph: targetDph,
-        updated_at: new Date().toISOString(),
-        updated_by: updatedBy,
-      },
-      { onConflict: 'site_code' }
-    );
+    if (hasValidDate) {
+      const { error: dailyErr } = await withTimeout(
+        supabase.from('store_planning_daily_config').upsert(
+          {
+            site_code: norm,
+            planning_date: planningDate,
+            target_dph: targetDph,
+            updated_at: nowIso,
+            updated_by: updatedBy,
+          },
+          { onConflict: 'site_code,planning_date' }
+        ),
+        6000,
+        { error: null }
+      );
+      if (dailyErr) {
+        console.warn('Supabase store_planning_daily_config upsert warning:', dailyErr.message);
+      }
+    }
 
-    if (error) {
-      console.warn('Supabase store_planning_config upsert warning:', error.message);
-      // Return ok true because local cache succeeded and user won't be blocked
-      return { ok: true };
+    if (shouldUpdateGlobalDefault) {
+      const { error } = await withTimeout(
+        supabase.from('store_planning_config').upsert(
+          {
+            site_code: norm,
+            target_dph: targetDph,
+            updated_at: nowIso,
+            updated_by: updatedBy,
+          },
+          { onConflict: 'site_code' }
+        ),
+        6000,
+        { error: null }
+      );
+
+      if (error) {
+        console.warn('Supabase store_planning_config upsert warning:', error.message);
+        return { ok: true };
+      }
     }
     return { ok: true };
   } catch (err) {
@@ -704,6 +889,8 @@ function withTimeout<T, F = T>(promise: PromiseLike<T>, ms: number, fallback: F)
 
 /**
  * Pushes SNOP forecast records and metadata to Supabase tables `store_snop_forecast` and `store_snop_uploads`.
+ * Uses date-scoped replacement: replaces only the dates present in the uploaded file so all
+ * older historical SNOP forecast dates remain preserved for historical planning review.
  */
 export async function pushSnopRecordsToSupabase(
   warehouseId: string,
@@ -714,14 +901,21 @@ export async function pushSnopRecordsToSupabase(
   if (!records || records.length === 0) return { ok: true };
 
   try {
-    // Delete existing records for warehouse
-    const { error: delErr } = await supabase
-      .from('store_snop_forecast')
-      .delete()
-      .eq('warehouse_id', norm);
+    const sortedDates = Array.from(new Set(records.map((r) => r.dateStr))).sort();
 
-    if (delErr) {
-      console.warn(`Supabase delete old forecast warning for ${norm}:`, delErr.message);
+    // Delete only existing rows for the dates covered by this upload (preserving older historical dates)
+    const dateChunkSize = 100;
+    for (let i = 0; i < sortedDates.length; i += dateChunkSize) {
+      const dateChunk = sortedDates.slice(i, i + dateChunkSize);
+      const { error: delErr } = await supabase
+        .from('store_snop_forecast')
+        .delete()
+        .eq('warehouse_id', norm)
+        .in('forecast_date', dateChunk);
+
+      if (delErr) {
+        console.warn(`Supabase delete old forecast warning for ${norm}:`, delErr.message);
+      }
     }
 
     // Upsert in batches of 200
@@ -746,7 +940,6 @@ export async function pushSnopRecordsToSupabase(
     }
 
     // Insert upload history
-    const sortedDates = Array.from(new Set(records.map((r) => r.dateStr))).sort();
     await supabase.from('store_snop_uploads').insert({
       warehouse_id: norm,
       filename: meta?.filename || 'Forecast Import',
@@ -765,8 +958,8 @@ export async function pushSnopRecordsToSupabase(
 }
 
 /**
- * Asynchronously loads SNOP forecast records for a warehouse from Supabase `store_snop_forecast`,
- * updating localStorage cache for instant future loads and offline resiliency.
+ * Asynchronously loads ALL SNOP forecast records for a warehouse from Supabase `store_snop_forecast`
+ * using 1,000-row pagination (avoiding PostgREST's 1,000-row cap) and updating localStorage cache.
  */
 export async function fetchStoreSnopForecast(
   warehouseId: string
@@ -774,31 +967,55 @@ export async function fetchStoreSnopForecast(
   const norm = (warehouseId || 'TMK7').toUpperCase().trim();
 
   try {
-    const query = supabase
-      .from('store_snop_forecast')
-      .select('city, warehouse_id, forecast_date, slot_hour, projected_orders')
-      .eq('warehouse_id', norm)
-      .order('forecast_date', { ascending: true })
-      .order('slot_hour', { ascending: true })
-      .limit(5000);
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let hasMore = true;
+    let queryError: { message: string } | null = null;
+    const allRows: Array<{
+      city: string;
+      warehouse_id: string;
+      forecast_date: string;
+      slot_hour: number;
+      projected_orders: number;
+    }> = [];
 
-    const { data, error } = await withTimeout(
-      query,
-      1500,
-      { data: null, error: { message: 'Timeout loading from Supabase' } } as unknown as {
-        data: {
-          city: string;
-          warehouse_id: string;
-          forecast_date: string;
-          slot_hour: number;
-          projected_orders: number;
-        }[] | null;
-        error: { message: string } | null;
+    while (hasMore) {
+      const query = supabase
+        .from('store_snop_forecast')
+        .select('city, warehouse_id, forecast_date, slot_hour, projected_orders')
+        .eq('warehouse_id', norm)
+        .order('forecast_date', { ascending: true })
+        .order('slot_hour', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+
+      const { data, error } = await withTimeout(
+        query,
+        8000,
+        { data: null, error: { message: 'Timeout loading from Supabase' } } as unknown as {
+          data: typeof allRows | null;
+          error: { message: string } | null;
+        }
+      );
+
+      if (error) {
+        queryError = error;
+        break;
       }
-    );
 
-    if (!error && data && data.length > 0) {
-      const records: SnopForecastRecord[] = data.map((r) => ({
+      if (data && data.length > 0) {
+        allRows.push(...data);
+        if (data.length < PAGE_SIZE) {
+          hasMore = false;
+        } else {
+          from += PAGE_SIZE;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    if (!queryError && allRows.length > 0) {
+      const records: SnopForecastRecord[] = allRows.map((r) => ({
         city: r.city || '',
         warehouseId: (r.warehouse_id || norm).toUpperCase().trim(),
         dateStr: String(r.forecast_date),
@@ -841,7 +1058,7 @@ export async function fetchStoreSnopForecast(
     // Self-heal: If Supabase returned 0 rows (no error), but localStorage has valid records for this store,
     // push local cached records to Supabase in the background so other devices and GitHub Pages can see it!
     const cached = getStoredSnopRecords(norm);
-    if (cached.length > 0 && !error) {
+    if (cached.length > 0 && !queryError) {
       const meta = getSnopUploadMeta(norm);
       void pushSnopRecordsToSupabase(norm, cached, meta || undefined);
     }
@@ -986,10 +1203,23 @@ export async function saveSnopRecords(params: {
       uploadedBy,
     };
 
-    // 1. Instant local overwrite in localStorage for this warehouse
+    // 1. Date-scoped localStorage merge (preserves prior uploaded dates outside this upload)
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(LOCAL_STORAGE_SNOP_PREFIX + wh, JSON.stringify(whRecords));
+        const uploadedDateSet = new Set(sortedDates);
+        let mergedRecords = whRecords;
+        const existingRaw = window.localStorage.getItem(LOCAL_STORAGE_SNOP_PREFIX + wh);
+        if (existingRaw) {
+          const existingParsed = JSON.parse(existingRaw) as SnopForecastRecord[];
+          if (Array.isArray(existingParsed) && existingParsed.length > 0) {
+            const preserved = existingParsed.filter((r) => !uploadedDateSet.has(r.dateStr));
+            mergedRecords = [...preserved, ...whRecords].sort((a, b) => {
+              const dateCmp = a.dateStr.localeCompare(b.dateStr);
+              return dateCmp !== 0 ? dateCmp : a.hour - b.hour;
+            });
+          }
+        }
+        window.localStorage.setItem(LOCAL_STORAGE_SNOP_PREFIX + wh, JSON.stringify(mergedRecords));
         window.localStorage.setItem(LOCAL_STORAGE_SNOP_META_PREFIX + wh, JSON.stringify(meta));
         window.dispatchEvent(
           new CustomEvent('snop_forecast_saved', { detail: { warehouseId: wh } })
@@ -999,7 +1229,7 @@ export async function saveSnopRecords(params: {
       console.warn(`LocalStorage saveSnopRecords error for ${wh}:`, err);
     }
 
-    // 2. Persist to Supabase database (rewrite existing rows for that warehouse)
+    // 2. Persist to Supabase database (date-scoped upsert preserving older historical dates)
     await pushSnopRecordsToSupabase(wh, whRecords, meta);
   }
 
@@ -1260,11 +1490,11 @@ export async function fetchPlanningForDate(params: {
   } = params;
   const normWh = (warehouseId || 'TMK7').toUpperCase().trim();
 
-  // 1. Resolve Target DPH
+  // 1. Resolve Target DPH (per-date snapshot first, falling back to store default)
   const dph =
     params.targetDph !== undefined && params.targetDph > 0
       ? params.targetDph
-      : await fetchStoreTargetDph(normWh);
+      : await fetchStoreTargetDphForDate(normWh, dateStr);
 
   // 2. Resolve Planned Turn-Up Map from marked attendance (or test override if supplied)
   let plannedTurnUpMap: Record<number, number> | null =
@@ -1281,6 +1511,7 @@ export async function fetchPlanningForDate(params: {
         storeId,
         warehouseId: normWh,
         attendanceDate: dateStr,
+        timeZone: params.timeZone || 'Asia/Kolkata',
       });
       attendanceRecords = attendance.records;
       attendancePresentCount = attendance.presentCount;
@@ -1299,12 +1530,37 @@ export async function fetchPlanningForDate(params: {
     plannedTurnUpMap = {};
   }
 
-  // 3. Load SNOP forecast records for this warehouse
+  // 3. Load SNOP forecast records for this warehouse (with targeted DB lookup if date missing locally)
   let allRecords = getStoredSnopRecords(normWh);
   if (allRecords.length === 0) {
     allRecords = await fetchStoreSnopForecast(normWh);
   }
-  const dayRecords = allRecords.filter((r) => r.dateStr === dateStr);
+  let dayRecords = allRecords.filter((r) => r.dateStr === dateStr);
+  if (dayRecords.length === 0 && storeId && !storeId.startsWith('test-')) {
+    try {
+      const { data: dateRows, error: dateErr } = await withTimeout(
+        supabase
+          .from('store_snop_forecast')
+          .select('city, warehouse_id, forecast_date, slot_hour, projected_orders')
+          .eq('warehouse_id', normWh)
+          .eq('forecast_date', dateStr)
+          .order('slot_hour', { ascending: true }),
+        6000,
+        { data: null, error: null }
+      );
+      if (!dateErr && Array.isArray(dateRows) && dateRows.length > 0) {
+        dayRecords = dateRows.map((r) => ({
+          city: r.city || '',
+          warehouseId: (r.warehouse_id || normWh).toUpperCase().trim(),
+          dateStr: String(r.forecast_date),
+          hour: Number(r.slot_hour),
+          projectedOrders: Number(r.projected_orders),
+        }));
+      }
+    } catch {
+      // Fall back gracefully if offline
+    }
+  }
   const hasSnopData = dayRecords.length > 0;
 
   // Build a map of projected orders by hour
