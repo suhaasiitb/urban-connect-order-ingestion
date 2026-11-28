@@ -14,6 +14,7 @@ import {
   getDayOfWeekName,
   getDphImpactedSlots,
   invalidateS2POtpCache,
+  normalizeTrackingUrl,
 } from '../../src/services/s2pOtpService';
 
 describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
@@ -943,5 +944,17 @@ describe('S2P, OTP & DPH Analytics Calculations & Formatting', () => {
       completedBreach: 175,
       hasOngoingSlotExcluded: false,
     });
+  });
+
+  it('normalizes valid http/https tracking URLs and rejects empty or unsafe schemes', () => {
+    expect(normalizeTrackingUrl(' https://track.loadshare.net/order/wkj3qww ')).toBe(
+      'https://track.loadshare.net/order/wkj3qww'
+    );
+    expect(normalizeTrackingUrl('http://track.loadshare.net/order/abc123')).toBe(
+      'http://track.loadshare.net/order/abc123'
+    );
+    expect(normalizeTrackingUrl('')).toBeNull();
+    expect(normalizeTrackingUrl(null)).toBeNull();
+    expect(normalizeTrackingUrl('javascript:alert(1)')).toBeNull();
   });
 });

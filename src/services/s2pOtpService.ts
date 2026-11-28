@@ -1031,8 +1031,18 @@ export interface OtpBreachedOrderRecord {
   arrivalEtaMinutes: number;
   actualArrivalMinutes: number;
   timeDiffMinutes: number; // Arrival Time ETA - Actual Arrival Time (negative for breached orders)
+  trackingUrl?: string | null;
   otpBreachRca?: string | null;
   otpBreachRcaUpdatedAt?: string | null;
+}
+
+export function normalizeTrackingUrl(raw: unknown): string | null {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return null;
 }
 
 export interface DsrRtoOrderRecord {
@@ -1116,6 +1126,7 @@ export async function fetchOtpBreachedOrders(params: {
       slot_hour: number | null;
       arrival_eta_minutes: number | null;
       actual_arrival_minutes: number | null;
+      tracking_url?: string | null;
       otp_breach_rca?: string | null;
       otp_breach_rca_updated_at?: string | null;
     };
@@ -1123,7 +1134,7 @@ export async function fetchOtpBreachedOrders(params: {
     const { rows: rawRows, error } = await fetchPaginatedOrderRows<RawOtpRow>((from, to) => {
       let query = supabase
         .from('orders')
-        .select('order_id, order_date, rider_name, rider_number, slot_hour, arrival_eta_minutes, actual_arrival_minutes, otp_breach_rca, otp_breach_rca_updated_at')
+        .select('order_id, order_date, rider_name, rider_number, slot_hour, arrival_eta_minutes, actual_arrival_minutes, tracking_url, otp_breach_rca, otp_breach_rca_updated_at')
         .eq('store_id', storeId)
         .eq('otp_plus_3_performance', 'OTP Breached')
         .gte('order_date', rangeStart)
@@ -1159,6 +1170,7 @@ export async function fetchOtpBreachedOrders(params: {
         arrivalEtaMinutes: Math.round(arrivalEta * 100) / 100,
         actualArrivalMinutes: Math.round(actualArrival * 100) / 100,
         timeDiffMinutes: diff,
+        trackingUrl: normalizeTrackingUrl(r.tracking_url),
         otpBreachRca: r.otp_breach_rca ? String(r.otp_breach_rca) : null,
         otpBreachRcaUpdatedAt: r.otp_breach_rca_updated_at ? String(r.otp_breach_rca_updated_at) : null,
       };

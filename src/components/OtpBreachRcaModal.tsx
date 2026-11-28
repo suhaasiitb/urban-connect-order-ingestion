@@ -15,6 +15,7 @@ interface RcaOrderRow {
   slotHour?: number;
   riderName: string;
   timeDiffMinutes?: number;
+  trackingUrl?: string | null;
   status?: string;
 }
 
@@ -121,6 +122,7 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
             slotHour: ord.slotHour,
             riderName: ord.riderName,
             timeDiffMinutes: ord.timeDiffMinutes,
+            trackingUrl: ord.trackingUrl ?? null,
           }));
           setOrders(rows);
           const rcaMap: Record<string, string> = {};
@@ -193,18 +195,22 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
     onSaved?.();
   };
 
+  const showTrackingCol = !isDsrMode;
   const slotDescription =
     slotHour !== null ? `Slot ${slotHour} (${formatSlotHourLabel(slotHour)})` : 'All Slots';
   const subtitle = isRangeMode
     ? `${storeCode}${riderName ? ` · ${riderName}` : ''} · ${startDate} → ${endDate}`
     : `${storeCode} · ${formattedDate ?? orderDate} (${orderDate}) · ${slotDescription}`;
-  const totalCols = 5 + (isRangeMode ? 1 : 0) + (showSlotCol ? 1 : 0);
+  const totalCols = 5 + (isRangeMode ? 1 : 0) + (showSlotCol ? 1 : 0) + (showTrackingCol ? 1 : 0);
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
       <div
         className="modal-card otp-breached-modal otp-rca-modal"
-        style={{ maxWidth: isRangeMode ? '920px' : '820px', width: '95vw' }}
+        style={{
+          maxWidth: isRangeMode ? '1040px' : showTrackingCol ? '940px' : '820px',
+          width: '95vw',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header flex-row items-center justify-between gap-sm">
@@ -268,6 +274,7 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
                 {isRangeMode && <th>Order Date</th>}
                 <th>Rider Name</th>
                 <th>Order ID</th>
+                {showTrackingCol && <th className="text-center">Tracking URL</th>}
                 {showSlotCol && <th className="text-center">Slot</th>}
                 <th className={isDsrMode ? 'text-center' : 'text-right'}>
                   {isDsrMode ? 'Order Status' : 'Time Diff'}
@@ -303,6 +310,28 @@ export const OtpBreachRcaModal: React.FC<OtpBreachRcaModalProps> = ({
                       )}
                       <td className="font-semibold">{ord.riderName}</td>
                       <td className="font-mono text-xs">{ord.orderId}</td>
+                      {showTrackingCol && (
+                        <td className="text-center" style={{ whiteSpace: 'nowrap' }}>
+                          {ord.trackingUrl ? (
+                            <a
+                              href={ord.trackingUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={ord.trackingUrl}
+                              style={{
+                                color: 'var(--accent-blue, #3b82f6)',
+                                textDecoration: 'underline',
+                                fontWeight: 500,
+                                fontSize: '0.78rem',
+                              }}
+                            >
+                              Track Order ↗
+                            </a>
+                          ) : (
+                            <span className="text-muted text-xs">—</span>
+                          )}
+                        </td>
+                      )}
                       {showSlotCol && <td className="text-center">{ord.slotHour ?? '—'}</td>}
                       {isDsrMode ? (
                         <td className="text-center" style={{ whiteSpace: 'nowrap' }}>
